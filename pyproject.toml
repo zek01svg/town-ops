@@ -1,0 +1,23 @@
+[project]
+name = "townops"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110.0",
+    "pytest>=9.0.2",
+    "ruff>=0.15.5",
+    "supabase>=2.3.0",
+]
+
+[tool.uv.workspace]
+members = ["apps/atoms/*", "apps/composites/*", "packages/shared-python"]
+
+[tool.uv]
+package = false
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+extend = "tooling/ruff/ruff.toml"
