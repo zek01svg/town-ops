@@ -1,0 +1,19 @@
+[project]
+name = "townops-shared"
+version = "0.1.0"
+description = "Shared Python utilities for TownOps"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Inherits fastapi and supabase from root if needed, 
+    # but good practice to list them if used directly.
+    "fastapi",
+    "supabase",
+]
+
+[tool.uv]
+managed = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
