@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "hashicorp.terraform",
+    "dbaeumer.vscode-eslint",
+    "mechatroner.rainbow-csv",
+    "hediet.vscode-drawio",
+    "humao.rest-client",
+    "vsciot-vscode.vscode-rabbitmq"
+  ]
+}

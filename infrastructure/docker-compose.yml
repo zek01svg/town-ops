@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # --- Messaging ---
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: townops-mq
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - hdbcare-net
+
+  # --- API Gateway ---
+  kong:
+    image: kong:3.5
+    container_name: townops-gateway
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+    volumes:
+      - ./kong/kong.yml:/usr/local/kong/declarative/kong.yml
+    ports:
+      - "8000:8000" # Proxy
+      - "8001:8001" # Admin API
+    networks:
+      - hdbcare-net
+
+networks:
+  hdbcare-net:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
