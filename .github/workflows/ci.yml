@@ -2,50 +2,104 @@ name: TownOps CI
 
 on:
   push:
-    branches: [main, development]
   pull_request:
-    branches: [main, development]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Lint & Format
+  changes:
+    name: Check for Changes
+    runs-on: ubuntu-latest
+    outputs:
+      ts: ${{ steps.filter.outputs.ts }}
+      py: ${{ steps.filter.outputs.py }}
+      shared: ${{ steps.filter.outputs.shared }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ts:
+              - 'apps/**/*.ts'
+              - 'apps/**/*.tsx'
+              - 'apps/**/package.json'
+              - 'packages/**/*.ts'
+              - 'packages/**/*.tsx'
+              - 'frontend/**'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig.json'
+            py:
+              - 'apps/**/*.py'
+              - 'apps/**/pyproject.toml'
+              - 'packages/**/*.py'
+              - 'packages/**/pyproject.toml'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.python-version'
+            shared:
+              - '.github/workflows/ci.yml'
+              - 'tooling/**'
+
+  scan-for-secrets:
+    name: Scan for secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets using Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  lint-ts:
+    name: Lint TS
+    needs: [changes]
+    if: ${{ needs.changes.outputs.ts == 'true' || needs.changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
-
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
+      - name: Check Formatting
+        run: pnpm prettier --config tooling/prettier/prettier.config.js --check .
+      - name: Lint JS/TS
+        run: pnpm lint:js
 
+  lint-py:
+    name: Lint Python
+    needs: [changes]
+    if: ${{ needs.changes.outputs.py == 'true' || needs.changes.outputs.shared == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-
+          python-version: "3.14"
       - name: Install Python dependencies
         run: uv sync
-
-      - name: Check Formatting
-        run: pnpm prettier --config tooling/prettier/prettier.config.js --check .
-
-      - name: Lint JS/TS
-        run: pnpm lint:js
-
       - name: Lint Python
         run: pnpm lint:py
 
-  test-js:
+  test-ts:
     name: Test TS
+    needs: [changes]
+    if: ${{ needs.changes.outputs.ts == 'true' || needs.changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,25 +110,91 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
       - name: Install TS dependencies
         run: pnpm install --frozen-lockfile
       - name: Run TS Tests
-        run: pnpm -r test
-        continue-on-error: true
+        run: pnpm test --if-present
 
   test-py:
     name: Test Python
+    needs: [changes]
+    if: ${{ needs.changes.outputs.py == 'true' || needs.changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
         with:
+          python-version: "3.14"
           enable-cache: true
       - name: Install Python dependencies
         run: uv sync
       - name: Run Python Tests
         run: uv run pytest
-        continue-on-error: true
+
+  security-ts:
+    name: Security Checks (TS)
+    needs: [scan-for-secrets, lint-ts, test-ts]
+    # Only run if TS actually needed to be tested
+    if: ${{ always() && (needs.lint-ts.result == 'success' || needs.lint-ts.result == 'skipped') && (needs.test-ts.result == 'success' || needs.test-ts.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Software Composition Analysis (SCA)
+        run: pnpm audit --audit-level=high
+      - name: Initialize CodeQL (SAST)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, typescript
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript,typescript"
+
+  security-py:
+    name: Security Checks (Py)
+    needs: [scan-for-secrets, lint-py, test-py]
+    if: ${{ always() && (needs.lint-py.result == 'success' || needs.lint-py.result == 'skipped') && (needs.test-py.result == 'success' || needs.test-py.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - name: Install Python dependencies
+        run: uv sync
+      - name: Software Composition Analysis (SCA)
+        run: uvx pip-audit
+      - name: Initialize CodeQL (SAST)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"
