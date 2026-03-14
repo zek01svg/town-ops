@@ -1,12 +1,14 @@
 [project]
 name = "townops"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.110.0",
+    "opentelemetry-distro>=0.61b0",
+    "opentelemetry-exporter-otlp>=1.40.0",
+    "opentelemetry-instrumentation-fastapi>=0.61b0",
     "pytest>=9.0.2",
     "ruff>=0.15.5",
-    "supabase>=2.3.0",
 ]
 
 [tool.uv.workspace]

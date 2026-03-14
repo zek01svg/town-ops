@@ -3,15 +3,16 @@ name = "townops-alert"
 version = "0.1.0"
 description = "alert Service"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "fastapi",
-    "supabase",
+    "httpx",
     "townops-shared",
 ]
 
 [tool.uv]
 managed = true
+package = false
 
 [tool.uv.sources]
 townops-shared = { workspace = true }
