@@ -5,14 +5,13 @@ description = "Shared Python utilities for TownOps"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    # Inherits fastapi and sqlmodel from root if needed,
-    # but good practice to list them if used directly.
     "fastapi",
     "sqlmodel",
     "psycopg2-binary",
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp",
+    "structlog",
 ]
 
 [tool.uv]

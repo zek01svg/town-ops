@@ -8,6 +8,7 @@ dependencies = [
     "fastapi",
     "httpx",
     "townops-shared",
+    "uvicorn",
 ]
 
 [tool.uv]

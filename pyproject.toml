@@ -9,6 +9,8 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.61b0",
     "pytest>=9.0.2",
     "ruff>=0.15.5",
+    "structlog>=25.5.0",
+    "uvicorn>=0.41.0",
 ]
 
 [tool.uv.workspace]
