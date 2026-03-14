@@ -8,7 +8,6 @@ import * as drizzlePlugin from 'eslint-plugin-drizzle';
 import importPlugin from 'eslint-plugin-import';
 import reactPlugin from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
-import securityPlugin from 'eslint-plugin-security';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
@@ -48,7 +47,7 @@ const restrictEnvAccess = tseslint.config(
 
 export default tseslint.config(
   includeIgnoreFile(gitignorePath),
-  { ignores: ['**/*.config.*', 'dist', 'build', '.drizzle', 'coverage'] },
+  { ignores: ["**/*.config.*", "dist", "build", ".drizzle", "coverage"] },
 
   // 2. Base Configuration
   ...restrictEnvAccess,
@@ -59,89 +58,89 @@ export default tseslint.config(
       ...tseslint.configs.recommendedTypeChecked,
       ...tseslint.configs.stylisticTypeChecked,
     ],
-    files: ['**/*.js', '**/*.ts', '**/*.tsx'],
+    files: ["**/*.js", "**/*.ts", "**/*.tsx"],
     languageOptions: {
       ecmaVersion: 2020,
       parserOptions: {
         projectService: true,
-        tsconfigRootDir: path.resolve(__dirname, '../../'),
+        tsconfigRootDir: path.resolve(__dirname, "../../"),
       },
     },
     plugins: {
       import: importPlugin,
       query: queryPlugin,
       react: reactPlugin,
-      'simple-import-sort': simpleImportSort,
+      "simple-import-sort": simpleImportSort,
       drizzle: drizzlePlugin,
       security: securityPlugin,
-      'react-hooks': reactHooks,
+      "react-hooks": reactHooks,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'simple-import-sort/imports': 'warn',
-      'simple-import-sort/exports': 'warn',
-      'import/first': 'error',
-      'import/newline-after-import': 'error',
-      'import/no-duplicates': 'error',
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      "simple-import-sort/imports": "warn",
+      "simple-import-sort/exports": "warn",
+      "import/first": "error",
+      "import/newline-after-import": "error",
+      "import/no-duplicates": "error",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
-      '@typescript-eslint/consistent-type-imports': [
-        'warn',
-        { prefer: 'type-imports', fixStyle: 'separate-type-imports' },
+      "@typescript-eslint/consistent-type-imports": [
+        "warn",
+        { prefer: "type-imports", fixStyle: "separate-type-imports" },
       ],
-      '@typescript-eslint/no-misused-promises': [
+      "@typescript-eslint/no-misused-promises": [
         2,
         { checksVoidReturn: { attributes: false } },
       ],
-      '@typescript-eslint/no-unnecessary-condition': [
-        'error',
+      "@typescript-eslint/no-unnecessary-condition": [
+        "error",
         {
           allowConstantLoopConditions: true,
         },
       ],
-      '@typescript-eslint/no-non-null-assertion': 'error',
-      'import/consistent-type-specifier-style': ['error', 'prefer-top-level'],
-      'import/extensions': [
-        'error',
-        'ignorePackages',
+      "@typescript-eslint/no-non-null-assertion": "error",
+      "import/consistent-type-specifier-style": ["error", "prefer-top-level"],
+      "import/extensions": [
+        "error",
+        "ignorePackages",
         {
-          ts: 'always',
-          tsx: 'always',
+          ts: "always",
+          tsx: "always",
         },
       ],
-      'no-restricted-imports': [
-        'error',
+      "no-restricted-imports": [
+        "error",
         {
-          name: 'zod',
+          name: "zod",
           message: "Use `import { z } from 'zod/v4'` instead to ensure v4.",
         },
       ],
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-floating-promises': 'off',
-      '@typescript-eslint/require-await': 'off',
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-floating-promises": "off",
+      "@typescript-eslint/require-await": "off",
     },
   },
 
   // 3. Frontend Specific Config (src/)
   {
-    files: ['apps/frontend/**/*.{ts,tsx}'],
+    files: ["../../apps/frontend/**/*.{ts,tsx}"], // <-- Traverse up to the root
     languageOptions: {
       globals: { ...globals.browser },
     },
     plugins: {
-      'react-hooks': reactHooks,
+      "react-hooks": reactHooks,
     },
     rules: {
-      'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
     },
   },
 
   // 4. Backend Specific Config (server/)
   {
-    files: ['apps/**/*.{ts,js}'],
+    files: ["../../apps/**/*.{ts,js}"], // <-- Traverse up to the root
     extends: [honoConfig],
     languageOptions: {
       globals: { ...globals.node },
