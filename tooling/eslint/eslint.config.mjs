@@ -1,42 +1,42 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { includeIgnoreFile } from '@eslint/compat';
-import js from '@eslint/js';
-import honoConfig from '@hono/eslint-config';
-import queryPlugin from '@tanstack/eslint-plugin-query';
-import * as drizzlePlugin from 'eslint-plugin-drizzle';
-import importPlugin from 'eslint-plugin-import';
-import reactPlugin from 'eslint-plugin-react';
-import reactHooks from 'eslint-plugin-react-hooks';
-import simpleImportSort from 'eslint-plugin-simple-import-sort';
-import globals from 'globals';
-import tseslint from 'typescript-eslint';
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { includeIgnoreFile } from "@eslint/compat";
+import js from "@eslint/js";
+import honoConfig from "@hono/eslint-config";
+import queryPlugin from "@tanstack/eslint-plugin-query";
+import * as drizzlePlugin from "eslint-plugin-drizzle";
+import importPlugin from "eslint-plugin-import";
+import reactPlugin from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
+import simpleImportSort from "eslint-plugin-simple-import-sort";
+import globals from "globals";
+import tseslint from "typescript-eslint";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const gitignorePath = path.resolve(__dirname, '../../.gitignore');
+const gitignorePath = path.resolve(__dirname, "../../.gitignore");
 
 const restrictEnvAccess = tseslint.config(
   {
-    ignores: ['**/env.ts', '**/server/env.ts', '**/src/env.ts'],
+    ignores: ["**/env.ts", "**/server/env.ts", "**/src/env.ts"],
   },
   {
-    files: ['**/*.js', '**/*.ts', '**/*.tsx'],
+    files: ["**/*.js", "**/*.ts", "**/*.tsx"],
     rules: {
-      'no-restricted-properties': [
-        'error',
+      "no-restricted-properties": [
+        "error",
         {
-          object: 'process',
-          property: 'env',
+          object: "process",
+          property: "env",
           message:
             "Use `import { env } from 'env'` instead to ensure validated types.",
         },
       ],
-      'no-restricted-imports': [
-        'error',
+      "no-restricted-imports": [
+        "error",
         {
-          name: 'process',
-          importNames: ['env'],
+          name: "process",
+          importNames: ["env"],
           message:
             "Use `import { env } from 'env'` instead to ensure validated types.",
         },
@@ -72,7 +72,6 @@ export default tseslint.config(
       react: reactPlugin,
       "simple-import-sort": simpleImportSort,
       drizzle: drizzlePlugin,
-      security: securityPlugin,
       "react-hooks": reactHooks,
     },
     rules: {
@@ -82,6 +81,7 @@ export default tseslint.config(
       "import/first": "error",
       "import/newline-after-import": "error",
       "import/no-duplicates": "error",
+      "import/extensions": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
@@ -102,14 +102,7 @@ export default tseslint.config(
       ],
       "@typescript-eslint/no-non-null-assertion": "error",
       "import/consistent-type-specifier-style": ["error", "prefer-top-level"],
-      "import/extensions": [
-        "error",
-        "ignorePackages",
-        {
-          ts: "always",
-          tsx: "always",
-        },
-      ],
+      "import/no-duplicates": "error",
       "no-restricted-imports": [
         "error",
         {

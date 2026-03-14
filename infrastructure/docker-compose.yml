@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # --- Messaging ---
@@ -6,8 +6,8 @@ services:
     image: rabbitmq:4.2.4-management-alpine
     container_name: townops-mq
     ports:
-      - '5672:5672' # AMQP
-      - '15672:15672' # Management UI
+      - "5672:5672" # AMQP
+      - "15672:15672" # Management UI
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -21,7 +21,7 @@ services:
     image: kong:3.9
     container_name: townops-gateway
     environment:
-      KONG_DATABASE: 'off'
+      KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /usr/local/kong/declarative/kong.yml
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
@@ -32,8 +32,8 @@ services:
     volumes:
       - ./kong/kong.yml:/usr/local/kong/declarative/kong.yml
     ports:
-      - '8000:8000' # Proxy
-      - '8001:8001' # Admin API
+      - "8000:8000" # Proxy
+      - "8001:8001" # Admin API
     networks:
       - hdbcare-net
 
