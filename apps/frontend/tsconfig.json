@@ -18,13 +18,13 @@
     "types": ["vite/client"],
 
     // for clean imports
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@townops/shared-types": ["../../packages/shared-types/index.ts"],
       "@townops/ui-core": ["../../packages/ui-core/src/index.ts"],
       "@townops/ui-core/*": ["../../packages/ui-core/src/*"]
-    }
+    },
+    "strictNullChecks": true
   },
   "include": ["src", "vite.config.ts", "tests"],
   "exclude": ["node_modules"]

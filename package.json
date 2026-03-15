@@ -2,42 +2,33 @@
   "name": "townops",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "workspaces": [
     "apps/*",
     "packages/*",
     "tooling/*"
   ],
+  "type": "module",
   "scripts": {
     "prepare": "husky",
-    "format": "prettier --config tooling/prettier/prettier.config.js --write .",
-    "format:check": "prettier --config tooling/prettier/prettier.config.js --check .",
+    "format:fix": "pnpm oxfmt --config tooling/oxfmt/.oxfmtrc.json --write .",
+    "format:check": "pnpm oxfmt --config tooling/oxfmt/.oxfmtrc.json --check .",
     "lint:py": "uv run ruff check . --config tooling/ruff/ruff.toml",
-    "lint:js": "eslint . --config tooling/eslint/eslint.config.js",
-    "lint:js:fix": "eslint . --config tooling/eslint/eslint.config.js --fix",
+    "lint:js": "pnpm oxlint --config=tooling/oxlint/oxlint.config.ts",
     "clean": "pnpm rimraf node_modules .turbo"
   },
-  "packageManager": "pnpm@10.30.1",
   "devDependencies": {
-    "@eslint/compat": "^2.0.3",
-    "@eslint/js": "^10.0.1",
-    "@hono/eslint-config": "^2.1.0",
-    "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
-    "@tanstack/eslint-plugin-query": "^5.91.4",
-    "eslint": "9",
-    "eslint-plugin-drizzle": "^0.2.3",
-    "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-security": "^4.0.0",
-    "eslint-plugin-simple-import-sort": "^12.1.1",
-    "globals": "^17.4.0",
+    "@playwright/test": "^1.58.2",
+    "@vitest/coverage-istanbul": "^4.1.0",
+    "@vitest/ui": "^4.1.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "oxfmt": "^0.40.0",
+    "oxlint": "^1.55.0",
+    "oxlint-tsgolint": "^0.16.0",
     "prettier": "^3.8.1",
-    "prettier-plugin-tailwindcss": "^0.7.2",
     "rimraf": "^6.1.3",
     "turbo": "^2.8.17",
-    "typescript-eslint": "^8.57.0"
-  }
+    "vitest": "^4.1.0"
+  },
+  "packageManager": "pnpm@10.30.1"
 }

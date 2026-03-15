@@ -1,13 +1,13 @@
 {
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@townops/shared-types": ["../../../packages/shared-types/index.ts"],
       "drizzle-orm": ["./node_modules/drizzle-orm"],
       "drizzle-orm/*": ["./node_modules/drizzle-orm/*"]
-    }
+    },
+    "strictNullChecks": true
   },
   "include": ["src", "index.ts"],
   "exclude": ["node_modules"]

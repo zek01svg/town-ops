@@ -1,14 +1,14 @@
 {
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@townops/shared-types": ["../../../packages/shared-types/index.ts"],
       "@townops/shared-observability-ts": [
         "../../../packages/shared-ts/src/index.ts"
       ]
-    }
+    },
+    "strictNullChecks": true
   },
   "include": ["src", "index.ts"],
   "exclude": ["node_modules"]
