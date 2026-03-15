@@ -27,8 +27,9 @@ Detailed list of all services in the TownOps ecosystem.
 
 ## Shared Packages
 
-| Package                   | Purpose                               | Repository                |
-| :------------------------ | :------------------------------------ | :------------------------ |
-| **@townops/shared-types** | Centralized TypeScript definitions    | `/packages/shared-types`  |
-| **@townops/ui-core**      | React component library (Tailwind)    | `/packages/ui-core`       |
-| **townops-shared-py**     | Common Python utilities (logging, MQ) | `/packages/shared-python` |
+| Package                              | Purpose                                | Repository                |
+| :----------------------------------- | :------------------------------------- | :------------------------ |
+| **@townops/shared-types**            | Centralized TypeScript definitions     | `/packages/shared-types`  |
+| **@townops/shared-observability-ts** | Pino logging and OpenTelemetry tracing | `/packages/shared-ts`     |
+| **@townops/ui-core**                 | React component library (Tailwind)     | `/packages/ui-core`       |
+| **townops-shared-py**                | Common Python utilities (logging, MQ)  | `/packages/shared-python` |
