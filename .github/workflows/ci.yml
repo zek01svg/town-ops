@@ -25,7 +25,7 @@ jobs:
               - 'apps/**/*.ts'
               - 'apps/**/*.tsx'
               - 'apps/**/package.json'
-              - 'packages/**/*.ts'
+            - 'packages/**/*.ts'
               - 'packages/**/*.tsx'
               - 'frontend/**'
               - 'pnpm-lock.yaml'
