@@ -4,34 +4,36 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run dev",
+    "dev": "bun run --hot src/index.ts",
     "build": "bun run build",
     "clean": "rimraf node_modules",
     "start": "bun run start",
     "lint": "bun run lint",
     "test:unit": "vitest run",
-    "test:e2e": "playwright test",
-    "prepare": "husky",
     "load-env": "dotenv -e .env",
-    "db:pull": "bun run load-env -- bun dlx drizzle-kit pull",
-    "db:push": "bun run load-env -- bun dlx drizzle-kit push",
-    "db:generate": "bun run load-env -- bun dlx drizzle-kit generate",
-    "db:view": "bun run load-env -- bun dlx drizzle-kit studio"
+    "db:pull": "bun run load-env -- bun drizzle-kit pull",
+    "db:push": "bun run load-env -- bun drizzle-kit push",
+    "db:generate": "bun run load-env -- bun drizzle-kit generate",
+    "db:view": "bun run load-env -- bun drizzle-kit studio"
   },
   "engines": {
     "bun": "^1.3"
   },
   "packageManager": "pnpm@10.30.1",
   "dependencies": {
+    "@t3-oss/env-core": "catalog:",
     "@townops/shared-types": "workspace:*",
     "drizzle-orm": "^0.45.1",
-    "hono": "^4.12.4"
+    "drizzle-zod": "^0.8.3",
+    "hono": "catalog:",
+    "pg": "^8.20.0",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/pg": "^8.18.0",
     "dotenv-cli": "^11.0.0",
     "drizzle-kit": "^0.31.9",
     "rimraf": "^6.1.3",
-    "typescript": "^5.9.3"
+    "typescript": "catalog:"
   }
 }

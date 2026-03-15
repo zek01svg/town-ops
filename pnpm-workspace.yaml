@@ -1,3 +1,16 @@
 packages:
   - "apps/**"
   - "packages/**"
+
+catalog:
+  "@t3-oss/env-core": ^0.13.10
+  hono: ^4.12.8
+  typescript: ^5.9.3
+  zod: ^4.3.6
+
+catalogs:
+  react19:
+    react: ^19.2.4
+    react-dom: ^19.2.4
+    "@types/react": ^19.2.14
+    "@types/react-dom": ^19.2.3

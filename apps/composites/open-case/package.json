@@ -4,17 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run dev",
+    "dev": "bun run --hot src/index.ts",
     "build": "bun run build",
     "start": "bun run start",
     "lint": "bun run lint",
     "test": "vitest run"
   },
   "dependencies": {
+    "@t3-oss/env-core": "catalog:",
+    "@townops/shared-observability-ts": "workspace:*",
     "@townops/shared-types": "workspace:*",
-    "hono": "^4.0.0"
+    "hono": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "catalog:"
   }
 }

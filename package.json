@@ -11,16 +11,20 @@
   "scripts": {
     "prepare": "husky",
     "format": "prettier --config tooling/prettier/prettier.config.js --write .",
+    "format:check": "prettier --config tooling/prettier/prettier.config.js --check .",
     "lint:py": "uv run ruff check . --config tooling/ruff/ruff.toml",
-    "lint:js": "eslint . --config tooling/eslint/eslint.config.mjs"
+    "lint:js": "eslint . --config tooling/eslint/eslint.config.js",
+    "lint:js:fix": "eslint . --config tooling/eslint/eslint.config.js --fix",
+    "clean": "pnpm rimraf node_modules .turbo"
   },
+  "packageManager": "pnpm@10.30.1",
   "devDependencies": {
     "@eslint/compat": "^2.0.3",
     "@eslint/js": "^10.0.1",
     "@hono/eslint-config": "^2.1.0",
     "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
     "@tanstack/eslint-plugin-query": "^5.91.4",
-    "eslint": "^9.21.0",
+    "eslint": "9",
     "eslint-plugin-drizzle": "^0.2.3",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react": "^7.37.5",
@@ -29,9 +33,11 @@
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "globals": "^17.4.0",
     "husky": "^9.1.7",
-    "lint-staged": "^15.4.3",
-    "prettier": "^3.5.2",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
+    "rimraf": "^6.1.3",
+    "turbo": "^2.8.17",
     "typescript-eslint": "^8.57.0"
   }
 }
