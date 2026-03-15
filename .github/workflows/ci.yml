@@ -71,7 +71,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "pnpm"
+          cache: 'pnpm'
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
       - name: Check Formatting
@@ -90,7 +90,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          python-version: "3.14"
+          python-version: '3.14'
       - name: Install Python dependencies
         run: uv sync
       - name: Lint Python
@@ -111,7 +111,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "pnpm"
+          cache: 'pnpm'
       - name: Install TS dependencies
         run: pnpm install --frozen-lockfile
       - name: Run TS Tests
@@ -127,7 +127,7 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.14"
+          python-version: '3.14'
           enable-cache: true
       - name: Install Python dependencies
         run: uv sync
@@ -155,7 +155,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "pnpm"
+          cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Software Composition Analysis (SCA)
@@ -167,7 +167,7 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:javascript,typescript"
+          category: '/language:javascript,typescript'
 
   security-py:
     name: Security Checks (Py)
@@ -184,7 +184,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.14"
+          python-version: '3.14'
           enable-cache: true
       - name: Install Python dependencies
         run: uv sync
@@ -197,4 +197,4 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:python"
+          category: '/language:python'
