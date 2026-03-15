@@ -1,11 +1,11 @@
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { Resource } from "@opentelemetry/resources";
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { Resource } from '@opentelemetry/resources';
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
-import { env } from "./env";
-import { logger } from "./logger";
+import { env } from './env';
+import { logger } from './logger';
 
 /**
  * Initializes OpenTelemetry tracing for Node.js/Bun services.
@@ -22,14 +22,14 @@ export function setupTracingTS(serviceName: string) {
     return;
   }
 
-  const traceUrl = endpoint.endsWith("/")
+  const traceUrl = endpoint.endsWith('/')
     ? `${endpoint}v1/traces`
     : `${endpoint}/v1/traces`;
 
   const sdk = new NodeSDK({
     resource: new Resource({
       [ATTR_SERVICE_NAME]: serviceName,
-      "deployment.environment": env.NODE_ENV,
+      'deployment.environment': env.NODE_ENV,
     }),
     traceExporter: new OTLPTraceExporter({
       url: traceUrl,
@@ -43,11 +43,11 @@ export function setupTracingTS(serviceName: string) {
   sdk.start();
   console.info(`OpenTelemetry tracing initialized for service: ${serviceName}`);
 
-  process.on("SIGTERM", () => {
+  process.on('SIGTERM', () => {
     sdk
       .shutdown()
-      .then(() => console.log("Tracing terminated"))
-      .catch((error) => console.log("Error terminating tracing", error))
+      .then(() => console.log('Tracing terminated'))
+      .catch((error) => console.log('Error terminating tracing', error))
       .finally(() => process.exit(0));
   });
 }

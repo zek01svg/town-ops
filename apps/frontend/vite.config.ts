@@ -1,24 +1,24 @@
-import path from "path";
-import react from "@vitejs/plugin-react-swc";
-import { defineConfig } from "vite";
+import path from 'path';
+import react from '@vitejs/plugin-react-swc';
+import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
-      "@townops/shared-types": path.resolve(
+      '@': path.resolve(__dirname, './src'),
+      '@townops/shared-types': path.resolve(
         __dirname,
-        "../../packages/shared-types",
+        '../../packages/shared-types',
       ),
-      "@townops/ui-core": path.resolve(__dirname, "../../packages/ui-core/src"),
+      '@townops/ui-core': path.resolve(__dirname, '../../packages/ui-core/src'),
     },
   },
   server: {
     port: 3000,
     proxy: {
-      "/api": {
-        target: "http://localhost:8000",
+      '/api': {
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },
