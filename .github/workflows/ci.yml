@@ -67,15 +67,25 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 10.30.1
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: 'pnpm'
+          bun-version: 1.3.10
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
       - name: Check Formatting
-        run: pnpm format:check
+        run: bun run format:check
       - name: Lint JS/TS
         run: pnpm lint:js
 
@@ -107,11 +117,21 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 10.30.1
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: 'pnpm'
+          bun-version: 1.3.10
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
       - name: Install TS dependencies
         run: pnpm install --frozen-lockfile
       - name: Run TS Tests
@@ -136,9 +156,9 @@ jobs:
 
   security-ts:
     name: Security Checks (TS)
-    needs: [scan-for-secrets, lint-ts, test-ts]
-    # Only run if TS actually needed to be tested
-    if: ${{ always() && (needs.lint-ts.result == 'success' || needs.lint-ts.result == 'skipped') && (needs.test-ts.result == 'success' || needs.test-ts.result == 'skipped') }}
+    needs: [scan-for-secrets, lint-ts, test-ts, changes]
+    # Only run if TS files actually changed
+    if: ${{ (needs.changes.outputs.ts == 'true' || needs.changes.outputs.shared == 'true') && always() && (needs.lint-ts.result == 'success' || needs.lint-ts.result == 'skipped') && (needs.test-ts.result == 'success' || needs.test-ts.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -151,11 +171,21 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 10.30.1
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: 'pnpm'
+          bun-version: 1.3.10
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Software Composition Analysis (SCA)
@@ -171,8 +201,8 @@ jobs:
 
   security-py:
     name: Security Checks (Py)
-    needs: [scan-for-secrets, lint-py, test-py]
-    if: ${{ always() && (needs.lint-py.result == 'success' || needs.lint-py.result == 'skipped') && (needs.test-py.result == 'success' || needs.test-py.result == 'skipped') }}
+    needs: [scan-for-secrets, lint-py, test-py, changes]
+    if: ${{ (needs.changes.outputs.py == 'true' || needs.changes.outputs.shared == 'true') && always() && (needs.lint-py.result == 'success' || needs.lint-py.result == 'skipped') && (needs.test-py.result == 'success' || needs.test-py.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
