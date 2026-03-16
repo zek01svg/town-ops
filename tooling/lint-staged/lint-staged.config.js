@@ -1,12 +1,12 @@
 const lintStagedConfig = {
-  '*.{js,jsx,ts,tsx}': [
-    'eslint --config tooling/eslint/eslint.config.js --quiet --fix',
-    'prettier --config tooling/prettier/prettier.config.js --write',
+  "*.{js,jsx,ts,tsx}": [
+    "pnpm oxlint --config tooling/oxlint/oxlint.config.ts --quiet --fix",
+    "pnpm oxfmt --config tooling/oxfmt/.oxfmtrc.json --write",
   ],
-  '*.{json,css,md,html}': [
-    'prettier --config tooling/prettier/prettier.config.js --write',
+  "*.{json,css,md,html}": [
+    "pnpm oxfmt --config tooling/oxfmt/.oxfmtrc.json --write",
   ],
-  '*.py': ['uv run ruff check --fix', 'uv run ruff format'],
+  "*.py": ["uv run ruff check --fix", "uv run ruff format"],
 };
 
 export default lintStagedConfig;
