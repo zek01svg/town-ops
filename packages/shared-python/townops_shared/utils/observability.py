@@ -12,7 +12,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 
 def add_otel_trace_id(
-  _logger: Any, _method_name: str, event_dict: dict[str, Any]
+  _logger: Any,  # noqa: ANN401
+  _method_name: str,
+  event_dict: dict[str, Any],
 ) -> dict[str, Any]:
   """
   Processor to add OpenTelemetry trace_id and span_id to structlog events.
@@ -25,7 +27,7 @@ def add_otel_trace_id(
   return event_dict
 
 
-def setup_logging():
+def setup_logging() -> None:
   """
   Configures structlog to work with standard logging and OpenTelemetry.
   """
@@ -41,8 +43,8 @@ def setup_logging():
   ]
 
   structlog.configure(
-    processors=shared_processors
-    + [
+    processors=[
+      *shared_processors,
       structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ],
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -72,7 +74,7 @@ def setup_logging():
   root_logger.setLevel(log_level)
 
 
-def setup_tracing(service_name: str):
+def setup_tracing(service_name: str) -> None:
   """
   Initializes OpenTelemetry tracing with OTLP exporter for Grafana Cloud.
   """

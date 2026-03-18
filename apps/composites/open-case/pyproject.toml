@@ -1,7 +1,7 @@
 [project]
-name = "townops-close-case"
+name = "townops-open-case"
 version = "0.1.0"
-description = "close-case Service"
+description = "open-case Service"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
