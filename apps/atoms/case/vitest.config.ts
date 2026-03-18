@@ -9,6 +9,7 @@ export default mergeConfig(
   defineConfig({
     test: {
       environment: "node",
+      globalSetup: "./tests/integration/global-setup.ts",
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url)),
         "@townops/shared-observability-ts": fileURLToPath(

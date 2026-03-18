@@ -9,6 +9,7 @@ import {
   resolver,
   validator,
 } from "hono-openapi";
+import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
 import db from "./database/db";
@@ -28,6 +29,14 @@ app.onError((err, c) => {
 
 // custom logging middleware
 app.use("*", honoLogger());
+
+app.use(
+  "/api/*",
+  jwk({
+    jwks_uri: env.JWKS_URI,
+    alg: ["RS256"],
+  })
+);
 
 app
   .get(

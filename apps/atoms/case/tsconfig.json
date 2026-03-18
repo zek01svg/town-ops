@@ -9,8 +9,7 @@
       ],
       "drizzle-orm": ["./node_modules/drizzle-orm"],
       "drizzle-orm/*": ["./node_modules/drizzle-orm/*"]
-    },
-    "strictNullChecks": true
+    }
   },
   "include": ["src", "index.ts"],
   "exclude": ["node_modules"]
