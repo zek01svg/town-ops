@@ -1,0 +1,40 @@
+{
+  "name": "@townops/alert-atom",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "build": "bun build --production --minify --target=bun --outdir=build src/index.ts",
+    "build:docker": "bun run build && docker build -t case-atom .",
+    "clean": "rimraf node_modules",
+    "test": "vitest run",
+    "load-env": "dotenv -e .env",
+    "db:pull": "bun run load-env -- bun drizzle-kit pull",
+    "db:push": "bun run load-env -- bun drizzle-kit push",
+    "db:generate": "bun run load-env -- bun drizzle-kit generate",
+    "db:view": "bun run load-env -- bun drizzle-kit studio"
+  },
+  "dependencies": {
+    "@t3-oss/env-core": "catalog:",
+    "@townops/shared-observability-ts": "workspace:*",
+    "@townops/shared-types": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "drizzle-zod": "catalog:",
+    "hono": "catalog:",
+    "pg": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@hono/standard-validator": "catalog:",
+    "@scalar/hono-api-reference": "catalog:",
+    "@testcontainers/postgresql": "catalog:",
+    "@types/pg": "catalog:",
+    "dotenv-cli": "catalog:",
+    "drizzle-kit": "catalog:",
+    "hono-openapi": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
