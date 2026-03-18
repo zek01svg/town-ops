@@ -32,7 +32,7 @@ const vitestConfig = mergeConfig(
   baseConfig,
   defineProject({
     test: {
-      environment: "jsdom",
+      environment: "node",
     },
   })
 );

@@ -1,7 +1,3 @@
-# Default Ruff configuration for TownOps monorepo
-# This is located in tooling/ruff to follow the monorepo pattern of centralized tooling configs.
-
-# Exclude a variety of commonly ignored directories.
 exclude = [
     ".bzr",
     ".direnv",
@@ -36,20 +32,43 @@ indent-width = 2
 target-version = "py312"
 
 [lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`) codes by default.
+# Enable Pyflakes (`F`), pycodestyle (`E`, `W`), isort (`I`), and strict plugins.
 select = [
-    "E",    # pycodestyle errors
-    "W",    # pycodestyle warnings
-    "F",    # pyflakes
-    "I",    # isort (import sorting)
-    "B",    # flake8-bugbear (logic bugs)
-    "C4",   # flake8-comprehensions
-    "UP",   # pyupgrade (modern syntax)
-    "ARG001", # unused auto-argument
-    "SIM",  # flake8-simplify
-    "TID",  # flake8-tidy-imports
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort (import sorting)
+    "N",     # pep8-naming
+    "B",     # flake8-bugbear (logic bugs)
+    "A",     # flake8-builtins
+    "COM",   # flake8-commas
+    "C4",    # flake8-comprehensions
+    "UP",    # pyupgrade (modern syntax)
+    "ARG",   # flake8-unused-arguments
+    "SIM",   # flake8-simplify
+    "TID",   # flake8-tidy-imports
+    "T20",   # flake8-print (matches no-console in Oxlint)
+    "S",     # flake8-bandit (Security checks)
+    "G",     # flake8-logging-format
+    "ANN",   # flake8-annotations (Type hints, equivalent to TS strictness)
+    "PT",    # flake8-pytest-style
+    "PTH",   # flake8-use-pathlib
+    "RET",   # flake8-return
+    "RSE",   # flake8-raise
+    "PERF",  # perflint (performance)
+    "RUF",   # Ruff-specific rules
+    "BLE",   # flake8-blind-except
+    "FBT",   # flake8-boolean-trap
+    "ISC",   # flake8-implicit-str-concat
+    "PIE",   # flake8-pie
+    "TRY",   # tryceratops
+    "ASYNC", # flake8-async
 ]
-ignore = []
+
+ignore = [
+    "COM812", # Conflict with formatter
+    "ISC001", # Conflict with formatter
+]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
