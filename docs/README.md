@@ -17,6 +17,6 @@ This folder contains detailed specs regarding **TownOps** decoupled design patte
 
 TownOps enforces strict isolation of execution nodes based on responsibilities:
 
-- **Atoms (`/apps/atoms`)**: Agnostic data owners (Tech: Python, FastAPI). Each Atom owns exactly one data schema and broadcasts alters using RabbitMQ streams.
-- **Composites (`/apps/composites`)**: Business orchestrators (Tech: Node.js/Bun, Hono). Maintains stateless responses coordinating multiple HTTP Rest node boundaries.
+- **Atoms (`/apps/atoms`)**: Agnostic data owners (Tech: Bun/Hono). Each Atom owns exactly one data schema and broadcasts alters using RabbitMQ streams.
+- **Composites (`/apps/composites`)**: Business orchestrators (Tech: Python/FastAPI). Maintains stateless responses coordinating multiple HTTP Rest node boundaries.
 - **Shared Nodes (`/packages`)**: Centralized static types bundles, styles components, and reusable utilities linked with automated Catalogs for version alignment.

@@ -7,17 +7,16 @@ TownOps is built around the **Atomic/Composite** microservices pattern, designed
 ### 1. Atomic Services (Atoms)
 
 - **Role**: Domain Data Owners.
-- **Tech**: Python 3.11+, FastAPI (or Bun/Hono for selected services).
+- **Tech**: Bun + Hono
 - **Rules**:
-  - Each atom owns exactly one database schema (or a set of related tables).
+  - Each atom owns exactly one database table (or a set of related tables).
   - Atoms **never** call other atoms via HTTP.
   - Atoms are agnostic of the business processes they belong to.
-  - Data changes or triggers can be broadcasted via **AMQP events** (e.g., SLA Breached).
 
 ### 2. Composite Services (Composites)
 
 - **Role**: Business Logic Orchestrators.
-- **Tech**: Node.js/Bun, Hono, TypeScript.
+- **Tech**: Python + FastAPI
 - **Rules**:
   - Composites do not have their own persistent storage.
   - They coordinate multiple atoms using HTTP REST calls.

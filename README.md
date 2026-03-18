@@ -36,7 +36,7 @@ graph TD
             CC[Close Case]
         end
 
-        subgraph Atoms [Atomic Services - Python/FastAPI]
+        subgraph Atoms [Atomic Services - Python/FastAPI or Bun/Hono]
             Case[Case Atom]
             Alert[Alert Atom]
             Res[Resident Atom]
@@ -70,36 +70,12 @@ graph TD
 | **Language**     | TypeScript, Python 3.11+             | Dual-language codebase for performance & ergonomics |
 | **Runtime**      | Node.js 20, Bun (Atoms), UV (Python) | High-performance execution environments             |
 | **Frontend**     | React 19, Vite 6, TailwindCSS 4      | Modern, fast, and responsive user interfaces        |
-| **Backend (TS)** | Hono, TanStack Router                | Lightweight, high-speed composite orchestration     |
-| **Backend (PY)** | FastAPI, Pydantic                    | Robust, type-safe data access layer (Atoms)         |
+| **Backend (TS)** | Hono, Bun                            | Atoms                                               |
+| **Backend (PY)** | FastAPI, Pydantic                    | Composites                                          |
 | **Database**     | PostgreSQL, Drizzle ORM              | Relational consistency with type-safe migrations    |
 | **Messaging**    | RabbitMQ (AMQP)                      | Asynchronous event flows and SLA timers             |
 | **Gateway**      | Kong Gateway                         | Centralized routing, auth, and rate limiting        |
 | **CI/CD**        | GitHub Actions                       | Automated linting, testing, and deployment          |
-
----
-
-## 📂 Project Structure
-
-```text
-.
-├── apps/                    # Microservices
-│   ├── atoms/               # Data-owning services (Python/FastAPI)
-│   │   ├── alert/           # Incident notifications
-│   │   ├── case/            # Core maintenance records
-│   │   └── ...              # 7 atomic services in total
-│   ├── composites/          # Process orchestrators (TS/Hono)
-│   │   ├── open-case/       # Orchestrates case creation
-│   │   └── ...              # 6 composite services in total
-│   └── frontend/            # React 19 / Vite Application
-├── packages/                # Shared internal libraries
-│   ├── shared-types/        # Shared TypeScript definitions
-│   ├── shared-python/       # Shared Python utilities
-│   └── ui-core/             # Centralized design system
-├── tooling/                 # Shared configuration (ESLint, Ruff, Prettier)
-├── infrastructure/          # Docker & Terraform configuration
-└── tests/                   # E2E and Integration test suites
-```
 
 ---
 
@@ -173,3 +149,29 @@ Start the local development server for all services.
 ```bash
 pnpm dev
 ```
+
+---
+
+## 📂 Project Structure
+
+```text
+.
+├── apps/                    # Microservices
+│   ├── atoms/               # Data-owning services (Python/FastAPI)
+│   │   ├── alert/           # Incident notifications
+│   │   ├── case/            # Core maintenance records
+│   │   └── ...              # 7 atomic services in total
+│   ├── composites/          # Process orchestrators (TS/Hono)
+│   │   ├── open-case/       # Orchestrates case creation
+│   │   └── ...              # 6 composite services in total
+│   └── frontend/            # React 19 / Vite Application
+├── packages/                # Shared internal libraries
+│   ├── shared-types/        # Shared TypeScript definitions
+│   ├── shared-python/       # Shared Python utilities
+│   └── ui-core/             # Centralized design system
+├── tooling/                 # Shared configuration (ESLint, Ruff, Prettier)
+├── infrastructure/          # Docker & Terraform configuration
+└── tests/                   # E2E and Integration test suites
+```
+
+---
