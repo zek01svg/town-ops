@@ -4,7 +4,7 @@ import os
 import aio_pika
 
 
-async def publish_job_assigned(assignment_id: int, case_id: int, contractor_id: int):
+async def publish_job_assigned(assignment_id: str, case_id: str, contractor_id: str):
   payload = {
     "assignment_id": assignment_id,
     "case_id": case_id,

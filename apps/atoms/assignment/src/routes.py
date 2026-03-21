@@ -4,9 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from utils.database import get_session
 
-from apps.atoms.assignment.src.publisher import publish_job_assigned
-
 from .models import Assignment, AssignmentStatus, AssignmentStatusHistory
+from .publisher import publish_job_assigned
 from .schemas import AssignmentCreate, AssignmentResponse, AssignmentStatusUpdate
 
 router = APIRouter()
@@ -44,7 +43,7 @@ async def create_assignment(
 
 @router.get("/assignments/{id}", response_model=AssignmentResponse)
 def get_assignment(
-  id: int,
+  id: str,
   session: Session = Depends(get_session),  # noqa: B008
 ):
   assignment = session.get(Assignment, id)
@@ -55,7 +54,7 @@ def get_assignment(
 
 @router.get("/assignments/case/{case_id}", response_model=AssignmentResponse)
 def get_assignment_by_case(
-  case_id: int,
+  case_id: str,
   session: Session = Depends(get_session),  # noqa: B008
 ):
   statement = select(Assignment).where(Assignment.case_id == case_id)
@@ -69,7 +68,7 @@ def get_assignment_by_case(
   "/assignments/contractor/{contractor_id}", response_model=list[AssignmentResponse]
 )
 def get_assignments_by_contractor(
-  contractor_id: int,
+  contractor_id: str,
   session: Session = Depends(get_session),  # noqa: B008
 ):
   statement = select(Assignment).where(Assignment.contractor_id == contractor_id)
@@ -79,7 +78,7 @@ def get_assignments_by_contractor(
 
 @router.put("/assignments/{id}/status", response_model=AssignmentResponse)
 def update_assignment_status(
-  id: int,
+  id: str,
   body: AssignmentStatusUpdate,
   session: Session = Depends(get_session),  # noqa: B008
 ):

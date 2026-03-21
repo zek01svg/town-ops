@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from enum import StrEnum
+from uuid import uuid4
 
 from sqlmodel import Field, SQLModel
 
@@ -21,23 +22,23 @@ class AssignmentStatus(StrEnum):
 
 
 class Assignment(SQLModel, table=True):
-  id: int | None = Field(default=None, primary_key=True)
-  case_id: int
-  contractor_id: int
+  id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
+  case_id: str
+  contractor_id: str
   status: AssignmentStatus
   assigned_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
   response_due_at: datetime
   accepted_at: datetime | None = Field(default=None)
   source: AssignmentSource
-  reassigned_from_assignment_id: int | None = Field(default=None)
+  reassigned_from_assignment_id: str | None = Field(default=None)
   notes: str | None = Field(default=None)
   created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
   updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class AssignmentStatusHistory(SQLModel, table=True):
-  id: int | None = Field(default=None, primary_key=True)
-  assignment_id: int
+  id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
+  assignment_id: str
   from_status: AssignmentStatus | None = Field(default=None)
   to_status: AssignmentStatus
   changed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
