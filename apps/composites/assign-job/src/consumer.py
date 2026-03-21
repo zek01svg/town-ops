@@ -26,5 +26,6 @@ async def start_consumer() -> None:
               category_code=body["category_code"],
             )
             logger.info("Assignment created for case %s", body["case_id"])
-          except Exception as e:
-            logger.error("Failed to process Case_Opened: %s", e)
+          except Exception:
+            logger.exception("Failed to process Case_Opened")
+            raise
