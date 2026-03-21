@@ -37,6 +37,24 @@ services:
     networks:
       - hdbcare-net
 
+  # --- Assignment Service ---
+  assignment:
+    build:
+      context: ../apps/atoms/assignment
+      dockerfile: Dockerfile
+    container_name: townops-assignment
+    ports:
+      - '5003:5003'
+    environment:
+      PORT: 5003
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: ${ASSIGNMENT_DATABASE_URL} # TODO: add the supabase URL
+    depends_on:
+      - rabbitmq
+    networks:
+      - hdbcare-net
+
+
 networks:
   hdbcare-net:
     driver: bridge
