@@ -870,14 +870,18 @@ name = "townops-assign-job"
 version = "0.1.0"
 source = { editable = "apps/composites/assign-job" }
 dependencies = [
+    { name = "aio-pika" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "townops-shared" },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "aio-pika" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "townops-shared", editable = "packages/shared-python" },
     { name = "uvicorn" },
 ]
