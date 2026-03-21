@@ -42,7 +42,7 @@ async def assign_contractor(case_id: str, postal_code: str, category_code: str) 
       raise ValueError("No eligible contractors found")
 
     contractor_data = await asyncio.gather(
-      *(get_metrics(client, c["ContractorId"]) for c in contractors)
+      *(get_metrics(client, c["ContractorUuid"]) for c in contractors)
     )
 
     best = select_best(contractor_data)
