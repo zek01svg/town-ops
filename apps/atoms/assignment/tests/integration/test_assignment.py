@@ -1,2 +1,6 @@
-def test_1_plus_1():
-  assert 1 + 1 == 2
+# TODO: Integration tests require database setup
+# Will test:
+# - POST /assignments creates a record
+# - GET /assignments/{id} returns correct data
+# - PUT /assignments/{id}/status updates correctly
+# - One active assignment per case rule
