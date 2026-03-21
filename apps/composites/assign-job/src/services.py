@@ -1,7 +1,12 @@
 import asyncio
+import logging
 import os
 
 import httpx
+
+from .publisher import publish_job_assigned
+
+logger = logging.getLogger(__name__)
 
 
 async def get_metrics(client: httpx.AsyncClient, contractor_id: str) -> dict:
@@ -52,4 +57,16 @@ async def assign_contractor(case_id: str, postal_code: str, category_code: str) 
       },
     )
     final_resp.raise_for_status()
-    return final_resp.json()
+    assignment = final_resp.json()
+
+    try:
+      await publish_job_assigned(
+        assignment_id=assignment["id"],
+        case_id=case_id,
+        contractor_id=best["contractor_id"],
+      )
+    except Exception:
+      logger.exception("Failed to publish Job_Assigned for case %s", case_id)
+      raise
+
+    return assignment
