@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from utils.database import get_session
 
+from apps.atoms.assignment.src.publisher import publish_job_assigned
+
 from .models import Assignment, AssignmentStatus, AssignmentStatusHistory
 from .schemas import AssignmentCreate, AssignmentResponse, AssignmentStatusUpdate
 
@@ -16,7 +18,7 @@ def get_health():
 
 
 @router.post("/assignments", response_model=AssignmentResponse)
-def create_assignment(
+async def create_assignment(
   body: AssignmentCreate,
   session: Session = Depends(get_session),  # noqa: B008
 ):
@@ -31,6 +33,12 @@ def create_assignment(
   session.add(assignment)
   session.commit()
   session.refresh(assignment)
+  assert assignment.id is not None
+  await publish_job_assigned(
+    assignment_id=assignment.id,
+    case_id=assignment.case_id,
+    contractor_id=assignment.contractor_id,
+  )
   return assignment
 
 
