@@ -1,0 +1,23 @@
+{
+  "name": "@townops/open-case-composite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "build": "bun run build",
+    "start": "bun run start",
+    "lint": "bun run lint",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@t3-oss/env-core": "catalog:",
+    "@townops/shared-observability-ts": "workspace:*",
+    "@townops/shared-types": "workspace:*",
+    "hono": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

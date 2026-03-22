@@ -1,0 +1,42 @@
+[project]
+name = "townops"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "aio-pika>=9.6.1",
+    "fastapi>=0.110.0",
+    "opentelemetry-distro>=0.61b0",
+    "opentelemetry-exporter-otlp>=1.40.0",
+    "opentelemetry-instrumentation-fastapi>=0.61b0",
+    "pyjwt>=2.12.1",
+    "pytest>=9.0.2",
+    "ruff>=0.15.5",
+    "structlog>=25.5.0",
+    "uvicorn>=0.41.0",
+]
+
+[tool.uv.workspace]
+members = [
+    "apps/composites/accept-job",
+    "apps/composites/assign-job",
+    "apps/composites/close-case",
+    "apps/composites/open-case",
+    "apps/composites/handle-breach",
+    "apps/composites/reschedule-job",
+    "packages/shared-python",
+]
+
+[tool.uv]
+package = false
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+extend = "tooling/ruff/ruff.toml"
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+testpaths = ["apps", "packages"]
+pythonpath = ["."]

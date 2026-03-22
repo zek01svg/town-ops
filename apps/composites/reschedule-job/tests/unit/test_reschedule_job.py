@@ -178,3 +178,5 @@ class TestRequestValidation:
 
         response = client.post("/api/reschedule", json=request)
         assert response.status_code == 422
+def test_1_plus_1():
+  assert 1 + 1 == 2

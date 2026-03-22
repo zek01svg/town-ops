@@ -1,0 +1,89 @@
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+line-length = 88
+indent-width = 2
+target-version = "py312"
+
+[lint]
+# Enable Pyflakes (`F`), pycodestyle (`E`, `W`), isort (`I`), and strict plugins.
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort (import sorting)
+    "N",     # pep8-naming
+    "B",     # flake8-bugbear (logic bugs)
+    "A",     # flake8-builtins
+    "COM",   # flake8-commas
+    "C4",    # flake8-comprehensions
+    "UP",    # pyupgrade (modern syntax)
+    "ARG",   # flake8-unused-arguments
+    "SIM",   # flake8-simplify
+    "TID",   # flake8-tidy-imports
+    "T20",   # flake8-print (matches no-console in Oxlint)
+    "S",     # flake8-bandit (Security checks)
+    "G",     # flake8-logging-format
+    "ANN",   # flake8-annotations (Type hints, equivalent to TS strictness)
+    "PT",    # flake8-pytest-style
+    "PTH",   # flake8-use-pathlib
+    "RET",   # flake8-return
+    "RSE",   # flake8-raise
+    "PERF",  # perflint (performance)
+    "RUF",   # Ruff-specific rules
+    "BLE",   # flake8-blind-except
+    "FBT",   # flake8-boolean-trap
+    "ISC",   # flake8-implicit-str-concat
+    "PIE",   # flake8-pie
+    "TRY",   # tryceratops
+    "ASYNC", # flake8-async
+]
+
+ignore = [
+    "COM812", # Conflict with formatter
+    "ISC001", # Conflict with formatter
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[lint.isort]
+known-first-party = ["townops"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"

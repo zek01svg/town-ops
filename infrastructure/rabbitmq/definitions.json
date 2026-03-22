@@ -1,0 +1,150 @@
+{
+  "users": [],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [],
+  "exchanges": [
+    {
+      "name": "townops.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "townops.dlx",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "assign-job-queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "townops.dlx"
+      }
+    },
+    {
+      "name": "alert-queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "townops.dlx"
+      }
+    },
+    {
+      "name": "metrics-queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "townops.dlx"
+      }
+    },
+    {
+      "name": "handle-breach-queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "townops.dlx"
+      }
+    },
+    {
+      "name": "error-audit-queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "sla-timers-queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "townops.events",
+        "x-dead-letter-routing-key": "sla.breached"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "townops.events",
+      "vhost": "/",
+      "destination": "assign-job-queue",
+      "destination_type": "queue",
+      "routing_key": "case.opened",
+      "arguments": {}
+    },
+    {
+      "source": "townops.events",
+      "vhost": "/",
+      "destination": "alert-queue",
+      "destination_type": "queue",
+      "routing_key": "job.assigned",
+      "arguments": {}
+    },
+    {
+      "source": "townops.events",
+      "vhost": "/",
+      "destination": "alert-queue",
+      "destination_type": "queue",
+      "routing_key": "case.escalated",
+      "arguments": {}
+    },
+    {
+      "source": "townops.events",
+      "vhost": "/",
+      "destination": "alert-queue",
+      "destination_type": "queue",
+      "routing_key": "case.no_access",
+      "arguments": {}
+    },
+    {
+      "source": "townops.events",
+      "vhost": "/",
+      "destination": "alert-queue",
+      "destination_type": "queue",
+      "routing_key": "job.done",
+      "arguments": {}
+    },
+    {
+      "source": "townops.events",
+      "vhost": "/",
+      "destination": "metrics-queue",
+      "destination_type": "queue",
+      "routing_key": "job.done",
+      "arguments": {}
+    },
+    {
+      "source": "townops.events",
+      "vhost": "/",
+      "destination": "handle-breach-queue",
+      "destination_type": "queue",
+      "routing_key": "sla.breached",
+      "arguments": {}
+    },
+    {
+      "source": "townops.dlx",
+      "vhost": "/",
+      "destination": "error-audit-queue",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    }
+  ]
+}

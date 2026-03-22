@@ -1,0 +1,27 @@
+[project]
+name = "townops-shared"
+version = "0.1.0"
+description = "Shared Python utilities for TownOps"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi",
+    "sqlmodel",
+    "psycopg2-binary",
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp",
+    "structlog",
+    "aio-pika",
+    "pyjwt",
+]
+
+[tool.uv]
+managed = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["townops_shared"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
