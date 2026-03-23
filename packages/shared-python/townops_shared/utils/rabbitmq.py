@@ -1,13 +1,38 @@
 import os
 from collections.abc import Awaitable, Callable
+from typing import Any, Literal
 
 import aio_pika
 import structlog
 
 log = structlog.get_logger(__name__)
 
+ExchangeType = Literal["direct", "fanout", "topic", "headers"]
+ExchangeName = Literal["townops.events", "townops.dlx"]
+RoutingKey = Literal[
+  "case.opened",
+  "case.escalated",
+  "case.no_access",
+  "job.assigned",
+  "job.done",
+  "sla.breached",
+  "#",
+]
+QueueName = Literal[
+  "assign-job-queue",
+  "alert-queue",
+  "metrics-queue",
+  "handle-breach-queue",
+  "error-audit-queue",
+  "sla-timers-queue",
+]
+
 
 class RabbitMQClient:
+  """
+  A client for interacting with RabbitMQ.
+  """
+
   def __init__(self) -> None:
     self.connection: aio_pika.abc.AbstractConnection | None = None
     self.channel: aio_pika.abc.AbstractChannel | None = None
@@ -38,7 +63,7 @@ class RabbitMQClient:
       log.info("RabbitMQ connection closed")
 
   async def declare_exchange(
-    self, name: str, exchange_type: str = "topic"
+    self, name: str, exchange_type: ExchangeType = "topic"
   ) -> aio_pika.abc.AbstractExchange:
     """
     Declares an exchange for publishing messages.
@@ -51,8 +76,8 @@ class RabbitMQClient:
 
   async def publish(
     self,
-    exchange_name: str,
-    routing_key: str,
+    exchange_name: ExchangeName,
+    routing_key: RoutingKey,
     message_body: bytes,
     content_type: str = "application/json",
   ) -> None:
@@ -76,11 +101,11 @@ class RabbitMQClient:
 
   async def consume(
     self,
-    queue_name: str,
+    queue_name: QueueName,
     callback: Callable[[aio_pika.abc.AbstractIncomingMessage], Awaitable[None]],
-    exchange_name: str | None = None,
-    routing_key: str | None = None,
-    arguments: dict[str, any] | None = None,
+    exchange_name: ExchangeName | None = None,
+    routing_key: RoutingKey | None = None,
+    arguments: dict[str, Any] | None = None,
   ) -> None:
     """
     Continuously consumes from a queue and executes an async callback for each message.
@@ -111,8 +136,6 @@ class RabbitMQClient:
     log.info("Starting consumer", queue=queue_name)
     async with queue.iterator() as queue_iter:
       async for message in queue_iter:
-        # message.process() automatically ACKs on exit if no exception was raised,
-        # or NACKs with requeue if an exception is raised inside the context block.
         async with message.process():
           try:
             await callback(message)
@@ -123,5 +146,4 @@ class RabbitMQClient:
               queue=queue_name,
               message_id=message.message_id,
             )
-            # Re-raise to trigger NACK and potential requeue
             raise

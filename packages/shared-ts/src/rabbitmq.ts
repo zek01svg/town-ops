@@ -65,11 +65,22 @@ class RabbitMQClient {
 
   /**
    * @method publish
+   * @param exchangeName - The name of the exchange to publish to.
+   * @param routingKey - The routing key to publish to.
+   * @param message - The message to publish.
+   * @param options - Optional parameters for publishing the message.
    * @description Publishes a message to an exchange.
    */
   async publish(
-    exchangeName: string,
-    routingKey: string,
+    exchangeName: "townops.events" | "townops.dlx",
+    routingKey:
+      | "case.opened"
+      | "case.escalated"
+      | "case.no_access"
+      | "job.assigned"
+      | "job.done"
+      | "sla.breached"
+      | "#",
     message: string | object,
     options?: { contentType?: string }
   ): Promise<void> {
@@ -92,14 +103,30 @@ class RabbitMQClient {
 
   /**
    * @method consume
+   * @param queueName - The name of the queue to consume from.
+   * @param callback - The callback function to handle messages.
+   * @param options - Optional parameters for consuming messages.
    * @description Consumes messages from a queue with callback handler and automatic/requeue ACK handling.
    */
   async consume(
-    queueName: string,
+    queueName:
+      | "assign-job-queue"
+      | "alert-queue"
+      | "metrics-queue"
+      | "handle-breach-queue"
+      | "error-audit-queue"
+      | "sla-timers-queue",
     callback: (message: AMQPMessage) => Promise<void>,
     options?: {
-      exchangeName?: string;
-      routingKey?: string;
+      exchangeName?: "townops.events" | "townops.dlx";
+      routingKey?:
+        | "case.opened"
+        | "case.escalated"
+        | "case.no_access"
+        | "job.assigned"
+        | "job.done"
+        | "sla.breached"
+        | "#";
       arguments?: Record<string, any>;
     }
   ): Promise<unknown> {
