@@ -31,5 +31,8 @@ townops-shared = { workspace = true }
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = ["testcontainers[rabbitmq]>=4.14.2"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
