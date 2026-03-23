@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 
 import structlog
-from config import settings
 from townops_shared.utils.rabbitmq import RabbitMQClient
+
+from config import settings
 
 log = structlog.get_logger(__name__)
 

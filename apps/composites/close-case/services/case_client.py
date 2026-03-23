@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import httpx
 import structlog
+
 from config import settings
 
 log = structlog.get_logger(__name__)

@@ -10,7 +10,6 @@ dependencies = [
     "uvicorn",
     "aio-pika",
     "pyjwt",
-    "httpx",
 ]
 
 [tool.uv]
@@ -18,9 +17,6 @@ managed = true
 
 [tool.uv.sources]
 townops-shared = { workspace = true }
-
-[tool.hatch.build.targets.wheel]
-packages = ["."]
 
 [build-system]
 requires = ["hatchling"]

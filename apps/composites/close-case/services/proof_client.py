@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import httpx
 import structlog
+
 from config import settings
 from schemas import ProofItem
 

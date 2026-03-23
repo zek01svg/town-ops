@@ -20,16 +20,17 @@ from typing import Any
 
 # Third-party
 import httpx
-import services.amqp as amqp_service
 import structlog
+from fastapi import FastAPI, HTTPException, status
+from townops_shared.utils.observability import setup_logging, setup_tracing
+
+import services.amqp as amqp_service
 
 # Local / project
 from config import settings
-from fastapi import FastAPI, HTTPException, status
 from schemas import CloseCaseRequest, CloseCaseResponse
 from services.case_client import get_case, update_case_status
 from services.proof_client import store_proof
-from townops_shared.utils.observability import setup_logging, setup_tracing
 
 setup_logging()
 setup_tracing("close-case")
