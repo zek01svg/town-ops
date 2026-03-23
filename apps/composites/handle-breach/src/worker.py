@@ -1,7 +1,9 @@
+import functools
 import json
 import logging
 
 import aio_pika
+import httpx
 from townops_shared.utils.rabbitmq import RabbitMQClient
 
 from . import clients
@@ -9,7 +11,11 @@ from . import clients
 logger = logging.getLogger(__name__)
 
 
-async def process_sla_breached(message: aio_pika.abc.AbstractIncomingMessage) -> None:
+async def process_sla_breached(
+  message: aio_pika.abc.AbstractIncomingMessage,
+  http_client: httpx.AsyncClient,
+  rmq_client: RabbitMQClient,
+) -> None:
   """
   Consumes the SLA_Breached event.
   Process:
@@ -34,31 +40,29 @@ async def process_sla_breached(message: aio_pika.abc.AbstractIncomingMessage) ->
     )
 
     # 1. Re-query Contractor (OutSystems) for backup worker
-    backup_worker_info = await clients.query_backup_worker(case_id)
+    backup_worker_info = await clients.query_backup_worker(http_client, case_id)
     new_worker_id = backup_worker_info.get("worker_id", "fallback_worker_01")
 
     # 2. Update Assignment to new worker
     await clients.update_assignment_worker(
-      assignment_id, {"assigned_to": new_worker_id, "status": "REASSIGNED"}
+      http_client, assignment_id, {"assigned_to": new_worker_id, "status": "REASSIGNED"}
     )
 
     # 3. Update Case state to ESCALATED
-    await clients.update_case_escalated(case_id)
+    await clients.update_case_escalated(http_client, case_id)
 
     # 4. Push penalty to Metrics atom
     await clients.record_penalty(
+      http_client,
       {
         "entity_id": contractor_id,
         "penalty_score": 10.0,
         "reason": "SLA_BREACH_NO_ACKNOWLEDGEMENT",
         "assignment_id": assignment_id,
-      }
+      },
     )
 
     # 5. Emit AMQP signal to Alert service
-    rmq_client = RabbitMQClient()
-    await rmq_client.connect()
-    await rmq_client.declare_exchange("alert.events", "topic")
     await rmq_client.publish(
       exchange_name="alert.events",
       routing_key="alert.escalated",
@@ -80,14 +84,20 @@ async def process_sla_breached(message: aio_pika.abc.AbstractIncomingMessage) ->
     raise  # NACK to requeue/DLX
 
 
-async def start_worker() -> None:
-  rmq_client = RabbitMQClient()
-  await rmq_client.connect()
+async def start_worker(
+  rmq_client: RabbitMQClient, http_client: httpx.AsyncClient
+) -> None:
+  # Declare exchange used for publishing alert
+  await rmq_client.declare_exchange("alert.events", "topic")
+
+  callback = functools.partial(
+    process_sla_breached, http_client=http_client, rmq_client=rmq_client
+  )
 
   # Needs to be bound to Assignment atom's DLX emitted events
   await rmq_client.consume(
     queue_name="handle_breach.sla_breached",
-    callback=process_sla_breached,
+    callback=callback,
     exchange_name="assignment.events.dlx",
     routing_key="assignment.sla_breached",
   )

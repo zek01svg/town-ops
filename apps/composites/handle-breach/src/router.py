@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from . import clients
 from .schemas import BreachRequest, BreachResponse
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.put("/assignments/open-case", response_model=BreachResponse)
-async def handle_breach(request: BreachRequest) -> BreachResponse:
+async def handle_breach(request: BreachRequest, fastapi_req: Request) -> BreachResponse:
   """
   Composite process:
   1. Update escalated status
@@ -18,19 +18,21 @@ async def handle_breach(request: BreachRequest) -> BreachResponse:
   3. Record penalty
   """
   try:
-    # 1. Update escalated status (HTTP PUT Assignment)
-    assignment_result = await clients.update_escalated_status(
-      request.assignment_id, {"status": "ESCALATED", "details": request.breach_details}
-    )
+    client = fastapi_req.app.state.http_client
 
-    # 2. Re-assign job (HTTP PUT Case)
-    case_result = await clients.reassign_job(
-      request.case_id, {"new_assignee_id": request.new_assignee_id}
+    # 1. Update Case state to ESCALATED (HTTP PUT Case)
+    case_result = await clients.update_case_escalated(client, request.case_id)
+
+    # 2. Update Assignment to new worker (HTTP PUT Assignment)
+    assignment_result = await clients.update_assignment_worker(
+      client,
+      request.assignment_id,
+      {"assigned_to": request.new_assignee_id, "status": "REASSIGNED"},
     )
 
     # 3. Record penalty (HTTP POST Metrics)
     metrics_result = await clients.record_penalty(
-      {"entity_id": request.assignment_id, "penalty_score": request.penalty}
+      client, {"entity_id": request.assignment_id, "penalty_score": request.penalty}
     )
 
     return BreachResponse(
