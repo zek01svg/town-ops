@@ -1,5 +1,5 @@
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 from fastapi import status
 from fastapi.testclient import TestClient
@@ -28,10 +28,16 @@ def test_full_close_case_pathway(
   assert data["proof_stored"] == 1
   assert data["case_id"] == 101
 
-  mock_case_service["get"].assert_called_once_with(101)
-  mock_proof_service.assert_called_once()
-  mock_case_service["update"].assert_called_once_with(101, "CLOSED")
-  mock_amqp.assert_called_once_with(101, 9001)
+  import json
+
+  mock_case_service["get"].assert_called_once_with(ANY, 101)
+  mock_proof_service.assert_called_once_with(ANY, 101, 9001, ANY)
+  mock_case_service["update"].assert_called_once_with(ANY, 101, "CLOSED")
+
+  expected_msg = json.dumps({"case_id": "101", "uploader_id": 9001}).encode()
+  mock_amqp.assert_called_once_with(
+    exchange_name="townops.events", routing_key="job.done", message_body=expected_msg
+  )
 
 
 def test_job_done_failure_is_non_fatal(

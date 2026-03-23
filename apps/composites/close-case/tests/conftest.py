@@ -11,8 +11,8 @@ from src.app import app
 def client() -> Generator[TestClient]:
   """A FastAPI TestClient for the Close Case microservice."""
   with (
-    patch("app.amqp_service.connect", new_callable=AsyncMock),
-    patch("app.amqp_service.disconnect", new_callable=AsyncMock),
+    patch("src.app.RabbitMQClient.connect", new_callable=AsyncMock),
+    patch("src.app.RabbitMQClient.disconnect", new_callable=AsyncMock),
     TestClient(app) as client_instance,
   ):
     yield client_instance
@@ -39,8 +39,8 @@ def valid_close_payload() -> dict[str, Any]:
 def mock_case_service() -> Generator[dict[str, AsyncMock]]:
   """Fixture to mock the internal Case Service client."""
   with (
-    patch("app.get_case", new_callable=AsyncMock) as mock_get,
-    patch("app.update_case_status", new_callable=AsyncMock) as mock_put,
+    patch("src.app.get_case", new_callable=AsyncMock) as mock_get,
+    patch("src.app.update_case_status", new_callable=AsyncMock) as mock_put,
   ):
     yield {"get": mock_get, "update": mock_put}
 
@@ -48,12 +48,12 @@ def mock_case_service() -> Generator[dict[str, AsyncMock]]:
 @pytest.fixture
 def mock_proof_service() -> Generator[AsyncMock]:
   """Fixture to mock the internal Proof Service client."""
-  with patch("app.store_proof", new_callable=AsyncMock) as mock_store:
+  with patch("src.app.store_proof", new_callable=AsyncMock) as mock_store:
     yield mock_store
 
 
 @pytest.fixture
 def mock_amqp() -> Generator[AsyncMock]:
   """Fixture to mock RabbitMQ event publishing."""
-  with patch("app.amqp_service.publish_job_done", new_callable=AsyncMock) as mock_pub:
+  with patch("src.app.RabbitMQClient.publish", new_callable=AsyncMock) as mock_pub:
     yield mock_pub
