@@ -1,16 +1,3 @@
-"""
-FastAPI application entry point for the accept-job composite service.
-
-Lifecycle:
-  - Creates a single shared httpx.AsyncClient on startup.
-  - Closes it cleanly on shutdown.
-
-Middleware:
-  - CORSMiddleware allows all origins (required for React frontend).
-
-Observability:
-  - Uses townops_shared structlog/OTEL setup where available.
-"""
 from __future__ import annotations
 
 import logging
@@ -23,23 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .router import router
+from townops_shared.utils.observability import setup_logging, setup_tracing
+
+setup_logging()
+setup_tracing("accept-job")
+
 
 logger = logging.getLogger(__name__)
-
-
-# ─── Attempt to use shared observability ─────────────────────────────────────
-try:
-    from townops_shared.utils.observability import setup_logging, setup_tracing
-
-    setup_logging()
-    setup_tracing("accept-job")
-except ImportError:
-    logging.basicConfig(level=logging.INFO)
-    logger.warning("townops_shared observability not available; using stdlib logger")
-
-
-# ─── Lifespan ─────────────────────────────────────────────────────────────────
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -50,11 +27,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         settings.CASE_SERVICE_URL,
         settings.APPOINTMENT_SERVICE_URL,
     )
-    # Create one shared AsyncClient for the lifetime of the application
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        app.state.http_client = client
-        yield
+    app.state.http_client = httpx.AsyncClient()
+    yield
+    await app.state.http_client.aclose()
     logger.info("accept-job: shutdown complete")
+
+
+
 
 
 # ─── Application ──────────────────────────────────────────────────────────────

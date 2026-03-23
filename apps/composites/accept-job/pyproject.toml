@@ -10,14 +10,16 @@ dependencies = [
     "uvicorn",
     "aio-pika",
     "pyjwt",
-    "httpx>=0.27.0",
-    "pydantic-settings>=2.0.0",
-    "python-dotenv>=1.0.0",
-    "respx>=0.21.0",
-    "anyio>=4.0.0",
+    "httpx",
+    "pydantic-settings",
+    "python-dotenv",
+    "respx",
+    "anyio",
     "pytest",
-    "pytest-asyncio"
+    "pytest-cov",
+    "scalar-fastapi"
 ]
+
 
 [tool.uv]
 managed = true
@@ -31,6 +33,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
-
-[tool.pyright]
-extraPaths = ["/Users/fazilakram/ESD/Documents/town-ops/.venv/lib/python3.14/site-packages"]

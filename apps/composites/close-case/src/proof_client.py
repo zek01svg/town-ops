@@ -1,5 +1,3 @@
-"""HTTP client for the Proof atomic service."""
-
 from __future__ import annotations
 
 import httpx

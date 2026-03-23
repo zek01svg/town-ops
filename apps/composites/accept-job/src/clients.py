@@ -1,18 +1,13 @@
-"""
-Async HTTP client helpers for interacting with the atomic microservices.
-Each function accepts an httpx.AsyncClient (injected by the router) and
-the caller's raw Authorization header value for forwarding.
-"""
-from __future__ import annotations
-
-import logging
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-import httpx
 
-logger = logging.getLogger(__name__)
+import httpx
+import structlog
+
+logger = structlog.get_logger(__name__)
+
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 

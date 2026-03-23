@@ -1,5 +1,3 @@
-"""HTTP client for the Case atomic service."""
-
 from __future__ import annotations
 
 import httpx

@@ -1,9 +1,3 @@
-"""
-Unit tests for the accept-job composite service.
-
-These tests mock all outgoing httpx calls using respx so no real
-atomic services are required.
-"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -112,6 +106,13 @@ def test_case_update_failure_triggers_assignment_rollback(client: TestClient) ->
     assert resp.status_code == 503
     assert "case" in resp.json()["detail"].lower()
 
+    # Verify compensating transaction
+    assert rollback_route.called
+    import json
+    rollback_payload = json.loads(rollback_route.calls.last.request.content)
+    assert rollback_payload["status"] == "pending"
+
+
 
 # ─── Step 3 failure (Appointment) ────────────────────────────────────────────
 
@@ -131,17 +132,29 @@ def test_appointment_creation_failure_triggers_full_rollback(
         return_value=Response(500, json={"error": "appointment error"})
     )
     # Rollback: revert case to dispatched
-    respx.put("http://localhost:5001/api/cases/update-case-status/").mock(
+    revert_case_route = respx.put("http://localhost:5001/api/cases/update-case-status/").mock(
         return_value=Response(200, json={"cases": {"status": "dispatched"}})
     )
     # Rollback: revert assignment to pending
-    respx.put(
+    revert_assignment_route = respx.put(
         f"http://localhost:5003/api/assignments/{ASSIGNMENT_ID}/status"
     ).mock(return_value=Response(200, json={"assignment": {"status": "pending"}}))
 
     resp = client.post("/jobs/accept-job", json=VALID_PAYLOAD)
     assert resp.status_code == 503
     assert "appointment" in resp.json()["detail"].lower()
+
+    # Verify compensating transactions
+    assert revert_case_route.called
+    assert revert_assignment_route.called
+
+    import json
+    case_payload = json.loads(revert_case_route.calls.last.request.content)
+    assert case_payload["status"] == "dispatched"
+
+    assignment_payload = json.loads(revert_assignment_route.calls.last.request.content)
+    assert assignment_payload["status"] == "pending"
+
 
 
 # ─── Validation ───────────────────────────────────────────────────────────────

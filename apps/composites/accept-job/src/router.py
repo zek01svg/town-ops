@@ -1,30 +1,21 @@
-"""
-Orchestration router for the accept-job composite service.
-
-POST /jobs/accept-job
-  1. PUT Assignment → status: accepted
-  2. PUT Case       → status: in_progress
-  3. POST Appointment → create schedule block
-
-If any step fails, compensating calls are issued to maintain consistency.
-"""
-from __future__ import annotations
-
-import logging
 from typing import Annotated
 
-import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+import httpx
+import structlog
+
 
 from .clients import (
     create_appointment,
+
     update_assignment_status,
     update_case_status,
 )
 from .config import Settings, get_settings
 from .schemas import AcceptJobRequest, AcceptJobResponse
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
+
 
 router = APIRouter()
 
@@ -32,10 +23,6 @@ router = APIRouter()
 def get_http_client(request: Request) -> httpx.AsyncClient:
     """Retrieve the shared AsyncClient stored on app state."""
     return request.app.state.http_client
-
-
-# ─── Compensation helpers ─────────────────────────────────────────────────────
-
 
 async def _revert_assignment(
     client: httpx.AsyncClient,
@@ -52,14 +39,14 @@ async def _revert_assignment(
             authorization,
         )
         logger.warning(
-            "Compensation: reverted assignment %s to 'pending'",
-            req.assignment_id,
+            "Compensation: reverted assignment to 'pending'",
+            assignment_id=req.assignment_id,
         )
     except Exception as exc:  # noqa: BLE001
         logger.critical(
-            "Compensation FAILED for assignment %s: %s",
-            req.assignment_id,
-            exc,
+            "Compensation FAILED for assignment",
+            assignment_id=req.assignment_id,
+            error=str(exc),
         )
 
 
@@ -78,14 +65,14 @@ async def _revert_case(
             authorization,
         )
         logger.warning(
-            "Compensation: reverted case %s to 'dispatched'",
-            req.case_id,
+            "Compensation: reverted case to 'dispatched'",
+            case_id=req.case_id,
         )
     except Exception as exc:  # noqa: BLE001
         logger.critical(
-            "Compensation FAILED for case %s: %s",
-            req.case_id,
-            exc,
+            "Compensation FAILED for case",
+            case_id=req.case_id,
+            error=str(exc),
         )
 
 
@@ -111,10 +98,10 @@ async def accept_job(
     authorization: Annotated[str | None, Header()] = None,
 ) -> AcceptJobResponse:
     logger.info(
-        "accept_job: case=%s assignment=%s contractor=%s",
-        payload.case_id,
-        payload.assignment_id,
-        payload.contractor_id,
+        "accept_job: processing",
+        case_id=payload.case_id,
+        assignment_id=payload.assignment_id,
+        contractor_id=payload.contractor_id,
     )
 
     # ── Step 1: Update Assignment status → accepted ───────────────────────────
@@ -126,12 +113,12 @@ async def accept_job(
             "accepted",
             authorization,
         )
-    except Exception as exc:
-        logger.error("Step 1 failed (Assignment update): %s", exc)
+    except Exception:
+        logger.exception("Step 1 failed (Assignment update)")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to update assignment: {exc}",
-        ) from exc
+            detail="Failed to update assignment",
+        ) from None
 
     # ── Step 2: Update Case status → in_progress ──────────────────────────────
     try:
@@ -143,8 +130,9 @@ async def accept_job(
             authorization,
         )
     except Exception as exc:
-        logger.error("Step 2 failed (Case update): %s — initiating rollback", exc)
+        logger.exception("Step 2 failed (Case update) — initiating rollback")
         await _revert_assignment(client, settings, payload, authorization)
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Failed to update case status: {exc}",
@@ -161,19 +149,19 @@ async def accept_job(
             payload.end_time,
             authorization,
         )
-    except Exception as exc:
-        logger.critical(
-            "Step 3 failed (Appointment creation): %s — initiating full rollback", exc
+    except Exception:
+        logger.exception(
+            "Step 3 failed (Appointment creation) — initiating full rollback"
         )
         await _revert_case(client, settings, payload, authorization)
         await _revert_assignment(client, settings, payload, authorization)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to create appointment: {exc}",
-        ) from exc
+            detail="Failed to create appointment",
+        ) from None
 
     logger.info(
-        "accept_job: success — case=%s appointment created", payload.case_id
+        "accept_job: success — appointment created", case_id=payload.case_id
     )
     return AcceptJobResponse(
         message="Job accepted successfully",

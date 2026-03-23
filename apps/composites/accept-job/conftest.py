@@ -1,8 +1,3 @@
-"""
-Root conftest for accept-job.
-Adds the service directory to sys.path so that `from src.xxx import ...`
-works when pytest is invoked from the workspace root.
-"""
 from __future__ import annotations
 
 import sys

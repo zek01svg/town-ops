@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app import app
+from src.app import app
 
 
 @pytest.fixture

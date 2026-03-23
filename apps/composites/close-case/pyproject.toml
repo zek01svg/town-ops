@@ -10,6 +10,13 @@ dependencies = [
     "uvicorn",
     "aio-pika",
     "pyjwt",
+    "httpx",
+    "pydantic-settings",
+    "python-dotenv",
+    "respx",
+    "anyio",
+    "pytest",
+    "scalar-fastapi"
 ]
 
 [tool.uv]

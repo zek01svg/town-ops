@@ -1,7 +1,7 @@
 FROM python:3.14-slim
 
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+RUN pip install uv
 
 WORKDIR /app
 
@@ -10,11 +10,11 @@ COPY pyproject.toml ./
 COPY ../../packages/shared-python ./packages/shared-python
 
 # Install dependencies (no dev extras)
-RUN uv pip install --system -r pyproject.toml
+RUN uv sync --no-dev
 
 # Copy source
 COPY src/ ./src/
 
 EXPOSE 6003
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "6003"]
+CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "6003"]

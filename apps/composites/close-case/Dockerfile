@@ -1,8 +1,7 @@
 FROM python:3.14-slim
 
 # Install uv for fast dependency resolution inside the container
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
-
+RUN pip install uv
 WORKDIR /app
 
 # Copy workspace-level tooling so uv can resolve the shared package
@@ -23,5 +22,4 @@ ENV PYTHONPATH=/app/apps/composites/close-case
 
 EXPOSE 6004
 
-CMD ["uv", "run", "--package", "townops-close-case", \
-     "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "6004"]
+CMD ["uv", "run", "--package", "townops-close-case", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "6004"]

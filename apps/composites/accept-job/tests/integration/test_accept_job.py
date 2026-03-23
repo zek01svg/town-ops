@@ -1,9 +1,3 @@
-"""
-Integration tests for the accept-job composite service.
-
-Tests the full FastAPI application (including middleware) using
-an async HTTPX test client with respx to mock atom service calls.
-"""
 from __future__ import annotations
 
 from uuid import uuid4
