@@ -1,14 +1,15 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from utils.database import init_db
-from utils.observability import setup_logging, setup_tracing
+from townops_shared.utils.observability import setup_logging, setup_tracing
 
+from .database import init_db
 from .routes import router
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
   setup_logging()
   setup_tracing("assignment-service")
   init_db()

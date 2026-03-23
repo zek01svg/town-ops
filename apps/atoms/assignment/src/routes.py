@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from scalar_fastapi import get_scalar_api_reference
 from sqlmodel import Session, select
-from utils.database import get_session
 
+from .database import get_session
 from .models import Assignment, AssignmentStatus, AssignmentStatusHistory
 from .schemas import AssignmentCreate, AssignmentResponse, AssignmentStatusUpdate
 
@@ -12,12 +12,12 @@ router = APIRouter()
 
 
 @router.get("/health", include_in_schema=False)
-def get_health():
+def get_health() -> dict[str, str]:
   return {"status": "ok"}
 
 
 @router.get("/scalar", include_in_schema=False)
-def scalar_docs():
+def scalar_docs() -> dict[str, str]:
   return get_scalar_api_reference(
     openapi_url="/openapi.json",
     title="Assignment Service",
@@ -28,7 +28,7 @@ def scalar_docs():
 async def create_assignment(
   body: AssignmentCreate,
   session: Session = Depends(get_session),  # noqa: B008
-):
+) -> AssignmentResponse:
   now = datetime.now(UTC)
   assignment = Assignment(
     case_id=body.case_id,
@@ -47,9 +47,9 @@ async def create_assignment(
 
 @router.get("/assignments/get-by-id/{id}", response_model=AssignmentResponse)
 def get_assignment(
-  id: str,
+  id: str,  # noqa: A002
   session: Session = Depends(get_session),  # noqa: B008
-):
+) -> AssignmentResponse:
   assignment = session.get(Assignment, id)
   if not assignment:
     raise HTTPException(status_code=404, detail="Assignment not found")
@@ -60,7 +60,7 @@ def get_assignment(
 def get_assignment_by_case(
   case_id: str,
   session: Session = Depends(get_session),  # noqa: B008
-):
+) -> AssignmentResponse:
   statement = select(Assignment).where(Assignment.case_id == case_id)
   assignment = session.exec(statement).first()
   if not assignment:
@@ -75,18 +75,17 @@ def get_assignment_by_case(
 def get_assignments_by_contractor(
   contractor_id: str,
   session: Session = Depends(get_session),  # noqa: B008
-):
+) -> list[AssignmentResponse]:
   statement = select(Assignment).where(Assignment.contractor_id == contractor_id)
-  assignments = session.exec(statement).all()
-  return assignments
+  return session.exec(statement).all()
 
 
 @router.put("/assignments/update-status/{id}", response_model=AssignmentResponse)
 def update_assignment_status(
-  id: str,
+  id: str,  # noqa: A002
   body: AssignmentStatusUpdate,
   session: Session = Depends(get_session),  # noqa: B008
-):
+) -> AssignmentResponse:
   assignment = session.get(Assignment, id)
   if not assignment:
     raise HTTPException(status_code=404, detail="Assignment not found")
