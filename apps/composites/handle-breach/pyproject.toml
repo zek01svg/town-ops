@@ -5,11 +5,13 @@ description = "handle-breach Service"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "fastapi",
-    "townops-shared",
-    "uvicorn",
-    "aio-pika",
-    "pyjwt",
+  "fastapi",
+  "townops-shared",
+  "uvicorn",
+  "aio-pika",
+  "pyjwt",
+  "httpx",
+  "pydantic-settings",
 ]
 
 [tool.uv]
