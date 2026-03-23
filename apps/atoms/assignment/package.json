@@ -1,40 +1,10 @@
 {
   "name": "@townops/assignment-atom",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
+  "version": "0.1.0",
+  "description": "Atom service for assigning jobs in TownOps",
+  "main": "src/main.py",
   "scripts": {
-    "dev": "bun run --hot src/index.ts",
-    "build": "bun build --production --minify --target=bun --outdir=build src/index.ts",
-    "build:docker": "bun run build && docker build -t assignment-atom .",
-    "clean": "rimraf node_modules",
-    "test": "bun run load-env -- vitest run tests",
-    "load-env": "dotenv -e .env",
-    "db:pull": "bun run load-env -- bun drizzle-kit pull",
-    "db:push": "bun run load-env -- bun drizzle-kit push",
-    "db:generate": "bun run load-env -- bun drizzle-kit generate",
-    "db:view": "bun run load-env -- bun drizzle-kit studio"
-  },
-  "dependencies": {
-    "@t3-oss/env-core": "catalog:",
-    "@townops/shared-ts": "workspace:*",
-    "@townops/shared-types": "workspace:*",
-    "drizzle-orm": "catalog:",
-    "drizzle-zod": "catalog:",
-    "hono": "catalog:",
-    "pg": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@hono/standard-validator": "catalog:",
-    "@scalar/hono-api-reference": "catalog:",
-    "@testcontainers/postgresql": "catalog:",
-    "@types/pg": "catalog:",
-    "dotenv-cli": "catalog:",
-    "drizzle-kit": "catalog:",
-    "hono-openapi": "catalog:",
-    "rimraf": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
+    "dev": "uv run uvicorn src.main:app --reload --port 5003 --host 127.0.0.1",
+    "start": "uv run uvicorn src.main:app --port 5003 --host 127.0.0.1"
   }
 }

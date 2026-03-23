@@ -22,7 +22,6 @@ members = [
   "apps/composites/accept-job",
   "apps/composites/assign-job",
   "apps/composites/close-case",
-  "apps/composites/open-case",
   "apps/composites/handle-breach",
   "apps/composites/reschedule-job",
   "packages/shared-python",

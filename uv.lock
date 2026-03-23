@@ -9,7 +9,6 @@ members = [
     "townops-assign-job",
     "townops-close-case",
     "townops-handle-breach",
-    "townops-open-case",
     "townops-reschedule-job",
     "townops-shared",
 ]
@@ -135,6 +134,7 @@ wheels = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "coverage"
 version = "7.13.5"
 source = { registry = "https://pypi.org/simple" }
@@ -171,6 +171,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/db/51/37221f59a111dca5e85be7dbf09696323b5b9f13ff65e0641d535ed06ea8/coverage-7.13.5-cp314-cp314t-win_amd64.whl", hash = "sha256:301e3b7dfefecaca37c9f1aa6f0049b7d4ab8dd933742b607765d757aca77d43", size = 224254, upload-time = "2026-03-17T10:33:11.174Z" },
     { url = "https://files.pythonhosted.org/packages/54/83/6acacc889de8987441aa7d5adfbdbf33d288dad28704a67e574f1df9bcbb/coverage-7.13.5-cp314-cp314t-win_arm64.whl", hash = "sha256:9dacc2ad679b292709e0f5fc1ac74a6d4d5562e424058962c7bb0c658ad25e45", size = 222276, upload-time = "2026-03-17T10:33:13.466Z" },
     { url = "https://files.pythonhosted.org/packages/9e/ee/a4cf96b8ce1e566ed238f0659ac2d3f007ed1d14b181bcb684e19561a69a/coverage-7.13.5-py3-none-any.whl", hash = "sha256:34b02417cf070e173989b3db962f7ed56d2f644307b2cf9d5a0f258e13084a61", size = 211346, upload-time = "2026-03-17T10:33:15.691Z" },
+=======
+name = "docker"
+version = "7.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "requests" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/9b/4a2ea29aeba62471211598dac5d96825bb49348fa07e906ea930394a83ce/docker-7.1.0.tar.gz", hash = "sha256:ad8c70e6e3f8926cb8a92619b832b4ea5299e2831c14284663184e200546fa6c", size = 117834, upload-time = "2024-05-23T11:13:57.216Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/26/57c6fb270950d476074c087527a558ccb6f4436657314bfb6cdf484114c4/docker-7.1.0-py3-none-any.whl", hash = "sha256:c96b93b7f0a746f9e77d325bcfb87422a3d8bd4f03136ae8a85b37f1898d5fc0", size = 147774, upload-time = "2024-05-23T11:13:55.01Z" },
+>>>>>>> feat/assignment-service
 ]
 
 [[package]]
@@ -743,6 +756,7 @@ wheels = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "pytest-cov"
 version = "7.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -757,6 +771,8 @@ wheels = [
 ]
 
 [[package]]
+=======
+>>>>>>> feat/assignment-service
 name = "python-dotenv"
 version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -766,6 +782,19 @@ wheels = [
 ]
 
 [[package]]
+<<<<<<< HEAD
+=======
+name = "pywin32"
+version = "311"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c9/31/097f2e132c4f16d99a22bfb777e0fd88bd8e1c634304e102f313af69ace5/pywin32-311-cp314-cp314-win32.whl", hash = "sha256:b7a2c10b93f8986666d0c803ee19b5990885872a7de910fc460f9b0c2fbf92ee", size = 8840714, upload-time = "2025-07-14T20:13:32.449Z" },
+    { url = "https://files.pythonhosted.org/packages/90/4b/07c77d8ba0e01349358082713400435347df8426208171ce297da32c313d/pywin32-311-cp314-cp314-win_amd64.whl", hash = "sha256:3aca44c046bd2ed8c90de9cb8427f581c479e594e99b5c0bb19b29c10fd6cb87", size = 9656800, upload-time = "2025-07-14T20:13:34.312Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/d2/21af5c535501a7233e734b8af901574572da66fcc254cb35d0609c9080dd/pywin32-311-cp314-cp314-win_arm64.whl", hash = "sha256:a508e2d9025764a8270f93111a970e1d0fbfc33f4153b388bb649b7eec4f9b42", size = 8932540, upload-time = "2025-07-14T20:13:36.379Z" },
+]
+
+[[package]]
+>>>>>>> feat/assignment-service
 name = "requests"
 version = "2.32.5"
 source = { registry = "https://pypi.org/simple" }
@@ -875,6 +904,22 @@ wheels = [
 ]
 
 [[package]]
+name = "testcontainers"
+version = "4.14.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "docker" },
+    { name = "python-dotenv" },
+    { name = "typing-extensions" },
+    { name = "urllib3" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ca/ac/a597c3a0e02b26cbed6dd07df68be1e57684766fd1c381dee9b170a99690/testcontainers-4.14.2.tar.gz", hash = "sha256:1340ccf16fe3acd9389a6c9e1d9ab21d9fe99a8afdf8165f89c3e69c1967d239", size = 166841, upload-time = "2026-03-18T05:19:16.696Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/2d/26b8b30067d94339afee62c3edc9b803a6eb9332f521ba77d8aaab5de873/testcontainers-4.14.2-py3-none-any.whl", hash = "sha256:0d0522c3cd8f8d9627cda41f7a6b51b639fa57bdc492923c045117933c668d68", size = 125712, upload-time = "2026-03-18T05:19:15.29Z" },
+]
+
+[[package]]
 name = "townops"
 version = "0.1.0"
 source = { virtual = "." }
@@ -917,6 +962,7 @@ dependencies = [
     { name = "aio-pika" },
     { name = "fastapi" },
     { name = "pyjwt" },
+    { name = "scalar-fastapi" },
     { name = "townops-shared" },
     { name = "uvicorn" },
 ]
@@ -926,6 +972,7 @@ requires-dist = [
     { name = "aio-pika" },
     { name = "fastapi" },
     { name = "pyjwt" },
+    { name = "scalar-fastapi" },
     { name = "townops-shared", editable = "packages/shared-python" },
     { name = "uvicorn" },
 ]
@@ -937,7 +984,9 @@ source = { editable = "apps/composites/assign-job" }
 dependencies = [
     { name = "aio-pika" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pyjwt" },
+    { name = "scalar-fastapi" },
     { name = "townops-shared" },
     { name = "uvicorn" },
 ]
@@ -946,7 +995,42 @@ dependencies = [
 requires-dist = [
     { name = "aio-pika" },
     { name = "fastapi" },
+<<<<<<< Updated upstream
+    { name = "httpx" },
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
     { name = "pyjwt" },
+    { name = "scalar-fastapi" },
+=======
+    { name = "townops-shared", editable = "packages/shared-python" },
+    { name = "uvicorn" },
+]
+
+[[package]]
+name = "townops-assignment"
+version = "0.1.0"
+source = { editable = "apps/atoms/assignment" }
+dependencies = [
+    { name = "aio-pika" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pytest" },
+    { name = "scalar-fastapi" },
+    { name = "testcontainers" },
+    { name = "townops-shared" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aio-pika" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pytest" },
+    { name = "scalar-fastapi" },
+    { name = "testcontainers", extras = ["postgres"] },
+>>>>>>> feat/assignment-service
     { name = "townops-shared", editable = "packages/shared-python" },
     { name = "uvicorn" },
 ]
@@ -959,6 +1043,7 @@ dependencies = [
     { name = "aio-pika" },
     { name = "fastapi" },
     { name = "pyjwt" },
+    { name = "scalar-fastapi" },
     { name = "townops-shared" },
     { name = "uvicorn" },
 ]
@@ -968,6 +1053,7 @@ requires-dist = [
     { name = "aio-pika" },
     { name = "fastapi" },
     { name = "pyjwt" },
+    { name = "scalar-fastapi" },
     { name = "townops-shared", editable = "packages/shared-python" },
     { name = "uvicorn" },
 ]
@@ -976,27 +1062,6 @@ requires-dist = [
 name = "townops-handle-breach"
 version = "0.1.0"
 source = { editable = "apps/composites/handle-breach" }
-dependencies = [
-    { name = "aio-pika" },
-    { name = "fastapi" },
-    { name = "pyjwt" },
-    { name = "townops-shared" },
-    { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aio-pika" },
-    { name = "fastapi" },
-    { name = "pyjwt" },
-    { name = "townops-shared", editable = "packages/shared-python" },
-    { name = "uvicorn" },
-]
-
-[[package]]
-name = "townops-open-case"
-version = "0.1.0"
-source = { editable = "apps/composites/open-case" }
 dependencies = [
     { name = "aio-pika" },
     { name = "fastapi" },
