@@ -26,38 +26,49 @@ def select_best(contractor_data: list[dict]) -> dict:
   return sorted(contractor_data, key=lambda c: (c["total_jobs"], -c["total_score"]))[0]
 
 
+async def _search_contractors(
+  client: httpx.AsyncClient, sector_code: str, category_code: str
+) -> list[dict]:
+  url = f"{os.getenv('CONTRACTOR_API_URL')}/contractors/search"
+  resp = await client.get(
+    url, params={"SectorCode": sector_code, "CategoryCode": category_code}
+  )
+  resp.raise_for_status()
+  return resp.json()
+
+
+async def _fetch_metrics_for_contractors(
+  client: httpx.AsyncClient, contractors: list[dict]
+) -> list[dict]:
+  return await asyncio.gather(
+    *(get_metrics(client, c["ContractorUuid"]) for c in contractors)
+  )
+
+
+async def _create_assignment(
+  client: httpx.AsyncClient, case_id: str, contractor_id: str
+) -> dict:
+  url = f"{os.getenv('ASSIGNMENT_URL')}/assignments"
+  resp = await client.post(
+    url,
+    json={"case_id": case_id, "contractor_id": contractor_id, "source": "AUTO_ASSIGN"},
+  )
+  resp.raise_for_status()
+  return resp.json()
+
+
 async def assign_contractor(case_id: str, postal_code: str, category_code: str) -> dict:
   sector_code = postal_code[:2]
 
   async with httpx.AsyncClient() as client:
-    search_url = f"{os.getenv('CONTRACTOR_API_URL')}/contractors/search"
-    search_resp = await client.get(
-      search_url,
-      params={"SectorCode": sector_code, "CategoryCode": category_code},
-    )
-    search_resp.raise_for_status()
-
-    contractors = search_resp.json()
+    contractors = await _search_contractors(client, sector_code, category_code)
     if not contractors:
-      raise ValueError("No eligible contractors found")
+      raise ValueError("No eligible contractors found")  # noqa: TRY003
 
-    contractor_data = await asyncio.gather(
-      *(get_metrics(client, c["ContractorUuid"]) for c in contractors)
-    )
-
+    contractor_data = await _fetch_metrics_for_contractors(client, contractors)
     best = select_best(contractor_data)
 
-    assign_url = f"{os.getenv('ASSIGNMENT_URL')}/assignments"
-    final_resp = await client.post(
-      assign_url,
-      json={
-        "case_id": case_id,
-        "contractor_id": best["contractor_id"],
-        "source": "AUTO_ASSIGN",
-      },
-    )
-    final_resp.raise_for_status()
-    assignment = final_resp.json()
+    assignment = await _create_assignment(client, case_id, best["contractor_id"])
 
     try:
       await publish_job_assigned(
