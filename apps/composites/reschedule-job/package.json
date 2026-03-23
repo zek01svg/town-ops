@@ -4,7 +4,7 @@
   "description": "Composite service for rescheduling appointments in TownOps",
   "main": "src/main.py",
   "scripts": {
-    "start": "uvicorn src.main:app --host [IP_ADDRESS] --port 6006",
-    "dev": "uvicorn src.main:app --host [IP_ADDRESS] --port 6006 --reload"
+    "start": "uv run uvicorn src.main:app --host 127.0.0.1 --port 6006",
+    "dev": "uv run uvicorn src.main:app --host 127.0.0.1 --port 6006 --reload"
   }
 }
