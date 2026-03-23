@@ -1,60 +1,41 @@
-"""Close Case composite microservice.
-
-Orchestration flow
-------------------
-1. Validate incoming request (Pydantic).
-2. Optionally verify the case exists via Case service.
-3. Store proof items via Proof service.
-4. Update case status to CLOSED via Case service.
-5. Publish Job_Done event to RabbitMQ.
-6. Return structured JSON response.
-"""
-
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-
-# Standard library
 from contextlib import asynccontextmanager
 from typing import Any
 
-# Third-party
 import httpx
-import services.amqp as amqp_service
 import structlog
-
-# Local / project
-from config import settings
-from fastapi import FastAPI, HTTPException, status
-from schemas import CloseCaseRequest, CloseCaseResponse
-from services.case_client import get_case, update_case_status
-from services.proof_client import store_proof
+from fastapi import FastAPI, HTTPException, Request, status
+from townops_shared.utils.http import HttpClient
 from townops_shared.utils.observability import setup_logging, setup_tracing
+from townops_shared.utils.rabbitmq import RabbitMQClient
+
+from .case_client import get_case, update_case_status
+from .config import settings
+from .proof_client import store_proof
+from .schemas import CloseCaseRequest, CloseCaseResponse
 
 setup_logging()
 setup_tracing("close-case")
 log = structlog.get_logger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Lifespan
-# ---------------------------------------------------------------------------
-
-
+# lifespan
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
-  """Connect to RabbitMQ on startup; disconnect on shutdown."""
-  await amqp_service.connect()
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+  """Connect to RabbitMQ and initialize clients on startup."""
+  app.state.http_client = HttpClient()
+  app.state.rabbitmq = RabbitMQClient()
+  await app.state.rabbitmq.connect()
   log.info("Close Case service started", port=settings.port)
   yield
-  await amqp_service.disconnect()
+  await app.state.rabbitmq.disconnect()
+  await app.state.http_client.close()
   log.info("Close Case service stopped")
 
 
-# ---------------------------------------------------------------------------
-# App
-# ---------------------------------------------------------------------------
-
+# app
 app = FastAPI(
   title="Close Case Service",
   description=(
@@ -66,11 +47,7 @@ app = FastAPI(
 )
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
-
-
+# routes
 @app.get("/health", tags=["ops"])
 async def health() -> dict[str, str]:
   """Liveness probe — returns service status."""
@@ -83,7 +60,7 @@ async def health() -> dict[str, str]:
   status_code=status.HTTP_200_OK,
   tags=["close-case"],
 )
-async def close_case(payload: CloseCaseRequest) -> Any:  # noqa: ANN401
+async def close_case(payload: CloseCaseRequest, request: Request) -> Any:  # noqa: ANN401
   """
   Close an open case by storing proof and updating its status.
 
@@ -100,11 +77,9 @@ async def close_case(payload: CloseCaseRequest) -> Any:  # noqa: ANN401
     proof_count=len(payload.proof_items),
   )
 
-  # ------------------------------------------------------------------
   # Step 1 - verify case exists
-  # ------------------------------------------------------------------
   try:
-    await get_case(payload.case_id)
+    await get_case(request.app.state.http_client, payload.case_id)
   except httpx.HTTPStatusError as exc:
     if exc.response.status_code == status.HTTP_404_NOT_FOUND:
       raise HTTPException(
@@ -121,11 +96,14 @@ async def close_case(payload: CloseCaseRequest) -> Any:  # noqa: ANN401
       detail="Case service is unreachable.",
     ) from exc
 
-  # ------------------------------------------------------------------
   # Step 2 - store proof items
-  # ------------------------------------------------------------------
   try:
-    await store_proof(payload.case_id, payload.uploader_id, payload.proof_items)
+    await store_proof(
+      request.app.state.http_client,
+      payload.case_id,
+      payload.uploader_id,
+      payload.proof_items,
+    )
   except httpx.HTTPStatusError as exc:
     raise HTTPException(
       status_code=status.HTTP_502_BAD_GATEWAY,
@@ -137,11 +115,11 @@ async def close_case(payload: CloseCaseRequest) -> Any:  # noqa: ANN401
       detail="Proof service is unreachable.",
     ) from exc
 
-  # ------------------------------------------------------------------
   # Step 3 - update case status to CLOSED
-  # ------------------------------------------------------------------
   try:
-    await update_case_status(payload.case_id, payload.final_status)
+    await update_case_status(
+      request.app.state.http_client, payload.case_id, payload.final_status
+    )
   except httpx.HTTPStatusError as exc:
     raise HTTPException(
       status_code=status.HTTP_502_BAD_GATEWAY,
@@ -153,11 +131,18 @@ async def close_case(payload: CloseCaseRequest) -> Any:  # noqa: ANN401
       detail="Case service is unreachable during status update.",
     ) from exc
 
-  # ------------------------------------------------------------------
   # Step 4 - publish Job_Done event
-  # ------------------------------------------------------------------
   try:
-    await amqp_service.publish_job_done(payload.case_id, payload.uploader_id)
+    import json
+
+    message = json.dumps(
+      {"case_id": str(payload.case_id), "uploader_id": payload.uploader_id}
+    ).encode()
+    await request.app.state.rabbitmq.publish(
+      exchange_name=settings.job_done_exchange,
+      routing_key=settings.job_done_routing_key,
+      message_body=message,
+    )
   except Exception:
     # Event publishing failure is non-fatal for the caller — log and continue.
     log.exception(

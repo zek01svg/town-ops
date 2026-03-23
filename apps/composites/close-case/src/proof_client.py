@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import httpx
 import structlog
-from config import settings
-from schemas import ProofItem
+from townops_shared.utils.http import HttpClient
+
+from .config import settings
+from .schemas import ProofItem
 
 log = structlog.get_logger(__name__)
 
 
 async def store_proof(
+  client: HttpClient,
   case_id: int,
   uploader_id: int,
   proof_items: list[ProofItem],
@@ -33,13 +35,12 @@ async def store_proof(
     ],
   }
 
-  async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
-    resp = await client.post(url, json=payload)
-    resp.raise_for_status()
-    log.info(
-      "Proof stored",
-      case_id=case_id,
-      uploader_id=uploader_id,
-      count=len(proof_items),
-    )
-    return resp.json()
+  resp = await client.post(url, json=payload)
+  resp.raise_for_status()
+  log.info(
+    "Proof stored",
+    case_id=case_id,
+    uploader_id=uploader_id,
+    count=len(proof_items),
+  )
+  return resp.json()
