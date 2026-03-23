@@ -3,29 +3,29 @@ name = "townops"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
-    "aio-pika>=9.6.1",
-    "fastapi>=0.110.0",
-    "opentelemetry-distro>=0.61b0",
-    "opentelemetry-exporter-otlp>=1.40.0",
-    "opentelemetry-instrumentation-fastapi>=0.61b0",
-    "pyjwt>=2.12.1",
-    "pytest>=9.0.2",
-    "pytest-cov>=7.1.0",
-    "ruff>=0.15.5",
-    "scalar-fastapi>=1.8.1",
-    "structlog>=25.5.0",
-    "uvicorn>=0.41.0",
+  "aio-pika>=9.6.1",
+  "fastapi>=0.110.0",
+  "opentelemetry-distro>=0.61b0",
+  "opentelemetry-exporter-otlp>=1.40.0",
+  "opentelemetry-instrumentation-fastapi>=0.61b0",
+  "pyjwt>=2.12.1",
+  "pytest>=9.0.2",
+  "pytest-cov>=7.1.0",
+  "ruff>=0.15.5",
+  "scalar-fastapi>=1.8.1",
+  "structlog>=25.5.0",
+  "uvicorn>=0.41.0",
 ]
 
 [tool.uv.workspace]
 members = [
-    "apps/composites/accept-job",
-    "apps/composites/assign-job",
-    "apps/composites/close-case",
-    "apps/composites/open-case",
-    "apps/composites/handle-breach",
-    "apps/composites/reschedule-job",
-    "packages/shared-python",
+  "apps/composites/accept-job",
+  "apps/composites/assign-job",
+  "apps/composites/close-case",
+  "apps/composites/open-case",
+  "apps/composites/handle-breach",
+  "apps/composites/reschedule-job",
+  "packages/shared-python",
 ]
 
 [tool.uv]
@@ -41,12 +41,13 @@ extend = "tooling/ruff/ruff.toml"
 [tool.ruff.lint.per-file-ignores]
 # Ignore assert usage and missing annotations in tests
 "**/tests/**/*.py" = [
-    "S101",    # Use of assert detected
-    "ANN201",  # Missing return type for public function
-    "ANN001",  # Missing type annotation for function argument
+  "S101", # Use of assert detected
+  "ANN201", # Missing return type for public function
+  "ANN001", # Missing type annotation for function argument
 ]
+
 "packages/shared-python/townops_shared/utils/http.py" = [
-    "ANN401",  # Allow Any in kwargs/json
+  "ANN401", # Allow Any in kwargs/json
 ]
 
 [tool.pytest.ini_options]
