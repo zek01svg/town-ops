@@ -10,7 +10,9 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.61b0",
     "pyjwt>=2.12.1",
     "pytest>=9.0.2",
+    "pytest-cov>=7.1.0",
     "ruff>=0.15.5",
+    "scalar-fastapi>=1.8.1",
     "structlog>=25.5.0",
     "uvicorn>=0.41.0",
 ]
@@ -35,6 +37,17 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 extend = "tooling/ruff/ruff.toml"
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore assert usage and missing annotations in tests
+"**/tests/**/*.py" = [
+    "S101",    # Use of assert detected
+    "ANN201",  # Missing return type for public function
+    "ANN001",  # Missing type annotation for function argument
+]
+"packages/shared-python/townops_shared/utils/http.py" = [
+    "ANN401",  # Allow Any in kwargs/json
+]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
