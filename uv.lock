@@ -892,6 +892,7 @@ source = { editable = "apps/composites/close-case" }
 dependencies = [
     { name = "aio-pika" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pyjwt" },
     { name = "townops-shared" },
     { name = "uvicorn" },
@@ -901,6 +902,7 @@ dependencies = [
 requires-dist = [
     { name = "aio-pika" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pyjwt" },
     { name = "townops-shared", editable = "packages/shared-python" },
     { name = "uvicorn" },
