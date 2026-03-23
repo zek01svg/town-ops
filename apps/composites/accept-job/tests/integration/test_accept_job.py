@@ -40,7 +40,7 @@ def test_integration_accept_job_full_flow() -> None:
   )
 
   with TestClient(app) as client:
-    resp = client.post("/jobs/accept-job", json=VALID_PAYLOAD)
+    resp = client.put("/jobs/accept-job", json=VALID_PAYLOAD)
 
   assert resp.status_code == 200
   body = resp.json()
@@ -68,7 +68,7 @@ def test_integration_cors_headers_present() -> None:
   )
 
   with TestClient(app) as client:
-    resp = client.post(
+    resp = client.put(
       "/jobs/accept-job",
       json=VALID_PAYLOAD,
       headers={"Origin": "http://localhost:5173"},

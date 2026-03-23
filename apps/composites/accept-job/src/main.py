@@ -4,9 +4,9 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from townops_shared.utils.http import HttpClient
 from townops_shared.utils.observability import setup_logging, setup_tracing
 
 from .config import get_settings
@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     settings.CASE_SERVICE_URL,
     settings.APPOINTMENT_SERVICE_URL,
   )
-  app.state.http_client = httpx.AsyncClient()
+  app.state.http_client = HttpClient().client
   yield
   await app.state.http_client.aclose()
   logger.info("accept-job: shutdown complete")

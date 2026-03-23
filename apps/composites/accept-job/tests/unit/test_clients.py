@@ -6,6 +6,7 @@ import pytest
 import respx
 from httpx import Response
 from src.clients import (
+  AtomClientError,
   create_appointment,
   update_assignment_status,
   update_case_status,
@@ -40,7 +41,7 @@ async def test_update_assignment_status_failure() -> None:
       return_value=Response(500, text="Internal Error")
     )
 
-    with pytest.raises(RuntimeError) as exc:
+    with pytest.raises(AtomClientError) as exc:
       await update_assignment_status(client, base_url, assignment_id, "accepted")
     assert "Assignment status update" in str(exc.value)
 

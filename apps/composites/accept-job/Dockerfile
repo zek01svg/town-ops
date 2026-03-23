@@ -1,20 +1,24 @@
+# note: build this container from the workspace root
 FROM python:3.14-slim
-
-# Install uv
-RUN pip install uv
 
 WORKDIR /app
 
-# Copy workspace dependency manifests
-COPY pyproject.toml ./
-COPY ../../packages/shared-python ./packages/shared-python
+# 1. Install system dependencies if any, then installer
+RUN pip install uv
 
-# Install dependencies (no dev extras)
+# 2. Copy the full workspace context (monorepo support)
+COPY pyproject.toml uv.lock ./
+COPY packages/shared-python /app/packages/shared-python
+COPY apps/composites/accept-job /app/apps/composites/accept-job
+
+# 3. Navigate into service directory and install prod deps only
+WORKDIR /app/apps/composites/accept-job
 RUN uv sync --no-dev
 
-# Copy source
-COPY src/ ./src/
+# 4. Copy source code
+COPY . .
 
 EXPOSE 6003
 
-CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "6003"]
+# 5. Run prod server
+CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", "6003"]

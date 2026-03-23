@@ -78,7 +78,7 @@ async def _revert_case(
 # ─── Route ────────────────────────────────────────────────────────────────────
 
 
-@router.post(
+@router.put(
   "/accept-job",
   response_model=AcceptJobResponse,
   status_code=status.HTTP_200_OK,

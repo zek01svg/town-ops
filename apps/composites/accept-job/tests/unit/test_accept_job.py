@@ -58,7 +58,7 @@ def test_accept_job_success(client: TestClient) -> None:
     return_value=Response(201, json=APPOINTMENT_RESPONSE)
   )
 
-  resp = client.post("/jobs/accept-job", json=VALID_PAYLOAD)
+  resp = client.put("/jobs/accept-job", json=VALID_PAYLOAD)
   assert resp.status_code == 200
   body = resp.json()
   assert body["message"] == "Job accepted successfully"
@@ -77,7 +77,7 @@ def test_assignment_update_failure_returns_503(client: TestClient) -> None:
     return_value=Response(500, json={"error": "db error"})
   )
 
-  resp = client.post("/jobs/accept-job", json=VALID_PAYLOAD)
+  resp = client.put("/jobs/accept-job", json=VALID_PAYLOAD)
   assert resp.status_code == 503
   assert "assignment" in resp.json()["detail"].lower()
 
@@ -99,7 +99,7 @@ def test_case_update_failure_triggers_assignment_rollback(client: TestClient) ->
     f"http://localhost:5003/api/assignments/{ASSIGNMENT_ID}/status"
   ).mock(return_value=Response(200, json={"assignment": {"status": "pending"}}))
 
-  resp = client.post("/jobs/accept-job", json=VALID_PAYLOAD)
+  resp = client.put("/jobs/accept-job", json=VALID_PAYLOAD)
   assert resp.status_code == 503
   assert "case" in resp.json()["detail"].lower()
 
@@ -140,7 +140,7 @@ def test_appointment_creation_failure_triggers_full_rollback(
     f"http://localhost:5003/api/assignments/{ASSIGNMENT_ID}/status"
   ).mock(return_value=Response(200, json={"assignment": {"status": "pending"}}))
 
-  resp = client.post("/jobs/accept-job", json=VALID_PAYLOAD)
+  resp = client.put("/jobs/accept-job", json=VALID_PAYLOAD)
   assert resp.status_code == 503
   assert "appointment" in resp.json()["detail"].lower()
 
@@ -162,7 +162,7 @@ def test_appointment_creation_failure_triggers_full_rollback(
 
 def test_missing_required_fields_returns_422(client: TestClient) -> None:
   """Missing start_time / end_time → 422 Unprocessable Entity."""
-  resp = client.post(
+  resp = client.put(
     "/jobs/accept-job",
     json={"case_id": CASE_ID, "assignment_id": ASSIGNMENT_ID},
   )
