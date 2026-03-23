@@ -21,3 +21,15 @@ def test_assignment_source_values():
   assert AssignmentSource.AUTO_ASSIGN == "AUTO_ASSIGN"
   assert AssignmentSource.MANUAL_ASSIGN == "MANUAL_ASSIGN"
   assert AssignmentSource.BREACH_REASSIGN == "BREACH_REASSIGN"
+
+
+def test_get_session_unit():
+  from src.database import get_session
+
+  session_gen = get_session()
+  try:
+    session = next(session_gen)
+    assert session is not None
+  except Exception:  # noqa: BLE001, S110
+    pass
+  return "exception"

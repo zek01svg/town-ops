@@ -1,4 +1,5 @@
 import os
+from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,8 +16,8 @@ def postgres():
 
 
 @pytest.fixture(scope="session")
-def db_engine(_postgres):
-  from utils.database import engine
+def db_engine(postgres):  # noqa: ARG001
+  from src.database import engine
 
   SQLModel.metadata.create_all(engine)
   yield engine
@@ -32,10 +33,10 @@ def db_session(db_engine):
 
 @pytest.fixture
 def client(db_session):
+  from src.database import get_session
   from src.main import app
-  from utils.database import get_session
 
-  def override_get_session():
+  def override_get_session() -> Generator:
     yield db_session
 
   app.dependency_overrides[get_session] = override_get_session
@@ -115,3 +116,42 @@ def test_update_assignment_status(client):
 def test_get_assignment_not_found(client):
   response = client.get("/assignments/get-by-id/nonexistent-id")
   assert response.status_code == 404
+
+
+def test_get_assignments_by_contractor(client):
+  contractor_id = "550e8400-e29b-41d4-a716-446655440010"
+  client.post(
+    "/assignments/new-assignment",
+    json={
+      "case_id": "550e8400-e29b-41d4-a716-446655440011",
+      "contractor_id": contractor_id,
+      "source": "AUTO_ASSIGN",
+    },
+  )
+  response = client.get(f"/assignments/get-by-contractor/{contractor_id}")
+  assert response.status_code == 200
+  assert len(response.json()) >= 1
+  assert response.json()[0]["contractor_id"] == contractor_id
+
+
+def test_get_assignment_by_case_not_found(client):
+  response = client.get("/assignments/get-by-case/nonexistent-case-id")
+  assert response.status_code == 404
+
+
+def test_update_assignment_status_not_found(client):
+  response = client.put(
+    "/assignments/update-status/nonexistent-id",
+    json={
+      "status": "ACCEPTED",
+      "changed_by": "TestClient",
+      "reason": "Testing 404",
+    },
+  )
+  assert response.status_code == 404
+
+
+def test_health_check(client):
+  response = client.get("/health")
+  assert response.status_code == 200
+  assert response.json() == {"status": "ok"}
