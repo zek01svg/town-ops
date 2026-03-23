@@ -30,7 +30,7 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
   return { mockQuery: q, mockDb: db };
 });
 
-vi.mock("@townops/shared-observability-ts", () => {
+vi.mock("@townops/shared-ts", () => {
   return {
     rabbitmqClient: {
       connect: vi.fn().mockResolvedValue(undefined),

@@ -1,4 +1,4 @@
-# @townops/shared-observability-ts
+# @townops/shared-ts
 
 Core telemetry and structured logging utilities tailored for TypeScript microservices and atoms within the TownOps workspace backplane.
 
@@ -24,6 +24,12 @@ Global router wrapper measuring server response times with automated payload aud
 
 - **Usage**: `app.use('*', honoLogger())`
 
+### 🐇 **4. RabbitMQ Client** (`src/rabbitmq.ts`)
+
+Shared RabbitMQ client for publishing and consuming messages.
+
+- **Usage**: `const rabbitmqClient = new RabbitMQClient(env.RABBITMQ_URL)`
+
 ---
 
 ## 🚀 **Usage in Atoms**
@@ -32,6 +38,6 @@ To consume this package in any app workspace, reference it inside your local wor
 
 ```json
 "dependencies": {
-  "@townops/shared-observability-ts": "workspace:*"
+  "@townops/shared-ts": "workspace:*"
 }
 ```

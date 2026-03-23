@@ -1,5 +1,5 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger } from "@townops/shared-observability-ts";
+import { logger, honoLogger } from "@townops/shared-ts";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";

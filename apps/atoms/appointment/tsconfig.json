@@ -4,9 +4,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@townops/shared-types": ["../../../packages/shared-types/index.ts"],
-      "@townops/shared-observability-ts": [
-        "../../../packages/shared-ts/src/index.ts"
-      ],
+      "@townops/shared-ts": ["../../../packages/shared-ts/src/index.ts"],
       "drizzle-orm": ["./node_modules/drizzle-orm"],
       "drizzle-orm/*": ["./node_modules/drizzle-orm/*"]
     }

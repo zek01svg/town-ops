@@ -1,4 +1,4 @@
-import { logger, rabbitmqClient } from "@townops/shared-observability-ts";
+import { logger, rabbitmqClient } from "@townops/shared-ts";
 import { z } from "zod/v4";
 
 import db from "./database/db";

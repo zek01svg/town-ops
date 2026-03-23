@@ -4,11 +4,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@townops/shared-types": ["../../../packages/shared-types/index.ts"],
-      "@townops/shared-observability-ts": [
-        "../../../packages/shared-ts/src/index.ts"
-      ]
-    },
-    "strictNullChecks": true
+      "@townops/shared-ts": ["../../../packages/shared-ts/src/index.ts"]
+    }
   },
   "include": ["src", "index.ts"],
   "exclude": ["node_modules"]

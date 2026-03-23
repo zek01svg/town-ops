@@ -10,7 +10,7 @@ A backend microservice (Atom) dedicated to managing citizen appointments and sch
 - **Framework**: [Hono](https://hono.dev/)
 - **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
 - **Database ORM**: [Drizzle ORM](https://orm.drizzle.team/)
-- **Logging**: Pino via customized `@townops/shared-observability-ts`
+- **Logging**: Pino via customized `@townops/shared-ts`
 - **Testing**: [Vitest](https://vitest.dev/)
 
 ---

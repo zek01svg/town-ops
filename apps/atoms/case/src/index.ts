@@ -1,5 +1,5 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger } from "@townops/shared-observability-ts";
+import { logger, honoLogger } from "@townops/shared-ts";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -38,29 +38,9 @@ app.use(
   })
 );
 
-app
+const casesRouter = new Hono()
   .get(
-    "/health",
-    describeRoute({
-      description: "Service health check",
-      responses: {
-        200: {
-          description: "Healthy",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ status: z.string() })),
-            },
-          },
-        },
-      },
-    }),
-    async (c: Context) => {
-      logger.info({ route: "/health" }, "Health check verified");
-      return c.json({ status: "healthy" }, 200);
-    }
-  )
-  .get(
-    "/api/cases",
+    "/",
     describeRoute({
       description: "Retrieve all cases",
       responses: {
@@ -84,7 +64,7 @@ app
     }
   )
   .get(
-    "/api/cases/:id",
+    "/:id",
     describeRoute({
       description: "Get a case by its ID",
       responses: {
@@ -112,7 +92,7 @@ app
     }
   )
   .put(
-    "/api/cases/update-case-status/",
+    "/update-case-status/",
     describeRoute({
       description: "Update the status of a case",
       responses: {
@@ -148,7 +128,7 @@ app
     }
   )
   .post(
-    "/api/cases/new-case",
+    "/new-case",
     describeRoute({
       description: "Create a new case ticket",
       responses: {
@@ -180,34 +160,53 @@ app
     }
   );
 
-// OpenAPI JSON generation route
-app.get(
-  "/openapi",
-  openAPIRouteHandler(app, {
-    documentation: {
-      info: {
-        title: "Case Atom API",
-        version: "1.0.0",
-        description: "Municipal case management backplane APIs",
+const caseAtomRoutes = app
+  .get(
+    "/health",
+    describeRoute({
+      description: "Service health check",
+      responses: {
+        200: {
+          description: "Healthy",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ status: z.string() })),
+            },
+          },
+        },
       },
-      servers: [
-        { url: `http://localhost:${env.PORT}`, description: "Local Server" },
-      ],
-    },
-  })
-);
+    }),
+    async (c: Context) => {
+      logger.info({ route: "/health" }, "Health check verified");
+      return c.json({ status: "healthy" }, 200);
+    }
+  )
+  .route("/api/cases", casesRouter)
+  .get(
+    "/openapi",
+    openAPIRouteHandler(app, {
+      documentation: {
+        info: {
+          title: "Case Atom API",
+          version: "1.0.0",
+          description: "Municipal case management backplane APIs",
+        },
+        servers: [
+          { url: `http://localhost:${env.PORT}`, description: "Local Server" },
+        ],
+      },
+    })
+  )
+  .get(
+    "/scalar",
+    Scalar({
+      url: "/openapi",
+      theme: "deepSpace",
+    })
+  );
 
-// Scalar API Reference route
-app.get(
-  "/scalar",
-  Scalar({
-    url: "/openapi",
-    theme: "deepSpace",
-  })
-);
-
-export { app };
-
+export { app }; // export for testing
+export type CaseAtomType = typeof caseAtomRoutes; // export for rpc
 export default {
   port: env.PORT,
   fetch: app.fetch,

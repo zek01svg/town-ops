@@ -35,7 +35,7 @@ vi.mock("../../src/database/db", () => ({
 // Mock RabbitMQ Consuming
 let consumeCallback: (msg: any) => Promise<void>;
 
-vi.mock("@townops/shared-observability-ts", () => {
+vi.mock("@townops/shared-ts", () => {
   return {
     rabbitmqClient: {
       connect: vi.fn().mockResolvedValue(undefined),
@@ -99,8 +99,7 @@ describe("Alert Worker", () => {
       // Wait microtasks so void wrapper executes connect & consume
       await new Promise((r) => setTimeout(r, 10));
 
-      const { rabbitmqClient } =
-        await import("@townops/shared-observability-ts");
+      const { rabbitmqClient } = await import("@townops/shared-ts");
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(rabbitmqClient.connect).toHaveBeenCalled();
       // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -146,7 +145,7 @@ describe("Alert Worker", () => {
           console.error("Consume callback threw:", err);
         }
 
-        const { logger } = await import("@townops/shared-observability-ts");
+        const { logger } = await import("@townops/shared-ts");
         expect(logger.error).not.toHaveBeenCalled();
 
         expect(mockDb.insert).toHaveBeenCalled();

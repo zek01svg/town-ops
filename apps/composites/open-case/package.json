@@ -5,19 +5,27 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "build": "bun run build",
+    "build": "bun build --production --minify --target=bun --outdir=build src/index.ts",
+    "build:docker": "bun run build && docker build -t open-case-composite .",
+    "test": "bun run load-env -- vitest run tests",
+    "load-env": "dotenv -e .env.local",
     "start": "bun run start",
-    "lint": "bun run lint",
-    "test": "vitest run"
+    "lint": "pnpm oxlint --config=../../../tooling/oxlint/oxlint.config.ts"
   },
   "dependencies": {
     "@t3-oss/env-core": "catalog:",
-    "@townops/shared-observability-ts": "workspace:*",
-    "@townops/shared-types": "workspace:*",
+    "@townops/case-atom": "workspace:*",
+    "@townops/resident-atom": "workspace:*",
+    "@townops/shared-ts": "workspace:*",
     "hono": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@hono/standard-validator": "catalog:",
+    "@scalar/hono-api-reference": "catalog:",
+    "@testcontainers/rabbitmq": "catalog:",
+    "dotenv-cli": "catalog:",
+    "hono-openapi": "catalog:",
     "typescript": "catalog:"
   }
 }

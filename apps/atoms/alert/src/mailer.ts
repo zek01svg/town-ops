@@ -1,4 +1,4 @@
-import { logger } from "@townops/shared-observability-ts";
+import { logger } from "@townops/shared-ts";
 import { Resend } from "resend";
 
 import { env } from "./env";

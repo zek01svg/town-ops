@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "build": "bun build --production --minify --target=bun --outdir=build src/index.ts",
@@ -18,7 +21,7 @@
   },
   "dependencies": {
     "@t3-oss/env-core": "catalog:",
-    "@townops/shared-observability-ts": "workspace:*",
+    "@townops/shared-ts": "workspace:*",
     "@townops/shared-types": "workspace:*",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "catalog:",

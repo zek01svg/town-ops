@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@t3-oss/env-core": "catalog:",
-    "@townops/shared-observability-ts": "workspace:*",
+    "@townops/shared-ts": "workspace:*",
     "@townops/shared-types": "workspace:*",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "catalog:",

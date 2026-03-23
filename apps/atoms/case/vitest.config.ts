@@ -12,7 +12,7 @@ export default mergeConfig(
       globalSetup: "./tests/integration/global-setup.ts",
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url)),
-        "@townops/shared-observability-ts": fileURLToPath(
+        "@townops/shared-ts": fileURLToPath(
           new URL("../../../packages/shared-ts/src/index.ts", import.meta.url)
         ),
       },

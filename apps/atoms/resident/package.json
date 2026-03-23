@@ -1,12 +1,15 @@
 {
-  "name": "@townops/alert-atom",
+  "name": "@townops/resident-atom",
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "build": "bun build --production --minify --target=bun --outdir=build src/index.ts",
-    "build:docker": "bun run build && docker build -t case-atom .",
+    "build:docker": "bun run build && docker build -t resident-atom .",
     "clean": "rimraf node_modules",
     "test": "bun run load-env -- vitest run tests",
     "load-env": "dotenv -e .env",
@@ -17,7 +20,7 @@
   },
   "dependencies": {
     "@t3-oss/env-core": "catalog:",
-    "@townops/shared-observability-ts": "workspace:*",
+    "@townops/shared-ts": "workspace:*",
     "@townops/shared-types": "workspace:*",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "catalog:",

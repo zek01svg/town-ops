@@ -38,7 +38,7 @@ vi.mock("../../src/database/db", () => ({
 // Setup auth interceptors mock to avoid rejection pipelines overflows
 vi.mock("hono/jwk", () => ({ jwk: () => (c: any, next: any) => next() }));
 
-vi.mock("@townops/shared-observability-ts", () => ({
+vi.mock("@townops/shared-ts", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
   honoLogger: () => (c: any, next: any) => next(),
 }));

@@ -1,5 +1,5 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger } from "@townops/shared-observability-ts";
+import { logger, honoLogger } from "@townops/shared-ts";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -44,7 +44,7 @@ app.use(
   })
 );
 
-app
+const residentRouter = new Hono()
   .get(
     "/health",
     describeRoute({
@@ -66,7 +66,7 @@ app
     }
   )
   .get(
-    "/api/residents/search",
+    "/search",
     describeRoute({
       description: "Get a resident by its postal code",
       responses: {
@@ -103,7 +103,7 @@ app
     }
   )
   .get(
-    "/api/residents/:id",
+    "/:id",
     describeRoute({
       description: "Retrieve resident by ID",
       responses: {
@@ -138,7 +138,7 @@ app
     }
   )
   .post(
-    "/api/residents/new-resident",
+    "/new-resident",
     describeRoute({
       description: "Create a new resident",
       responses: {
@@ -169,7 +169,7 @@ app
     }
   )
   .put(
-    "/api/residents/update-resident",
+    "/update-resident",
     describeRoute({
       description: "Update a resident",
       responses: {
@@ -204,23 +204,44 @@ app
     }
   );
 
-// OpenAPI JSON generation route
-app.get(
-  "/openapi",
-  openAPIRouteHandler(app, {
-    documentation: {
-      info: {
-        title: "Resident Atom API",
-        version: "1.0.0",
-        description:
-          "Stand-alone microservice dedicated to managing residents details",
+const residentApiRoutes = app
+  .get(
+    "/health",
+    describeRoute({
+      description: "Service health check",
+      responses: {
+        200: {
+          description: "Healthy",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ status: z.string() })),
+            },
+          },
+        },
       },
-      servers: [
-        { url: `http://localhost:${env.PORT}`, description: "Local Server" },
-      ],
-    },
-  })
-);
+    }),
+    async (c: Context) => {
+      logger.info({ route: "/health" }, "Health check verified");
+      return c.json({ status: "healthy" }, 200);
+    }
+  )
+  .route("/api/residents", residentRouter)
+  .get(
+    "/openapi",
+    openAPIRouteHandler(app, {
+      documentation: {
+        info: {
+          title: "Resident Atom API",
+          version: "1.0.0",
+          description:
+            "Stand-alone microservice dedicated to managing residents details",
+        },
+        servers: [
+          { url: `http://localhost:${env.PORT}`, description: "Local Server" },
+        ],
+      },
+    })
+  );
 
 // Scalar API Reference route
 app.get(
@@ -232,7 +253,7 @@ app.get(
 );
 
 export { app };
-
+export type ResidentAtomType = typeof residentApiRoutes;
 export default {
   port: env.PORT,
   fetch: app.fetch,

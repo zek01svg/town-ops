@@ -1,4 +1,4 @@
-import { logger } from "@townops/shared-observability-ts";
+import { logger } from "@townops/shared-ts";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { sendEmail } from "../../src/mailer";
@@ -17,7 +17,7 @@ vi.mock("resend", () => {
   };
 });
 
-vi.mock("@townops/shared-observability-ts", () => ({
+vi.mock("@townops/shared-ts", () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
