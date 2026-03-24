@@ -1,5 +1,5 @@
 {
-  "name": "@townops/alert-atom",
+  "name": "@townops/proof-atom",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -19,7 +19,6 @@
     "@supabase/supabase-js": "catalog:",
     "@t3-oss/env-core": "catalog:",
     "@townops/shared-ts": "workspace:*",
-    "@townops/shared-types": "workspace:*",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "catalog:",
     "hono": "catalog:",
