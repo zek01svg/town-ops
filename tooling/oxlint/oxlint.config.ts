@@ -28,6 +28,7 @@ export default defineConfig({
     "coverage/**",
     "vite.config.ts.timestamp-*",
     "**/*.py",
+    "routeTree.gen.ts",
   ],
 
   // 6. Global Rules (Tweaks to standard categories)
@@ -40,7 +41,6 @@ export default defineConfig({
     "typescript/no-misused-promises": "error",
 
     // Unicorn has great best practices but can be overly opinionated out of the box.
-    "unicorn/prevent-abbreviations": "off",
     "unicorn/no-null": "off",
 
     // --- Added from previous ESLint config ---
@@ -62,7 +62,6 @@ export default defineConfig({
     // Import rules
     "import/no-duplicates": "error",
     "import/first": "error",
-    "import/newline-after-import": "error",
     "import/extensions": "off",
     "import/consistent-type-specifier-style": ["error", "prefer-top-level"],
 
@@ -76,7 +75,6 @@ export default defineConfig({
     ],
 
     "react/react-in-jsx-scope": "off",
-    "react/jsx-uses-react": "off",
   },
 
   // 7. Environment-Specific Overrides
@@ -93,7 +91,6 @@ export default defineConfig({
 
         // React 17+ New JSX Transform
         "react/react-in-jsx-scope": "off",
-        "react/jsx-uses-react": "off",
 
         // Strict accessibility checks
         "jsx-a11y/alt-text": "error",
