@@ -6,25 +6,16 @@
     "module": "ESNext",
     "jsx": "react-jsx",
     "pretty": true,
-
-    // linting
+    "moduleResolution": "bundler",
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
-
-    // vite global types
     "types": ["vite/client"],
-
-    // for clean imports
     "paths": {
-      "@/*": ["./src/*"],
-      "@townops/shared-types": ["../../packages/shared-types/index.ts"],
-      "@townops/ui-core": ["../../packages/ui-core/src/index.ts"],
-      "@townops/ui-core/*": ["../../packages/ui-core/src/*"]
-    },
-    "strictNullChecks": true
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src", "vite.config.ts", "tests"],
   "exclude": ["node_modules"]
