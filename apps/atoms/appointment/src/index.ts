@@ -1,14 +1,13 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import { logger, honoLogger } from "@townops/shared-ts";
-import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, openAPIRouteHandler, validator } from "hono-openapi";
 import { jwk } from "hono/jwk";
 
-import db from "./database/db";
-import { appointments, appointmentInsertSchema } from "./database/schema";
+import { appointmentInsertSchema } from "./database/schema";
 import { env } from "./env";
+import * as appointmentService from "./service";
 import { getAppointmentSchema } from "./validation-schemas";
 
 const app = new Hono();
@@ -24,7 +23,7 @@ app.onError((err, c) => {
 app.use("*", honoLogger());
 app.use("/api/*", jwk({ jwks_uri: env.JWKS_URI, alg: ["RS256"] }));
 
-app
+const appointmentRoutes = app
   .get(
     "/health",
     describeRoute({ description: "Service health check" }),
@@ -36,10 +35,7 @@ app
     validator("param", getAppointmentSchema),
     async (c) => {
       const { case_id } = c.req.valid("param");
-      const rows = await db
-        .select()
-        .from(appointments)
-        .where(eq(appointments.caseId, case_id));
+      const rows = await appointmentService.getAppointmentsByCaseId(case_id);
       return c.json({ appointments: rows }, 200);
     }
   )
@@ -49,30 +45,29 @@ app
     validator("json", appointmentInsertSchema),
     async (c) => {
       const body = c.req.valid("json");
-      const rows = await db.insert(appointments).values(body).returning();
-      return c.json({ appointment: rows[0] }, 201);
+      const result = await appointmentService.createAppointment(body);
+      return c.json({ appointment: result }, 201);
     }
-  );
-
-app.get(
-  "/openapi",
-  openAPIRouteHandler(app, {
-    documentation: {
-      info: {
-        title: "Appointment Atom API",
-        version: "1.0.0",
-        description: "Standalone specs",
+  )
+  .get(
+    "/openapi",
+    openAPIRouteHandler(app, {
+      documentation: {
+        info: {
+          title: "Appointment Atom API",
+          version: "1.0.0",
+          description: "Standalone specs",
+        },
+        servers: [
+          { url: `http://localhost:${env.PORT}`, description: "Local Server" },
+        ],
       },
-      servers: [
-        { url: `http://localhost:${env.PORT}`, description: "Local Service" },
-      ],
-    },
-  })
-);
-
-app.get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
+    })
+  )
+  .get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
 
 export { app };
+export type AppointmentAtomType = typeof appointmentRoutes;
 
 export default {
   port: env.PORT,
