@@ -1,6 +1,5 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import { logger, honoLogger } from "@townops/shared-ts";
-import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -12,9 +11,9 @@ import {
 import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
-import db from "./database/db";
-import { alerts, selectAlertSchema } from "./database/schema";
+import { selectAlertSchema } from "./database/schema";
 import { env } from "./env";
+import * as alertService from "./service";
 import {
   alertsByCaseSchema,
   alertsByRecipientSchema,
@@ -37,7 +36,7 @@ app.use("*", honoLogger());
 // jwt auth middleware except health & api documentation
 app.use("/api/*", jwk({ jwks_uri: env.JWKS_URI, alg: ["RS256"] }));
 
-app
+const alertRoutes = app
   .get(
     "/health",
     describeRoute({
@@ -73,7 +72,7 @@ app
       },
     }),
     async (c: Context) => {
-      const alertRows = await db.select().from(alerts);
+      const alertRows = await alertService.getAllAlerts();
       logger.info(
         { route: "/api/alerts", rowCount: alertRows.length },
         "Retrieved all alerts"
@@ -102,10 +101,7 @@ app
     validator("param", alertsByCaseSchema),
     async (c) => {
       const { caseId } = c.req.valid("param");
-      const alertRows = await db
-        .select()
-        .from(alerts)
-        .where(eq(alerts.caseId, caseId));
+      const alertRows = await alertService.getAlertsByCaseId(caseId);
       logger.info(
         { route: "/api/alerts/case/:caseId", caseId },
         "Alert lookup executed by Case"
@@ -134,39 +130,36 @@ app
     validator("param", alertsByRecipientSchema),
     async (c) => {
       const { recipientId } = c.req.valid("param");
-      const alertRows = await db
-        .select()
-        .from(alerts)
-        .where(eq(alerts.recipientId, recipientId));
+      const alertRows = await alertService.getAlertsByRecipientId(recipientId);
       logger.info(
         { route: "/api/alerts/recipient/:recipientId", recipientId },
         "Alert lookup executed by Recipient"
       );
       return c.json({ alerts: alertRows }, 200);
     }
-  );
-
-app.get(
-  "/openapi",
-  openAPIRouteHandler(app, {
-    documentation: {
-      info: {
-        title: "Alert Atom API",
-        version: "1.0.0",
-        description: "Standalone Specs for audit tracking alerts history",
+  )
+  .get(
+    "/openapi",
+    openAPIRouteHandler(app, {
+      documentation: {
+        info: {
+          title: "Alert Atom API",
+          version: "1.0.0",
+          description: "Standalone Specs for audit tracking alerts history",
+        },
+        servers: [
+          { url: `http://localhost:${env.PORT}`, description: "Local Service" },
+        ],
       },
-      servers: [
-        { url: `http://localhost:${env.PORT}`, description: "Local Service" },
-      ],
-    },
-  })
-);
-
-app.get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
+    })
+  )
+  .get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
 
 startAlertQueueWorker();
 
 export { app };
+
+export type AlertAtomType = typeof alertRoutes;
 
 export default {
   port: env.PORT,
