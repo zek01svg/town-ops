@@ -1,6 +1,5 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import { logger, honoLogger } from "@townops/shared-ts";
-import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -12,9 +11,9 @@ import {
 import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
-import db from "./database/db";
-import { profiles, selectProfileSchema } from "./database/schema";
+import { selectProfileSchema } from "./database/schema";
 import { env } from "./env";
+import * as residentService from "./service";
 import {
   getResidentByIDSchema,
   getResidentByPostalSchema,
@@ -46,26 +45,6 @@ app.use(
 
 const residentRouter = new Hono()
   .get(
-    "/health",
-    describeRoute({
-      description: "Service health check",
-      responses: {
-        200: {
-          description: "Healthy",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ status: z.string() })),
-            },
-          },
-        },
-      },
-    }),
-    async (c: Context) => {
-      logger.info({ route: "/health" }, "Health check verified");
-      return c.json({ status: "healthy" }, 200);
-    }
-  )
-  .get(
     "/search",
     describeRoute({
       description: "Get a resident by its postal code",
@@ -86,10 +65,8 @@ const residentRouter = new Hono()
     validator("query", getResidentByPostalSchema),
     async (c) => {
       const { postalCode } = c.req.valid("query");
-      const residentRows = await db
-        .select()
-        .from(profiles)
-        .where(eq(profiles.postalCode, postalCode));
+      const residentRows =
+        await residentService.getResidentsByPostalCode(postalCode);
 
       logger.info(
         {
@@ -122,10 +99,7 @@ const residentRouter = new Hono()
     validator("param", getResidentByIDSchema),
     async (c) => {
       const { id } = c.req.valid("param");
-      const residentRows = await db
-        .select()
-        .from(profiles)
-        .where(eq(profiles.id, id));
+      const residentRows = await residentService.getResidentById(id);
       logger.info(
         {
           route: "/api/residents/:id",
@@ -156,16 +130,16 @@ const residentRouter = new Hono()
     validator("json", newResidentSchema),
     async (c) => {
       const body = c.req.valid("json");
-      const residentRows = await db.insert(profiles).values(body).returning();
+      const resident = await residentService.createResident(body);
 
       logger.info(
         {
           route: "/api/residents/new-resident",
-          residentId: residentRows[0].id,
+          residentId: resident.id,
         },
         "New resident created"
       );
-      return c.json({ resident: residentRows[0] }, 201);
+      return c.json({ resident }, 201);
     }
   )
   .put(
@@ -187,11 +161,7 @@ const residentRouter = new Hono()
     validator("json", updateResidentSchema),
     async (c) => {
       const body = c.req.valid("json");
-      const residentRows = await db
-        .update(profiles)
-        .set(body)
-        .where(eq(profiles.id, body.id))
-        .returning();
+      const resident = await residentService.updateResident(body.id, body);
 
       logger.info(
         {
@@ -200,7 +170,7 @@ const residentRouter = new Hono()
         },
         "Resident updated successfully"
       );
-      return c.json({ resident: residentRows[0] }, 200);
+      return c.json({ resident }, 200);
     }
   );
 
@@ -241,19 +211,19 @@ const residentApiRoutes = app
         ],
       },
     })
+  )
+  .get(
+    "/scalar",
+    Scalar({
+      url: "/openapi",
+      theme: "deepSpace",
+    })
   );
 
-// Scalar API Reference route
-app.get(
-  "/scalar",
-  Scalar({
-    url: "/openapi",
-    theme: "deepSpace",
-  })
-);
-
 export { app };
+
 export type ResidentAtomType = typeof residentApiRoutes;
+
 export default {
   port: env.PORT,
   fetch: app.fetch,
