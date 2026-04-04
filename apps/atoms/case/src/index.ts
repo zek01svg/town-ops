@@ -1,6 +1,5 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import { logger, honoLogger } from "@townops/shared-ts";
-import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -12,9 +11,9 @@ import {
 import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
-import db from "./database/db";
-import { cases, insertCaseSchema, selectCaseSchema } from "./database/schema";
+import { insertCaseSchema, selectCaseSchema } from "./database/schema";
 import { env } from "./env";
+import * as caseService from "./service";
 import { getCaseSchema, updateCaseStatusSchema } from "./validation-schemas";
 
 const app = new Hono();
@@ -55,7 +54,7 @@ const casesRouter = new Hono()
       },
     }),
     async (c: Context) => {
-      const caseRows = await db.select().from(cases);
+      const caseRows = await caseService.getAllCases();
       logger.info(
         { route: "/api/cases", rowCount: caseRows.length },
         "Retrieved all cases"
@@ -82,7 +81,7 @@ const casesRouter = new Hono()
     validator("param", z.object({ id: getCaseSchema })),
     async (c) => {
       const { id } = c.req.valid("param");
-      const caseRows = await db.select().from(cases).where(eq(cases.id, id));
+      const caseRows = await caseService.getCaseById(id);
 
       logger.info(
         { route: "/api/cases/:id", caseId: id, found: caseRows.length > 0 },
@@ -110,11 +109,10 @@ const casesRouter = new Hono()
     validator("json", updateCaseStatusSchema),
     async (c) => {
       const body = c.req.valid("json");
-      const caseRows = await db
-        .update(cases)
-        .set({ status: body.status })
-        .where(eq(cases.id, body.id))
-        .returning();
+      const updatedCase = await caseService.updateCaseStatus(
+        body.id,
+        body.status
+      );
 
       logger.info(
         {
@@ -124,7 +122,7 @@ const casesRouter = new Hono()
         },
         "Case status updated"
       );
-      return c.json({ cases: caseRows[0] }, 200);
+      return c.json({ cases: updatedCase }, 200);
     }
   )
   .post(
@@ -146,17 +144,17 @@ const casesRouter = new Hono()
     validator("json", insertCaseSchema),
     async (c) => {
       const body = c.req.valid("json");
-      const caseRows = await db.insert(cases).values(body).returning();
+      const newCase = await caseService.createCase(body);
 
       logger.info(
         {
           route: "/api/cases/new-case",
-          caseId: caseRows[0].id,
+          caseId: newCase.id,
           category: body.category,
         },
         "New case created successfully"
       );
-      return c.json({ cases: caseRows[0] }, 201);
+      return c.json({ cases: newCase }, 201);
     }
   );
 
@@ -205,8 +203,8 @@ const caseAtomRoutes = app
     })
   );
 
-export { app }; // export for testing
-export type CaseAtomType = typeof caseAtomRoutes; // export for rpc
+export { app };
+export type CaseAtomType = typeof caseAtomRoutes;
 export default {
   port: env.PORT,
   fetch: app.fetch,
