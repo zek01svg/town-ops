@@ -1,16 +1,16 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import { logger, honoLogger } from "@townops/shared-ts";
-import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, openAPIRouteHandler, validator } from "hono-openapi";
 import { jwk } from "hono/jwk";
+import { z } from "zod/v4";
 
-import db from "./database/db";
-import { proofItems } from "./database/schema";
 import { env } from "./env";
+import * as proofService from "./service";
 import { supabase } from "./supabase";
 import { getProofSchema, uploadProofSchema } from "./validation-schemas";
+
 const app = new Hono();
 
 app.onError((err, c) => {
@@ -24,27 +24,19 @@ app.onError((err, c) => {
 app.use("*", honoLogger());
 app.use("/api/*", jwk({ jwks_uri: env.JWKS_URI, alg: ["RS256"] }));
 
-app
+const proofRouter = new Hono()
   .get(
-    "/health",
-    describeRoute({ description: "Service health check" }),
-    async (c: Context) => c.json({ status: "healthy" }, 200)
-  )
-  .get(
-    "/api/proof/:case_id",
+    "/:case_id",
     describeRoute({ description: "Get proof for a case" }),
     validator("param", getProofSchema),
     async (c) => {
       const { case_id } = c.req.valid("param");
-      const rows = await db
-        .select()
-        .from(proofItems)
-        .where(eq(proofItems.caseId, case_id));
+      const rows = await proofService.getProofByCaseId(case_id);
       return c.json({ proof: rows }, 200);
     }
   )
   .post(
-    "/api/proof",
+    "",
     describeRoute({
       description: "Upload proof image with form-data and create record",
     }),
@@ -62,7 +54,7 @@ app
       const filePath = `${caseId}/${Date.now()}_proof_item`;
 
       // 1. Upload file to Supabase Storage
-      const { data: _data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from(env.SUPABASE_BUCKET)
         .upload(filePath, file, {
           contentType: file.type || "application/octet-stream",
@@ -79,42 +71,74 @@ app
 
       const mediaUrl = publicUrlData.publicUrl;
 
-      // 2. Create record in database with the image URL
-      const rows = await db
-        .insert(proofItems)
-        .values({
-          caseId,
-          uploaderId,
-          mediaUrl,
-          type: type as any,
-          remarks,
-        })
-        .returning();
+      // 2. Create record in database using service
+      const proof = await proofService.storeSingleProofItem({
+        caseId,
+        uploaderId,
+        mediaUrl,
+        type: type as any,
+        remarks,
+      });
 
-      return c.json({ proof: rows[0] }, 201);
+      return c.json({ proof }, 201);
+    }
+  )
+  .post(
+    "/batch",
+    describeRoute({
+      description: "Store multiple proof items (JSON record only)",
+    }),
+    validator(
+      "json",
+      z.object({
+        caseId: z.string().uuid(),
+        uploaderId: z.string().uuid(),
+        items: z.array(
+          z.object({
+            mediaUrl: z.string().url(),
+            type: z.enum(["before", "after", "signature"]),
+            remarks: z.string().optional(),
+          })
+        ),
+      })
+    ),
+    async (c) => {
+      const body = c.req.valid("json");
+      const rows = await proofService.storeProofItems(
+        body.caseId,
+        body.uploaderId,
+        body.items
+      );
+      return c.json({ proof: rows }, 201);
     }
   );
 
-app.get(
-  "/openapi",
-  openAPIRouteHandler(app, {
-    documentation: {
-      info: {
-        title: "Proof Atom API",
-        version: "1.0.0",
-        description: "Standalone specs",
+const proofAtomRoutes = app
+  .get(
+    "/health",
+    describeRoute({ description: "Service health check" }),
+    async (c: Context) => c.json({ status: "healthy" }, 200)
+  )
+  .route("/api/proof", proofRouter)
+  .get(
+    "/openapi",
+    openAPIRouteHandler(app, {
+      documentation: {
+        info: {
+          title: "Proof Atom API",
+          version: "1.0.0",
+          description: "Standalone specs",
+        },
+        servers: [
+          { url: `http://localhost:${env.PORT}`, description: "Local Service" },
+        ],
       },
-      servers: [
-        { url: `http://localhost:${env.PORT}`, description: "Local Service" },
-      ],
-    },
-  })
-);
-
-app.get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
+    })
+  )
+  .get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
 
 export { app };
-
+export type ProofAtomType = typeof proofAtomRoutes;
 export default {
   port: env.PORT,
   fetch: app.fetch,
