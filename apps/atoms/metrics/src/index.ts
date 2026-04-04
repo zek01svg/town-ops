@@ -1,15 +1,14 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import { logger, honoLogger } from "@townops/shared-ts";
-import { eq } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, openAPIRouteHandler, validator } from "hono-openapi";
 import { jwk } from "hono/jwk";
 
-import db from "./database/db";
 import { contractorMetrics } from "./database/schema";
 import { env } from "./env";
+import * as metricsService from "./service";
 import { getMetricSchema } from "./validation-schemas";
 
 const insertMetricSchema = createInsertSchema(contractorMetrics);
@@ -27,7 +26,7 @@ app.onError((err, c) => {
 app.use("*", honoLogger());
 app.use("/api/*", jwk({ jwks_uri: env.JWKS_URI, alg: ["RS256"] }));
 
-app
+const metricsRoutes = app
   .get(
     "/health",
     describeRoute({ description: "Service health check" }),
@@ -39,10 +38,7 @@ app
     validator("param", getMetricSchema),
     async (c) => {
       const { contractor_id } = c.req.valid("param");
-      const rows = await db
-        .select()
-        .from(contractorMetrics)
-        .where(eq(contractorMetrics.contractorId, contractor_id));
+      const rows = await metricsService.getMetricsByContractorId(contractor_id);
       return c.json({ metrics: rows }, 200);
     }
   )
@@ -52,8 +48,8 @@ app
     validator("json", insertMetricSchema),
     async (c) => {
       const body = c.req.valid("json");
-      const rows = await db.insert(contractorMetrics).values(body).returning();
-      return c.json({ metric: rows[0] }, 201);
+      const metric = await metricsService.createMetric(body);
+      return c.json({ metric }, 201);
     }
   );
 
@@ -76,6 +72,7 @@ app.get(
 app.get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
 
 export { app };
+export type MetricsAtomType = typeof metricsRoutes;
 
 export default {
   port: env.PORT,
