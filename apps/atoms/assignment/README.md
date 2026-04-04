@@ -1,17 +1,17 @@
 # 📁 Assignment Atom
 
-A backend microservice (Atom) dedicated strictly to creating, updating, and querying municipal case assignments. It acts as a raw data backplane layer constructed using **FastAPI** and **SQLModel** with native OpenTelemetry instrumentation.
+A backend microservice (Atom) dedicated to managing assignments. It acts as a raw data backplane layer constructed using **Hono**, **Bun**, and **Drizzle ORM** with native OpenTelemetry instrumentation.
 
 ---
 
 ## 🚀 **Tech Stack**
 
-- **Runtime**: [Python](https://www.python.org/)
-- **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
-- **OpenAPI & Docs**: [FastAPI](https://fastapi.tiangolo.com/advanced/openapi/)
-- **Database ORM**: [SQLModel](https://sqlmodel.tiangolo.com/)
-- **Logging**: [Structlog](https://www.structlog.org/en/stable/)
-- **Testing**: [Pytest](https://docs.pytest.org/en/stable/)
+- **Runtime**: [Bun](https://bun.sh/)
+- **Framework**: [Hono](https://hono.dev/)
+- **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
+- **Database ORM**: [Drizzle ORM](https://orm.drizzle.team/)
+- **Logging**: Pino via customized `@townops/shared-ts`
+- **Testing**: [Vitest](https://vitest.dev/)
 
 ---
 
@@ -20,17 +20,19 @@ A backend microservice (Atom) dedicated strictly to creating, updating, and quer
 The API documentation is fully automated via OpenAPI specifications.
 Once the server is running, visit:
 
-- **Dashboard (Scalar)**: `http://localhost:5001/scalar`
-- **OpenAPI Spec (.json)**: `http://localhost:5001/openapi`
+- **Dashboard (Scalar)**: `http://localhost:5003/scalar`
+- **OpenAPI Spec (.json)**: `http://localhost:5003/openapi`
 
 ---
 
 ## 💻 **Development Commands**
 
-| Command                                                             | Description                                   |
-| :------------------------------------------------------------------ | :-------------------------------------------- |
-| `uv run uvicorn src.main:app --reload --port 5003 --host 127.0.0.1` | Starts development server with hot reloading. |
-| `uv run uvicorn src.main:app --port 5003 --host 127.0.0.1`          | Starts production server.                     |
+| Command                | Description                                                                    |
+| :--------------------- | :----------------------------------------------------------------------------- |
+| `bun run dev`          | Starts server with `--hot` reloading addressing workspace filters.             |
+| `bun run build`        | Bundles exact index payload into a standalone `build/index.js`.                |
+| `bun test`             | Executes isolated endpoints verification suite with coverage.                  |
+| `bun run build:docker` | Chained script that bundles locally, then builds optimized single-liner image. |
 
 ---
 
@@ -42,15 +44,15 @@ Create a `.env` file in this directory with the following variables:
 
 ```env
 DATABASE_URL=postgres://user:password@localhost:5432/townops
-PORT=5001
+PORT=5003
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
 ### 2. Run Locally
 
 ```bash
-uv sync
-uv run uvicorn src.main:app --reload --port 5003 --host 127.0.0.1
+pnpm i
+bun run dev
 ```
 
 ### 3. Run in Docker 🐳
@@ -58,9 +60,9 @@ uv run uvicorn src.main:app --reload --port 5003 --host 127.0.0.1
 To package and spin up the optimized docker runtime:
 
 ```bash
-# 1. Build Single-Stage Image from the workspace root
-docker build -t assignment-atom . -f apps/atoms/assignment/Dockerfile
+# 1. Build Single-Stage Image
+bun run build:docker
 
-# 2. Run Container with absolute reference port mapping
+# 2. Run Container with port mapping
 docker run --env-file .env -p 5003:5003 assignment-atom
 ```
