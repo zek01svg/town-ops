@@ -11,7 +11,9 @@ export async function setup() {
 
   const [pgContainer, rabbitContainer] = await Promise.all([
     new PostgreSqlContainer("postgres:15-alpine").start(),
-    new RabbitMQContainer("rabbitmq:3-management-alpine").start(),
+    new RabbitMQContainer("rabbitmq:3.13-management-alpine")
+      .withStartupTimeout(120_000)
+      .start(),
   ]);
 
   const dbUrl = pgContainer.getConnectionUri();

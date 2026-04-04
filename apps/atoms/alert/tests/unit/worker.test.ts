@@ -1,64 +1,45 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import {
-  getJobAssignedEmail,
-  getCaseEscalatedEmail,
-  getCaseNoAccessEmail,
-  getJobCompletedEmail,
-  getGenericAlertEmail,
-} from "../../src/email-templates";
-
-const VALID_UUID_1 = "123e4567-e89b-12d3-a456-426614174000";
-const VALID_UUID_2 = "123e4567-e89b-12d3-a456-426614174001";
-
-// Mock Query and DB for worker assertions
-const { mockQuery, mockDb } = vi.hoisted(() => {
-  const q = {
-    insert: vi.fn().mockReturnThis(),
-    values: vi.fn().mockReturnThis(),
-    // eslint-disable-next-line unicorn/no-thenable
-    then: vi.fn().mockImplementation((resolve: any) => resolve([])),
-  };
-
-  const db = {
-    insert: vi.fn().mockReturnValue(q),
-    select: vi.fn().mockReturnValue(q),
-  };
-
-  return { mockQuery: q, mockDb: db };
+vi.hoisted(() => {
+  process.env.PORT = "5006";
+  process.env.DATABASE_URL = "postgres://root:password@localhost:5432/testdb";
+  process.env.RESEND_API_KEY = "re_123";
+  process.env.JWKS_URI = "http://localhost";
 });
 
+// Mock DB
+const { mockInsert, mockValues } = vi.hoisted(() => {
+  const mockValues = vi.fn().mockResolvedValue(undefined);
+  const mockInsert = vi.fn().mockReturnValue({ values: mockValues });
+  return { mockInsert, mockValues };
+});
 vi.mock("../../src/database/db", () => ({
-  default: mockDb,
+  default: { insert: mockInsert },
 }));
 
-// Mock RabbitMQ Consuming
-let consumeCallback: (msg: any) => Promise<void>;
+// Capture the RabbitMQ message handler registered by startAlertQueueWorker
+let capturedHandler: (msg: any) => Promise<void>;
 
-vi.mock("@townops/shared-ts", () => {
-  return {
-    rabbitmqClient: {
-      connect: vi.fn().mockResolvedValue(undefined),
-      consume: vi.fn().mockImplementation((queue: string, callback: any) => {
-        consumeCallback = callback;
-        return Promise.resolve();
-      }),
-    },
-    logger: {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-  };
+vi.mock("@townops/shared-ts", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  honoLogger: () => (_c: any, next: any) => next(),
+  rabbitmqClient: {
+    connect: vi.fn().mockResolvedValue(undefined),
+    consume: vi.fn().mockImplementation((_queue: string, handler: any) => {
+      capturedHandler = handler;
+      return Promise.resolve();
+    }),
+  },
+}));
+
+// Mock Mailer
+const { mockSendEmail } = vi.hoisted(() => {
+  const mockSendEmail = vi.fn().mockResolvedValue(undefined);
+  return { mockSendEmail };
 });
+vi.mock("../../src/mailer", () => ({ sendEmail: mockSendEmail }));
 
-// Mock Mailer to spy on sendEmail
-const mockSendEmail = vi.fn();
-vi.mock("../../src/mailer", () => ({
-  sendEmail: mockSendEmail,
-}));
-
-// Mock Templates to avoid testing logic inside templates themselves again
+// Mock Templates
 vi.mock("../../src/email-templates", () => ({
   getCaseOpenedEmail: vi.fn().mockReturnValue("<p>Case Opened</p>"),
   getJobAssignedEmail: vi.fn().mockReturnValue("<p>Job Assigned</p>"),
@@ -74,166 +55,149 @@ vi.mock("resend", () => ({
   }),
 }));
 
-vi.mock("../../src/env", () => ({
-  env: {
-    RESEND_API_KEY: "re_123",
-    DATABASE_URL: "postgres://root:password@localhost:5432/testdb",
-    RABBITMQ_URL: "amqp://localhost",
-    JWKS_URI: "http://localhost",
-  },
-}));
+import { rabbitmqClient } from "@townops/shared-ts";
 
-let startAlertQueueWorker: any;
+/* eslint-disable import/first */
+import {
+  getJobAssignedEmail,
+  getCaseEscalatedEmail,
+  getCaseNoAccessEmail,
+  getJobCompletedEmail,
+  getGenericAlertEmail,
+} from "../../src/email-templates";
+import { startAlertQueueWorker } from "../../src/worker";
+/* eslint-enable import/first */
+
+const VALID_UUID_1 = "123e4567-e89b-12d3-a456-426614174000";
+const VALID_UUID_2 = "123e4567-e89b-12d3-a456-426614174001";
+
+// Schema requires: caseId (uuid), email (email). residentId/recipientId are optional.
+const validPayload = {
+  caseId: VALID_UUID_1,
+  residentId: VALID_UUID_2,
+  category: "plumbing",
+  channel: "email",
+  email: "test@example.com",
+};
+
+function makeMsg(
+  routingKey: string,
+  data: Record<string, unknown> = validPayload
+) {
+  return {
+    routingKey,
+    body: Buffer.from(JSON.stringify(data)),
+    ack: vi.fn().mockResolvedValue(undefined),
+    nack: vi.fn().mockResolvedValue(undefined),
+  };
+}
 
 describe("Alert Worker", () => {
   beforeEach(async () => {
-    const workerMod = await import("../../src/worker");
-    startAlertQueueWorker = workerMod.startAlertQueueWorker;
     vi.clearAllMocks();
-    mockQuery.then.mockImplementation((resolve: any) => resolve([]));
+    startAlertQueueWorker();
+    // Flush microtasks so the async IIFE inside startAlertQueueWorker registers the consumer
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
   describe("startAlertQueueWorker", () => {
-    it("should connect to RabbitMQ and establish consumer", async () => {
-      startAlertQueueWorker();
-      // Wait microtasks so void wrapper executes connect & consume
-      await new Promise((r) => setTimeout(r, 10));
-
-      const { rabbitmqClient } = await import("@townops/shared-ts");
+    it("should connect to RabbitMQ and register a consumer for alert-queue", () => {
+      const mocked = vi.mocked(rabbitmqClient);
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(rabbitmqClient.connect).toHaveBeenCalled();
+      expect(mocked.connect).toHaveBeenCalledOnce();
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(rabbitmqClient.consume).toHaveBeenCalledWith(
+      expect(mocked.consume).toHaveBeenCalledOnce();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mocked.consume).toHaveBeenCalledWith(
         "alert-queue",
         expect.any(Function)
       );
     });
+  });
 
-    describe("Message Consumption Handler", () => {
-      const mockMsgOptions = (body: string, routingKey = "case.opened") => ({
-        body: body ? Buffer.from(body) : null,
-        routingKey,
-        nack: vi.fn().mockResolvedValue(undefined),
-      });
+  describe("message handler", () => {
+    it("should skip insert and email when residentId and recipientId are both absent", async () => {
+      // Payload passes schema (residentId/recipientId are optional) but recipientId check fails
+      await capturedHandler(
+        makeMsg("case.opened", {
+          caseId: VALID_UUID_1,
+          email: "test@example.com",
+        })
+      );
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
 
-      const validPayload = {
-        caseId: VALID_UUID_1,
+    it("should drop message (ZodError) when caseId is missing from payload", async () => {
+      // caseId is required by alertPayloadSchema — throws ZodError, re-thrown by handler
+      const msg = makeMsg("case.opened", {
         residentId: VALID_UUID_2,
-        category: "category",
-        channel: "email",
         email: "test@example.com",
+      });
+      await expect(capturedHandler(msg)).rejects.toThrow();
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it("should call getJobAssignedEmail for job.assigned routing key", async () => {
+      await capturedHandler(makeMsg("job.assigned"));
+      expect(vi.mocked(getJobAssignedEmail)).toHaveBeenCalled();
+    });
+
+    it("should call getCaseEscalatedEmail for case.escalated routing key", async () => {
+      await capturedHandler(makeMsg("case.escalated"));
+      expect(vi.mocked(getCaseEscalatedEmail)).toHaveBeenCalled();
+    });
+
+    it("should call getCaseNoAccessEmail for case.no_access routing key", async () => {
+      await capturedHandler(makeMsg("case.no_access"));
+      expect(vi.mocked(getCaseNoAccessEmail)).toHaveBeenCalled();
+    });
+
+    it("should call getJobCompletedEmail for job.done routing key", async () => {
+      await capturedHandler(makeMsg("job.done"));
+      expect(vi.mocked(getJobCompletedEmail)).toHaveBeenCalled();
+    });
+
+    it("should call getGenericAlertEmail for alert.notify routing key", async () => {
+      await capturedHandler(makeMsg("alert.notify"));
+      expect(vi.mocked(getGenericAlertEmail)).toHaveBeenCalled();
+    });
+
+    it("should call getGenericAlertEmail for unrecognised routing keys", async () => {
+      await capturedHandler(makeMsg("unknown.event"));
+      expect(vi.mocked(getGenericAlertEmail)).toHaveBeenCalled();
+    });
+
+    it("should insert an audit record for valid messages", async () => {
+      await capturedHandler(makeMsg("job.assigned"));
+      expect(mockInsert).toHaveBeenCalledOnce();
+      expect(mockValues).toHaveBeenCalledOnce();
+    });
+
+    it("should send email when payload contains an email field", async () => {
+      await capturedHandler(makeMsg("case.opened"));
+      expect(mockSendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: "test@example.com" })
+      );
+    });
+
+    it("should throw (poison pill to DLX) when message body is invalid JSON", async () => {
+      const badMsg = {
+        routingKey: "case.opened",
+        body: Buffer.from("{ invalid json }"),
+        ack: vi.fn(),
+        nack: vi.fn(),
       };
+      await expect(capturedHandler(badMsg)).rejects.toThrow(SyntaxError);
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
 
-      it("should return and log warn for empty body", async () => {
-        startAlertQueueWorker();
-        await new Promise((r) => setTimeout(r, 10));
-
-        const emptyMsg = mockMsgOptions("");
-        await consumeCallback(emptyMsg);
-
-        expect(mockDb.insert).not.toHaveBeenCalled();
-      });
-
-      it("should process valid payload correctly and insert to db then send email", async () => {
-        startAlertQueueWorker();
-        await new Promise((r) => setTimeout(r, 10));
-
-        const msg = mockMsgOptions(JSON.stringify(validPayload), "case.opened");
-        try {
-          await consumeCallback(msg);
-        } catch (err) {
-          console.error("Consume callback threw:", err);
-        }
-
-        const { logger } = await import("@townops/shared-ts");
-        expect(logger.error).not.toHaveBeenCalled();
-
-        expect(mockDb.insert).toHaveBeenCalled();
-        expect(mockSendEmail).toHaveBeenCalled();
-      });
-
-      it("should handle job.assigned routing and call template", async () => {
-        startAlertQueueWorker();
-        await new Promise((r) => setTimeout(r, 10));
-
-        const msg = mockMsgOptions(
-          JSON.stringify(validPayload),
-          "job.assigned"
-        );
-        await consumeCallback(msg);
-
-        expect(vi.mocked(getJobAssignedEmail)).toHaveBeenCalled();
-      });
-
-      it("should handle case.escalated routing and call template", async () => {
-        startAlertQueueWorker();
-        await new Promise((r) => setTimeout(r, 10));
-
-        const msg = mockMsgOptions(
-          JSON.stringify(validPayload),
-          "case.escalated"
-        );
-        await consumeCallback(msg);
-
-        expect(vi.mocked(getCaseEscalatedEmail)).toHaveBeenCalled();
-      });
-
-      it("should handle case.no_access routing and call template", async () => {
-        startAlertQueueWorker();
-        await new Promise((r) => setTimeout(r, 10));
-
-        const msg = mockMsgOptions(
-          JSON.stringify(validPayload),
-          "case.no_access"
-        );
-        await consumeCallback(msg);
-
-        expect(vi.mocked(getCaseNoAccessEmail)).toHaveBeenCalled();
-      });
-
-      it("should handle job.done routing and call template", async () => {
-        startAlertQueueWorker();
-        await new Promise((r) => setTimeout(r, 10));
-
-        const msg = mockMsgOptions(JSON.stringify(validPayload), "job.done");
-        await consumeCallback(msg);
-
-        expect(vi.mocked(getJobCompletedEmail)).toHaveBeenCalled();
-      });
-
-      it("should handle default routing using generic template", async () => {
-        startAlertQueueWorker();
-        await new Promise((r) => setTimeout(r, 10));
-
-        const msg = mockMsgOptions(
-          JSON.stringify(validPayload),
-          "unknown.routing"
-        );
-        await consumeCallback(msg);
-
-        expect(vi.mocked(getGenericAlertEmail)).toHaveBeenCalled();
-      });
-
-      it("should throw poison pill error to DLX if invalid JSON is received", async () => {
-        startAlertQueueWorker();
-        await new Promise((r) => setTimeout(r, 10));
-
-        const badMsg = mockMsgOptions("{ invalid json }", "case.opened");
-
-        await expect(consumeCallback(badMsg)).rejects.toThrow();
-      });
-
-      it("should nack and requeue message if non-parse error throws", async () => {
-        startAlertQueueWorker();
-        await new Promise((r) => setTimeout(r, 10));
-
-        mockSendEmail.mockRejectedValueOnce(new Error("Transient API Failure"));
-        const msg = mockMsgOptions(JSON.stringify(validPayload), "case.opened");
-
-        await consumeCallback(msg);
-
-        expect(msg.nack).toHaveBeenCalledWith(false, true);
-      });
+    it("should nack and requeue message on transient (non-parse) failure", async () => {
+      mockSendEmail.mockRejectedValueOnce(new Error("Transient API failure"));
+      const msg = makeMsg("case.opened");
+      await capturedHandler(msg);
+      expect(msg.nack).toHaveBeenCalledWith(false, true);
     });
   });
 });
