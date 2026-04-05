@@ -291,3 +291,5 @@ Thumbs.db
 !bun.lockb
 !uv.lock
 !poetry.lock
+
+.tanstack

@@ -1,9 +1,16 @@
 version: '3.8'
 
 services:
+  # --- Caching ---
+  redis:
+    image: redis:8-alpine
+    container_name: townops-redis
+    ports:
+      - 6379:6379
+
   # --- Messaging ---
   rabbitmq:
-    image: rabbitmq:4.2.4-management-alpine
+    image: rabbitmq:3.13-management-alpine
     container_name: townops-mq
     ports:
       - '5672:5672' # AMQP
@@ -40,41 +47,6 @@ services:
       - hdbcare-net
 
   # --- Assignment Service ---
-  assignment:
-    build:
-      context: ../apps/atoms/assignment
-      dockerfile: Dockerfile
-    container_name: townops-assignment
-    ports:
-      - '5003:5003'
-    environment:
-      PORT: 5003
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      DATABASE_URL: ${ASSIGNMENT_DATABASE_URL} # TODO: add the supabase URL
-    depends_on:
-      - rabbitmq
-    networks:
-      - hdbcare-net
-
-  # --- Assign Job Composite ---
-  assign-job:
-    build:
-      context: ../apps/composites/assign-job
-      dockerfile: Dockerfile
-    container_name: townops-assign-job
-    ports:
-      - '6002:6002'
-    environment:
-      PORT: 6002
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      CONTRACTOR_API_URL: ${CONTRACTOR_API_URL}
-      ASSIGNMENT_URL: http://assignment:5003
-      METRICS_URL: http://metrics:5007
-    depends_on:
-      - rabbitmq
-      - assignment
-    networks:
-      - hdbcare-net
 
 networks:
   hdbcare-net:

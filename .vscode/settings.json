@@ -88,5 +88,6 @@
   // --- Other Tools ---
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
-  "npm.packageManager": "pnpm"
+  "npm.packageManager": "pnpm",
+  "git.ignoreLimitWarning": true
 }

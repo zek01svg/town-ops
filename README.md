@@ -11,7 +11,7 @@
 
 ### 🌟 Value Proposition
 
-**TownOps** is an enterprise-grade maintenance management system designed for high-concurrency municipal operations. It addresses the complexity of urban maintenance by decoupling data ownership from business processes through a strictly layered **Atomic/Composite** architecture. This ensures data integrity, horizontal scalability, and resilient asynchronous event handling.
+**TownOps** is an enterprise-grade maintenance management system designed for high-concurrency municipal operations. It addresses the complexity of urban maintenance by decoupling data ownership from business processes through a strictly layered **Atomic/Composite** architecture to ensure data integrity, horizontal scalability, and resilient asynchronous event handling.
 
 ---
 
@@ -59,23 +59,7 @@ graph TD
 ```
 
 > [!IMPORTANT]
-> **Architectural Rule:** Atomic services own their data and never call other services via HTTP. All cross-service communication at the Atomic level MUST occur asynchronously via RabbitMQ.
-
----
-
-## 🛠 Tech Stack
-
-| Category         | Technology                           | Usage                                               |
-| :--------------- | :----------------------------------- | :-------------------------------------------------- |
-| **Language**     | TypeScript, Python 3.11+             | Dual-language codebase for performance & ergonomics |
-| **Runtime**      | Node.js 20, Bun (Atoms), UV (Python) | High-performance execution environments             |
-| **Frontend**     | React 19, Vite 6, TailwindCSS 4      | Modern, fast, and responsive user interfaces        |
-| **Backend (TS)** | Hono, Bun                            | Atoms                                               |
-| **Backend (PY)** | FastAPI, Pydantic                    | Composites                                          |
-| **Database**     | PostgreSQL, Drizzle ORM              | Relational consistency with type-safe migrations    |
-| **Messaging**    | RabbitMQ (AMQP)                      | Asynchronous event flows and SLA timers             |
-| **Gateway**      | Kong Gateway                         | Centralized routing, auth, and rate limiting        |
-| **CI/CD**        | GitHub Actions                       | Automated linting, testing, and deployment          |
+> **Architectural Rule:** Atomic services own their data and never call other services via HTTP. All cross-service communication occurs asynchronously via RabbitMQ.
 
 ---
 
@@ -156,22 +140,18 @@ pnpm dev
 
 ```text
 .
+├── .github/                 # GitHub Actions
+├── .vscode/                 # VSCode configs
+├── .husky/                  # Husky configs
 ├── apps/                    # Microservices
-│   ├── atoms/               # Data-owning services (Python/FastAPI)
-│   │   ├── alert/           # Incident notifications
-│   │   ├── case/            # Core maintenance records
-│   │   └── ...              # 7 atomic services in total
-│   ├── composites/          # Process orchestrators (TS/Hono)
-│   │   ├── open-case/       # Orchestrates case creation
-│   │   └── ...              # 6 composite services in total
-│   └── frontend/            # React 19 / Vite Application
+│   ├── atoms/               # Data-owning services
+│   ├── composites/          # Process orchestrators
+│   └── frontend/            # React app
+├── docs/                    # Detailed documentation
 ├── packages/                # Shared internal libraries
-│   ├── shared-types/        # Shared TypeScript definitions
+│   ├── shared-ts/           # Shared TypeScript utilities
 │   ├── shared-python/       # Shared Python utilities
-│   └── ui-core/             # Centralized design system
-├── tooling/                 # Shared configuration (ESLint, Ruff, Prettier)
-├── infrastructure/          # Docker & Terraform configuration
+├── tooling/                 # Shared tooling configs (Oxlint, Ruff, Oxformat)
+├── infrastructure/          # Docker, Kong, RabbitMQ & Terraform configs
 └── tests/                   # E2E and Integration test suites
 ```
-
----

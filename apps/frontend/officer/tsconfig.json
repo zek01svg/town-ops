@@ -1,0 +1,23 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "jsx": "react-jsx",
+    "pretty": true,
+    "moduleResolution": "bundler",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "types": ["vite/client"],
+    "paths": {
+      "@/components/ui/*": ["../../../packages/ui/src/components/ui/*"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts", "tests"],
+  "exclude": ["node_modules"]
+}

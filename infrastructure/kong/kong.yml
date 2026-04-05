@@ -1,0 +1,188 @@
+_format_version: "3.0"
+_transform: true
+
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "${CORS_ORIGINS}"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      headers:
+        - Content-Type
+        - Authorization
+      exposed_headers:
+        - Content-Length
+      credentials: true
+      max_age: 600
+      preflight_continue: false
+
+  - name: rate-limiting
+    config:
+      minute: 120
+      policy: local
+      hide_client_headers: false
+
+services:
+  - name: auth-atom
+    url: http://host.docker.internal:5008
+    routes:
+      - name: auth-atom-route
+        paths:
+          - /api/auth
+        strip_path: false
+
+  - name: case-atom
+    url: http://host.docker.internal:5001
+    routes:
+      - name: case-atom-route
+        paths:
+          - /api/cases
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 60
+          policy: local
+
+  - name: resident-atom
+    url: http://host.docker.internal:5002
+    routes:
+      - name: resident-atom-route
+        paths:
+          - /api/residents
+        strip_path: false
+
+  - name: assignment-atom
+    url: http://host.docker.internal:5003
+    routes:
+      - name: assignment-atom-route
+        paths:
+          - /api/assignments
+        strip_path: false
+
+  - name: appointment-atom
+    url: http://host.docker.internal:5004
+    routes:
+      - name: appointment-atom-route
+        paths:
+          - /api/appointments
+        strip_path: false
+
+  - name: proof-atom
+    url: http://host.docker.internal:5005
+    routes:
+      - name: proof-atom-route
+        paths:
+          - /api/proof
+        strip_path: false
+
+  - name: alert-atom
+    url: http://host.docker.internal:5006
+    routes:
+      - name: alert-atom-route
+        paths:
+          - /api/alerts
+        strip_path: false
+
+  - name: metrics-atom
+    url: http://host.docker.internal:5007
+    routes:
+      - name: metrics-atom-route
+        paths:
+          - /api/metrics
+        strip_path: false
+
+  - name: open-case-composite
+    url: http://host.docker.internal:6001
+    routes:
+      - name: open-case-route
+        paths:
+          - /api/cases/open-case
+        methods:
+          - POST
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30        # write operations — stricter
+          policy: local
+
+  - name: assign-job-composite
+    url: http://host.docker.internal:6002
+    routes:
+      - name: assign-job-route
+        paths:
+          - /api/assignments/assign-job
+        methods:
+          - POST
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
+
+  - name: accept-job-composite
+    url: http://host.docker.internal:6003
+    routes:
+      - name: accept-job-route
+        paths:
+          - /api/assignments/accept-job
+        methods:
+          - POST
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
+
+  - name: close-case-composite
+    url: http://host.docker.internal:6004
+    routes:
+      - name: close-case-route
+        paths:
+          - /api/cases/close-case
+        methods:
+          - POST
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
+
+  - name: handle-breach-composite
+    url: http://host.docker.internal:6005
+    routes:
+      - name: handle-breach-route
+        paths:
+          - /api/cases/handle-breach
+        methods:
+          - POST
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
+
+  - name: reschedule-job-composite
+    url: http://host.docker.internal:6006
+    routes:
+      - name: reschedule-job-route
+        paths:
+          - /api/assignments/reschedule-job
+        methods:
+          - POST
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local

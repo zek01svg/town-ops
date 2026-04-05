@@ -4,6 +4,29 @@ import type { AMQPChannel, AMQPMessage } from "@cloudamqp/amqp-client";
 import { env } from "./env";
 import { logger } from "./logger";
 
+type QueueName =
+  | "assign-job-queue"
+  | "alert-queue"
+  | "metrics-queue"
+  | "handle-breach-queue"
+  | "error-audit-queue"
+  | "sla-timers-queue";
+
+const DEFAULT_QUEUE_ARGUMENTS: Record<
+  QueueName,
+  Record<string, string> | undefined
+> = {
+  "assign-job-queue": { "x-dead-letter-exchange": "townops.dlx" },
+  "alert-queue": { "x-dead-letter-exchange": "townops.dlx" },
+  "metrics-queue": { "x-dead-letter-exchange": "townops.dlx" },
+  "handle-breach-queue": { "x-dead-letter-exchange": "townops.dlx" },
+  "error-audit-queue": undefined,
+  "sla-timers-queue": {
+    "x-dead-letter-exchange": "townops.events",
+    "x-dead-letter-routing-key": "sla.breached",
+  },
+};
+
 /**
  * @class RabbitMQClient
  * @description A client for interacting with RabbitMQ.
@@ -109,13 +132,7 @@ class RabbitMQClient {
    * @description Consumes messages from a queue with callback handler and automatic/requeue ACK handling.
    */
   async consume(
-    queueName:
-      | "assign-job-queue"
-      | "alert-queue"
-      | "metrics-queue"
-      | "handle-breach-queue"
-      | "error-audit-queue"
-      | "sla-timers-queue",
+    queueName: QueueName,
     callback: (message: AMQPMessage) => Promise<void>,
     options?: {
       exchangeName?: "townops.events" | "townops.dlx";
@@ -137,11 +154,11 @@ class RabbitMQClient {
     // Set prefetch to 1 for fair dispatching
     await channel.basicQos(1);
 
-    const q = await channel.queue(
-      queueName,
-      { durable: true },
-      options?.arguments
-    );
+    const queueArguments = DEFAULT_QUEUE_ARGUMENTS[queueName]
+      ? { ...DEFAULT_QUEUE_ARGUMENTS[queueName], ...options?.arguments }
+      : options?.arguments;
+
+    const q = await channel.queue(queueName, { durable: true }, queueArguments);
 
     // Optional binding to an exchange
     if (options?.exchangeName && options.routingKey) {
