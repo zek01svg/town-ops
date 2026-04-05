@@ -1,10 +1,35 @@
 {
-  "name": "assign-job-composite",
+  "name": "@townops/assign-job-composite",
   "version": "0.1.0",
-  "description": "Composite service for assigning jobs in TownOps",
-  "main": "src/main.py",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "start": "uv run uvicorn src.main:app --host 127.0.0.1 --port 6002",
-    "dev": "uv run uvicorn src.main:app --host 127.0.0.1 --port 6002 --reload"
+    "dev": "bun run --hot src/index.ts",
+    "build": "bun build --production --minify --target=bun --outdir=build src/index.ts",
+    "build:docker": "bun run build && docker build -t assign-job-composite .",
+    "test": "bun run load-env -- vitest run tests",
+    "load-env": "dotenv -e .env",
+    "start": "bun run start",
+    "lint": "pnpm oxlint --config=../../../tooling/oxlint/oxlint.config.ts"
+  },
+  "dependencies": {
+    "@t3-oss/env-core": "catalog:",
+    "@townops/assignment-atom": "workspace:*",
+    "@townops/metrics-atom": "workspace:*",
+    "@townops/shared-ts": "workspace:*",
+    "hono": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudamqp/amqp-client": "catalog:",
+    "@hono/standard-validator": "catalog:",
+    "@scalar/hono-api-reference": "catalog:",
+    "@testcontainers/rabbitmq": "catalog:",
+    "dotenv-cli": "catalog:",
+    "hono-openapi": "catalog:",
+    "typescript": "catalog:"
   }
 }

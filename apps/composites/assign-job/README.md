@@ -1,15 +1,38 @@
 # 🤝 Assign Job Composite
 
-A backend orchestrator composite dedicated to assigning jobs on top of downstream atoms and publishing to RabbitMQ.
+A backend microservice (Composite) dedicated to assigning jobs on top of downstream atoms and publishing events to RabbitMQ. It acts as an orchestrator built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
 
 ---
 
 ## 🚀 **Tech Stack**
 
-- **Runtime**: [Python 3.12+](https://www.python.org/)
-- **Package Manager**: [uv](https://github.com/astral-sh/uv)
-- **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
-- **Messaging**: [aio-pika](https://github.com/aio-pika/aio-pika) (RabbitMQ)
+- **Runtime**: [Bun](https://bun.sh/)
+- **Framework**: [Hono](https://hono.dev/)
+- **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
+- **Messaging**: [@cloudamqp/amqp-client](https://www.npmjs.com/package/@cloudamqp/amqp-client) (RabbitMQ)
+- **Logging**: Pino via customized `@townops/shared-ts`
+- **Testing**: [Vitest](https://vitest.dev/)
+
+---
+
+## 📖 **API Documentation**
+
+The API documentation is fully automated via OpenAPI specifications.
+Once the server is running, visit:
+
+- **Dashboard (Scalar)**: `http://localhost:6002/scalar`
+- **OpenAPI Spec (.json)**: `http://localhost:6002/openapi`
+
+---
+
+## 💻 **Development Commands**
+
+| Command                | Description                                                                    |
+| :--------------------- | :----------------------------------------------------------------------------- |
+| `bun run dev`          | Starts server with `--hot` reloading addressing workspace filters.             |
+| `bun run build`        | Bundles exact index payload into a standalone `build/index.js`.                |
+| `bun test`             | Executes isolated endpoints verification suite with coverage.                  |
+| `bun run build:docker` | Chained script that bundles locally, then builds optimized single-liner image. |
 
 ---
 
@@ -21,38 +44,30 @@ Create a `.env` file in this directory with the following variables:
 
 ```env
 PORT=6002
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
 
-# Downstream URL templates
+# Downstream atoms
 ASSIGNMENT_URL=http://localhost:5003
 CONTRACTOR_API_URL=http://localhost:5004
 METRICS_URL=http://localhost:5005
 ```
 
-### 2. Run Locally (via uv)
+### 2. Run Locally
 
 ```bash
-uv sync
-uv run uvicorn src.main:app --reload --port 6002
+bun install
+bun run dev
 ```
 
 ### 3. Run in Docker 🐳
 
-To package and spin up with absolute context reference:
+To package and spin up the optimized docker runtime:
 
 ```bash
-# Build from Workspace Root!
-docker build -f apps/composites/assign-job/Dockerfile -t assign-job-composite .
+# 1. Build Single-Stage Image
+bun run build:docker
 
-# Run Container
+# 2. Run Container with absolute reference port mapping
 docker run --env-file .env -p 6002:6002 assign-job-composite
 ```
-
----
-
-## 📂 **Folder Layout**
-
-- `src/main.py`: Main entrypoint for FastAPI
-- `src/services.py`: Integration and domain logic with downstream services
-- `src/publisher.py`: RabbitMQ event publishing utilities
-- `src/consumer.py`: Background consumer worker implementation
