@@ -1,0 +1,59 @@
+{
+  "name": "@townops/ui",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./globals.css": "./src/globals.css",
+    "./libr/utils": "./src/libr/utils.ts",
+    "./components/*": "./src/components/ui/*.tsx",
+    "./app-shell": "./src/components/app-shell.tsx",
+    "./hooks/*": "./src/hooks/*.tsx",
+    "./providers/devtools": "./src/providers/devtools.tsx",
+    "./providers/theme-provider": "./src/providers/theme-provider.tsx",
+    "./providers/react-query": "./src/providers/react-query.tsx",
+    "./providers/get-query-client": "./src/providers/get-query-client.ts",
+    "./auth-token": "./src/libr/auth-token.ts"
+  },
+  "scripts": {
+    "clean": "rimraf dist node_modules"
+  },
+  "dependencies": {
+    "@hugeicons/core-free-icons": "catalog:",
+    "@hugeicons/react": "catalog:",
+    "@radix-ui/react-avatar": "catalog:",
+    "@radix-ui/react-checkbox": "catalog:",
+    "@radix-ui/react-collapsible": "catalog:",
+    "@radix-ui/react-dialog": "catalog:",
+    "@radix-ui/react-dropdown-menu": "catalog:",
+    "@radix-ui/react-label": "catalog:",
+    "@radix-ui/react-popover": "catalog:",
+    "@radix-ui/react-scroll-area": "catalog:",
+    "@radix-ui/react-select": "catalog:",
+    "@radix-ui/react-separator": "catalog:",
+    "@radix-ui/react-slot": "catalog:",
+    "@radix-ui/react-tabs": "catalog:",
+    "@radix-ui/react-tooltip": "catalog:",
+    "class-variance-authority": "catalog:",
+    "clsx": "catalog:",
+    "lucide-react": "catalog:",
+    "next-themes": "catalog:",
+    "react": "catalog:react19",
+    "react-dom": "catalog:react19",
+    "sonner": "catalog:",
+    "tailwind-merge": "catalog:",
+    "tw-animate-css": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:react19",
+    "@types/react-dom": "catalog:react19",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@tanstack/react-devtools": ">=0",
+    "@tanstack/react-query": ">=5",
+    "@tanstack/react-query-devtools": ">=5",
+    "@tanstack/react-router": ">=1",
+    "@tanstack/react-router-devtools": ">=1"
+  }
+}
