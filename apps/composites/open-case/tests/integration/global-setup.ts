@@ -5,7 +5,7 @@ export async function setup() {
     "[Pre-integration test setup - Open Case Composite] Starting RabbitMQ Testcontainer..."
   );
   const rabbitContainer = await new RabbitMQContainer(
-    "rabbitmq:4.2.4-management-alpine"
+    "rabbitmq:3.13-management-alpine"
   ).start();
   const amqpUrl = rabbitContainer.getAmqpUrl();
   console.log(
