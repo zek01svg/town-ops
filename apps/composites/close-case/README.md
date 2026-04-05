@@ -1,14 +1,38 @@
 # 🤝 Close Case Composite
 
-A backend orchestrator composite dedicated to closing a case by storing proof items, updating the Case status to `CLOSED`, and emitting a `Job_Done` event to RabbitMQ.
+A backend microservice (Composite) dedicated to closing a case by storing proof items, updating the Case status to `CLOSED`, and emitting a `job.done` event to RabbitMQ. It acts as an orchestrator built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
 
 ---
 
 ## 🚀 **Tech Stack**
 
-- **Runtime**: [Python 3.14](https://www.python.org/)
-- **Package Manager**: [uv](https://github.com/astral-sh/uv)
-- **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
+- **Runtime**: [Bun](https://bun.sh/)
+- **Framework**: [Hono](https://hono.dev/)
+- **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
+- **Messaging**: [@cloudamqp/amqp-client](https://www.npmjs.com/package/@cloudamqp/amqp-client) (RabbitMQ)
+- **Logging**: Pino via customized `@townops/shared-ts`
+- **Testing**: [Vitest](https://vitest.dev/)
+
+---
+
+## 📖 **API Documentation**
+
+The API documentation is fully automated via OpenAPI specifications.
+Once the server is running, visit:
+
+- **Dashboard (Scalar)**: `http://localhost:6004/scalar`
+- **OpenAPI Spec (.json)**: `http://localhost:6004/openapi`
+
+---
+
+## 💻 **Development Commands**
+
+| Command                | Description                                                                    |
+| :--------------------- | :----------------------------------------------------------------------------- |
+| `bun run dev`          | Starts server with `--hot` reloading addressing workspace filters.             |
+| `bun run build`        | Bundles exact index payload into a standalone `build/index.js`.                |
+| `bun test`             | Executes isolated endpoints verification suite with coverage.                  |
+| `bun run build:docker` | Chained script that bundles locally, then builds optimized single-liner image. |
 
 ---
 
@@ -16,41 +40,32 @@ A backend orchestrator composite dedicated to closing a case by storing proof it
 
 ### 1. Environment Setup
 
-Create a `.env` file in this directory with variables or copy from `.env.example`:
+Create a `.env` file in this directory with the following variables:
 
 ```env
 PORT=6004
-CASE_SERVICE_URL=http://localhost:8000
-PROOF_SERVICE_URL=http://localhost:8000
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
+CASE_ATOM_URL=http://localhost:5001
+PROOF_ATOM_URL=http://localhost:5002
+JWKS_URI=http://localhost:8080/realms/townops/protocol/openid-connect/certs
 ```
 
-### 2. Run Locally (via uv)
+### 2. Run Locally
 
 ```bash
-uv sync
-uv run uvicorn src.app:app --reload --port 6004
+bun install
+bun run dev
 ```
 
 ### 3. Run in Docker 🐳
 
-To package and spin up with absolute workspace context reference:
+To package and spin up the optimized docker runtime:
 
 ```bash
-# Build from Workspace Root!
-docker build -f apps/composites/close-case/Dockerfile -t close-case-composite .
+# 1. Build Single-Stage Image
+bun run build:docker
 
-# Run Container
+# 2. Run Container with absolute reference port mapping
 docker run --env-file .env -p 6004:6004 close-case-composite
 ```
-
----
-
-## 📂 **Folder Layout**
-
-- `src/app.py`: Main entrypoint for FastAPI and route implementations
-- `src/case_client.py`: Client wrapper to interact with Case Service
-- `src/proof_client.py`: Client wrapper to interact with Proof Service
-- `src/schemas.py`: Pydantic request/response models
-- `src/config.py`: Environment configuration settings
-- `tests/`: Integration and unit test suite
