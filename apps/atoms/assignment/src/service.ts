@@ -21,6 +21,16 @@ export async function getAssignmentByCaseId(caseId: string) {
 }
 
 /**
+ * Get full status history for an assignment.
+ */
+export async function getStatusHistoryByAssignmentId(assignmentId: string) {
+  return db.query.assignmentStatusHistory.findMany({
+    where: eq(assignmentStatusHistory.assignmentId, assignmentId),
+    orderBy: (t, { asc }) => [asc(t.changedAt)],
+  });
+}
+
+/**
  * Update assignment status and record status history within a transaction.
  */
 export async function updateAssignmentStatus(

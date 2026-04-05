@@ -22,6 +22,7 @@ vi.mock("@townops/shared-ts", () => ({
     connect: vi.fn().mockResolvedValue(undefined),
     publish: vi.fn().mockResolvedValue(true),
   },
+  corsOrigins: () => ["http://localhost:5173"],
 }));
 
 // Mock jwk middleware to bypass auth

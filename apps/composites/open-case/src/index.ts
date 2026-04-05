@@ -1,7 +1,12 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import type { CaseAtomType } from "@townops/case-atom";
 import type { ResidentAtomType } from "@townops/resident-atom";
-import { logger, honoLogger, rabbitmqClient } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  rabbitmqClient,
+  corsOrigins,
+} from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -11,6 +16,7 @@ import {
   validator,
 } from "hono-openapi";
 import { hc } from "hono/client";
+import { cors } from "hono/cors";
 import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
@@ -18,6 +24,21 @@ import { env } from "./env";
 import { openCaseSchema } from "./validation-schemas";
 
 const app = new Hono();
+
+const devOrigins = corsOrigins();
+if (devOrigins) {
+  app.use(
+    "*",
+    cors({
+      origin: devOrigins,
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization"],
+      exposeHeaders: ["Content-Length"],
+      maxAge: 600,
+      credentials: true,
+    })
+  );
+}
 
 app.onError((err, c) => {
   logger.error(
@@ -34,7 +55,7 @@ app.use(
   "/api/*",
   jwk({
     jwks_uri: env.JWKS_URI,
-    alg: ["RS256"],
+    alg: ["EdDSA"],
   })
 );
 
@@ -137,6 +158,7 @@ const OpenCaseComposite = app
             priority: body.priority,
             description: body.description,
             addressDetails: body.address_details,
+            postalCode: body.postal_code,
           },
         },
         {
@@ -162,6 +184,7 @@ const OpenCaseComposite = app
         priority: body.priority,
         description: body.description ?? undefined,
         addressDetails: body.address_details,
+        postalCode: body.postal_code,
       });
 
       return c.json(

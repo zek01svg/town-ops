@@ -1,5 +1,5 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger } from "@townops/shared-ts";
+import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -8,6 +8,7 @@ import {
   resolver,
   validator,
 } from "hono-openapi";
+import { cors } from "hono/cors";
 import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
@@ -18,7 +19,29 @@ import { getCaseSchema, updateCaseStatusSchema } from "./validation-schemas";
 
 const app = new Hono();
 
+const devOrigins = corsOrigins();
+if (devOrigins) {
+  app.use(
+    "*",
+    cors({
+      origin: devOrigins,
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization"],
+      exposeHeaders: ["Content-Length"],
+      maxAge: 600,
+      credentials: true,
+    })
+  );
+}
+
 app.onError((err, c) => {
+  if (
+    err.message.includes("no authorization") ||
+    err.message.includes("Unauthorized") ||
+    err.message.includes("invalid")
+  ) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
     "[case atom] internal server error"
@@ -33,7 +56,7 @@ app.use(
   "/api/*",
   jwk({
     jwks_uri: env.JWKS_URI,
-    alg: ["RS256"],
+    alg: ["EdDSA"],
   })
 );
 

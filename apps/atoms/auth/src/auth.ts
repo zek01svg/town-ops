@@ -28,11 +28,16 @@ export const auth = betterAuth({
       generateId: "uuid",
     },
   },
+  trustedOrigins: [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+  ],
   additionalFields: {
     user: {
       role: {
         type: "string",
-        input: false,
+        input: true, // dev: allow role to be set at sign-up for seeding
       },
     },
   },

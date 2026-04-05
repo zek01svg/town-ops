@@ -29,6 +29,7 @@ vi.mock("hono/jwk", () => ({
 vi.mock("@townops/shared-ts", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   honoLogger: () => (c: any, next: any) => next(),
+  corsOrigins: () => ["http://localhost:5173"],
 }));
 
 vi.mock("../../src/database/db", () => ({

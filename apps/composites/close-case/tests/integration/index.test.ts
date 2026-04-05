@@ -31,6 +31,7 @@ vi.mock("@townops/shared-ts", () => ({
   logger: mockLogger,
   honoLogger: () => (_c: any, next: any) => next(),
   rabbitmqClient: mockRabbitMQ,
+  corsOrigins: () => ["http://localhost:5173"],
 }));
 
 // Bypass JWK auth — integration focus is downstream orchestration

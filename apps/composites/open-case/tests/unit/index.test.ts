@@ -19,6 +19,7 @@ vi.mock("@townops/shared-ts", () => ({
   rabbitmqClient: {
     publish: vi.fn().mockResolvedValue(true),
   },
+  corsOrigins: () => ["http://localhost:5173"],
 }));
 
 // Mock jwk middleware to bypass auth

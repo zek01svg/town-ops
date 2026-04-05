@@ -1,14 +1,30 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger } from "@townops/shared-ts";
+import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
+import { cors } from "hono/cors";
 import { z } from "zod/v4";
 
 import { auth } from "./auth";
 import { env } from "./env";
 
 const app = new Hono();
+
+const devOrigins = corsOrigins();
+if (devOrigins) {
+  app.use(
+    "*",
+    cors({
+      origin: devOrigins,
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization"],
+      exposeHeaders: ["Content-Length"],
+      maxAge: 600,
+      credentials: true,
+    })
+  );
+}
 
 app.onError((err, c) => {
   logger.error(

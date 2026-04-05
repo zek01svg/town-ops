@@ -44,6 +44,7 @@ vi.mock("@townops/shared-ts", () => {
     honoLogger: () => async (_c: unknown, next: () => Promise<void>) => {
       await next();
     },
+    corsOrigins: () => ["http://localhost:5173"],
   };
 });
 

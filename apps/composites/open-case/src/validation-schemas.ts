@@ -6,4 +6,5 @@ export const openCaseSchema = z.object({
   priority: z.enum(["low", "medium", "high", "emergency"]).default("medium"),
   description: z.string().optional(),
   address_details: z.string().optional(),
+  postal_code: z.string().optional(),
 });

@@ -1,5 +1,5 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger } from "@townops/shared-ts";
+import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -8,12 +8,14 @@ import {
   resolver,
   validator,
 } from "hono-openapi";
+import { cors } from "hono/cors";
 import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
 import {
   assignmentsInsertSchema,
   assignmentsSelectSchema,
+  assignmentStatusHistorySelectSchema,
 } from "./database/schema";
 import { env } from "./env";
 import * as assignmentService from "./service";
@@ -24,6 +26,21 @@ import {
 } from "./validation-schemas";
 
 const app = new Hono();
+
+const devOrigins = corsOrigins();
+if (devOrigins) {
+  app.use(
+    "*",
+    cors({
+      origin: devOrigins,
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization"],
+      exposeHeaders: ["Content-Length"],
+      maxAge: 600,
+      credentials: true,
+    })
+  );
+}
 
 app.onError((err, c) => {
   logger.error(
@@ -40,7 +57,7 @@ app.use(
   "/api/*",
   jwk({
     jwks_uri: env.JWKS_URI,
-    alg: ["RS256"],
+    alg: ["EdDSA"],
   })
 );
 
@@ -119,6 +136,48 @@ const assignmentsRouter = new Hono()
       );
 
       return c.json({ assignments: assignment }, 200);
+    }
+  )
+  .get(
+    "/:case_id/history",
+    describeRoute({
+      description: "Get assignment status history for a case",
+      responses: {
+        200: {
+          description: "Status history",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({
+                  history: z.array(assignmentStatusHistorySelectSchema),
+                })
+              ),
+            },
+          },
+        },
+        404: { description: "No assignment found for case" },
+      },
+    }),
+    validator(
+      "param",
+      z.object({ case_id: getAssignmentByCaseSchema }),
+      (result, c) => {
+        if (!result.success) return c.json({ error: "Validation failed" }, 400);
+      }
+    ),
+    async (c) => {
+      const { case_id } = c.req.valid("param");
+      const assignment = await assignmentService.getAssignmentByCaseId(case_id);
+      if (!assignment) return c.json({ history: [] }, 200);
+
+      const history = await assignmentService.getStatusHistoryByAssignmentId(
+        assignment.id
+      );
+      logger.info(
+        { route: "/api/assignments/:case_id/history", caseId: case_id },
+        "Status history fetched"
+      );
+      return c.json({ history }, 200);
     }
   )
   .put(

@@ -2,7 +2,12 @@ import { Scalar } from "@scalar/hono-api-reference";
 import type { AssignmentAtomType } from "@townops/assignment-atom";
 import type { CaseAtomType } from "@townops/case-atom";
 import type { MetricsAtomType } from "@townops/metrics-atom";
-import { logger, honoLogger, rabbitmqClient } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  rabbitmqClient,
+  corsOrigins,
+} from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -12,6 +17,7 @@ import {
   validator,
 } from "hono-openapi";
 import { hc } from "hono/client";
+import { cors } from "hono/cors";
 import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
@@ -20,6 +26,21 @@ import { handleBreachSchema } from "./validation-schemas";
 import { handleSlaBreach } from "./worker";
 
 const app = new Hono();
+
+const devOrigins = corsOrigins();
+if (devOrigins) {
+  app.use(
+    "*",
+    cors({
+      origin: devOrigins,
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization"],
+      exposeHeaders: ["Content-Length"],
+      maxAge: 600,
+      credentials: true,
+    })
+  );
+}
 
 app.onError((err, c) => {
   logger.error(
@@ -35,7 +56,7 @@ app.use(
   "/api/*",
   jwk({
     jwks_uri: env.JWKS_URI,
-    alg: ["RS256"],
+    alg: ["EdDSA"],
   })
 );
 
