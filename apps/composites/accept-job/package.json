@@ -1,9 +1,35 @@
 {
-  "name": "townops-accept-job",
+  "name": "@townops/accept-job-composite",
   "version": "0.1.0",
-  "description": "Composite service for accepting a job",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "dev": "uv run uvicorn src.main:app --reload --port 6003 --host 127.0.0.1",
-    "start": "uv run uvicorn src.main:app --port 6003 --host 127.0.0.1"
+    "dev": "bun run --hot src/index.ts",
+    "build": "bun build --production --minify --target=bun --outdir=build src/index.ts",
+    "build:docker": "bun run build && docker build -t accept-job-composite .",
+    "test": "bun run load-env -- vitest run tests",
+    "load-env": "dotenv -e .env.local",
+    "start": "bun run start",
+    "lint": "pnpm oxlint --config=../../../tooling/oxlint/oxlint.config.ts"
+  },
+  "dependencies": {
+    "@t3-oss/env-core": "catalog:",
+    "@townops/appointment-atom": "workspace:*",
+    "@townops/assignment-atom": "workspace:*",
+    "@townops/case-atom": "workspace:*",
+    "@townops/shared-ts": "workspace:*",
+    "hono": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@hono/standard-validator": "catalog:",
+    "@scalar/hono-api-reference": "catalog:",
+    "@testcontainers/rabbitmq": "catalog:",
+    "dotenv-cli": "catalog:",
+    "hono-openapi": "catalog:",
+    "typescript": "catalog:"
   }
 }
