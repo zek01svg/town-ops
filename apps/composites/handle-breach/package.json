@@ -1,0 +1,36 @@
+{
+  "name": "@townops/handle-breach-composite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "build": "bun build --production --minify --target=bun --outdir=build src/index.ts",
+    "build:docker": "bun run build && docker build -t handle-breach-composite .",
+    "test": "bun run load-env -- vitest run tests",
+    "load-env": "dotenv -e .env.local",
+    "start": "bun run start",
+    "lint": "pnpm oxlint --config=../../../tooling/oxlint/oxlint.config.ts"
+  },
+  "dependencies": {
+    "@t3-oss/env-core": "catalog:",
+    "@townops/assignment-atom": "workspace:*",
+    "@townops/case-atom": "workspace:*",
+    "@townops/metrics-atom": "workspace:*",
+    "@townops/shared-ts": "workspace:*",
+    "hono": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudamqp/amqp-client": "catalog:",
+    "@hono/standard-validator": "catalog:",
+    "@scalar/hono-api-reference": "catalog:",
+    "@testcontainers/rabbitmq": "catalog:",
+    "dotenv-cli": "catalog:",
+    "hono-openapi": "catalog:",
+    "typescript": "catalog:"
+  }
+}
