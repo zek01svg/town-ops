@@ -91,7 +91,7 @@ const casesRouter = new Hono()
     }
   )
   .put(
-    "/update-case-status/",
+    "/update-case-status",
     describeRoute({
       description: "Update the status of a case",
       responses: {

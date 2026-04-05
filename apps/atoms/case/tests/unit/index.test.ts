@@ -113,7 +113,7 @@ describe("Case Atom API Endpoints", () => {
     });
   });
 
-  describe("PUT /api/cases/update-case-status/", () => {
+  describe("PUT /api/cases/update-case-status", () => {
     it("should update case status and return 200", async () => {
       const updatedCase = { id: VALID_UUID_1, status: "assigned" };
       mockQuery.then.mockImplementationOnce((resolve) =>
@@ -121,7 +121,7 @@ describe("Case Atom API Endpoints", () => {
       );
 
       const payload = { id: VALID_UUID_1, status: "assigned" };
-      const res = await app.request("/api/cases/update-case-status/", {
+      const res = await app.request("/api/cases/update-case-status", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -134,7 +134,7 @@ describe("Case Atom API Endpoints", () => {
 
     it("should return 400 for invalid status", async () => {
       const payload = { id: VALID_UUID_1, status: "invalid-status" };
-      const res = await app.request("/api/cases/update-case-status/", {
+      const res = await app.request("/api/cases/update-case-status", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -147,7 +147,7 @@ describe("Case Atom API Endpoints", () => {
 
     it("should return 400 for invalid UUID", async () => {
       const payload = { id: "not-a-uuid", status: "assigned" };
-      const res = await app.request("/api/cases/update-case-status/", {
+      const res = await app.request("/api/cases/update-case-status", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
