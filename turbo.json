@@ -8,6 +8,10 @@
       "dependsOn": ["^build"],
       "outputs": ["build/**", "dist/**", ".next/**", "!.next/cache/**"]
     },
+    "build:docker": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "test": {
       "outputs": ["coverage/**"]
     },

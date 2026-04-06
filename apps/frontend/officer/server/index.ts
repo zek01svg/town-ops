@@ -35,7 +35,7 @@ app.use("/*", serveStatic({ root: "./build" }));
 app.get("*", serveStatic({ path: "./build/index.html" }));
 
 const server = {
-  port: 4001,
+  port: Number(process.env.PORT) || 3000,
   fetch: app.fetch,
 };
 
