@@ -20,8 +20,8 @@ A backend microservice (Atom) dedicated to creating, updating, and querying citi
 The API documentation is fully automated via OpenAPI specifications.
 Once the server is running, visit:
 
-- **Dashboard (Scalar)**: `http://localhost:5002/scalar`
-- **OpenAPI Spec (.json)**: `http://localhost:5002/openapi`
+- **Dashboard (Scalar)**: `http://localhost:5008/scalar`
+- **OpenAPI Spec (.json)**: `http://localhost:5008/openapi`
 
 ---
 
@@ -44,10 +44,8 @@ Once the server is running, visit:
 Create a `.env` file in this directory with the following variables:
 
 ```env
-DATABASE_URL=postgres://user:password@localhost:5432/townops
-PORT=5002
-JWKS_URI=http://localhost:5001/.well-known/jwks.json
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
+PORT=5008
 ```
 
 ### 2. Database Migrations
@@ -82,5 +80,5 @@ To package and spin up the optimized docker runtime:
 bun run build:docker
 
 # 2. Run Container with absolute reference port mapping
-docker run --env-file .env -p 5002:5002 resident-atom
+docker run --env-file .env -p 5008:5008 resident-atom
 ```

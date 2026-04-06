@@ -20,8 +20,8 @@ A backend microservice (Atom) dedicated to managing lifecycle notifications and 
 The API documentation is fully automated via OpenAPI specifications.
 Once the server is running, visit:
 
-- **Dashboard (Scalar)**: `http://localhost:5006/scalar`
-- **OpenAPI Spec (.json)**: `http://localhost:5006/openapi`
+- **Dashboard (Scalar)**: `http://localhost:5002/scalar`
+- **OpenAPI Spec (.json)**: `http://localhost:5002/openapi`
 
 ---
 
@@ -43,10 +43,10 @@ Once the server is running, visit:
 Create a `.env` file in this directory with the following variables:
 
 ```env
-DATABASE_URL=postgres://user:password@localhost:5432/townops
-PORT=5006
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
+PORT=5002
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxx
 ```
 
 ### 2. Run Locally
@@ -65,5 +65,5 @@ To package and spin up the optimized docker runtime:
 bun run build:docker
 
 # 2. Run Container with absolute reference port mapping
-docker run --env-file .env -p 5006:5006 alert-atom
+docker run --env-file .env -p 5002:5002 alert-atom
 ```

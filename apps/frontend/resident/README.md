@@ -1,28 +1,34 @@
-# TownOps Frontend
+# TownOps Resident Frontend
 
-The TownOps frontend serves as the operational dashboard for town council officers and contractors.
+The self-service portal for residents. Residents receive a magic-link email when their job is rescheduled and use this app to select a new appointment time slot.
+
+Runs at `http://localhost:3003` (docker-compose) or `http://localhost:5173` (dev server).
 
 ## 🛠️ Tech Stack
 
-This frontend leverages a modern, fully-typed React stack relying heavily on the TanStack ecosystem:
-
-- **Routing:** `@tanstack/react-router` for type-safe file-based routing.
-- **Data Fetching:** `@tanstack/react-query` for type-safe data fetching.
-- **Form Management:** `@tanstack/react-form` combined with `@tanstack/zod-form-adapter`.
-- **Validation:** `zod` for strict schema definitions that are synchronized with our backend composites.
-- **Kanban Boards:** `react-kanban-kit` for performing drag-and-drop workflow updates on reports / cases.
-- **Testing:** `vitest` with `jsdom` (config inherited from the workspace tooling `baseConfig`).
-- **Styling:** Tailwind v4
+- **Routing:** `@tanstack/react-router` — type-safe file-based routing
+- **Data Fetching:** `@tanstack/react-query`
+- **Forms:** `@tanstack/react-form` + `@tanstack/zod-form-adapter`
+- **Validation:** `zod`
+- **Styling:** Tailwind v4 + shadcn/ui
+- **Testing:** `vitest` + `jsdom`
 
 ## 🚀 Development
 
-Running the application strictly mandates `<root>` dependencies to align. We use `pnpm` workspace tooling.
-
 ```bash
-# Start frontend from the root
-pnpm run dev --filter "@townops/frontend"
+# From monorepo root
+pnpm run dev --filter "@townops/resident-frontend"
 
-# Start frontend from frontend directory
-cd apps/frontend
+# Or from this directory
 pnpm run dev
+```
+
+## 🌍 Environment Variables
+
+Create a `.env` file in this directory:
+
+```env
+VITE_APP_URL=http://localhost:3003
+VITE_AUTH_URL=http://localhost:5001
+VITE_RESCHEDULE_JOB_URL=http://localhost:6006
 ```

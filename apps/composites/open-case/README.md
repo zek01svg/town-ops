@@ -1,6 +1,6 @@
 # 📁 Open Case Composite
 
-A backend microservice (Composite) dedicated to opening a case. It acts as a orchestrator built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
+A backend microservice (Composite) that handles case creation — validates the resident, creates the case record via the Case atom, and publishes a `case.opened` event to RabbitMQ to trigger the assignment pipeline. Built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
 
 ---
 
@@ -9,7 +9,7 @@ A backend microservice (Composite) dedicated to opening a case. It acts as a orc
 - **Runtime**: [Bun](https://bun.sh/)
 - **Framework**: [Hono](https://hono.dev/)
 - **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
-- **Messaging**: [@cloudamqp/amqp-client](https://www.npmjs.com/package/@cloudamqp/amqp-client) (RabbitMQ)
+- **Messaging**: RabbitMQ via `@townops/shared-ts`
 - **Logging**: Pino via customized `@townops/shared-ts`
 - **Testing**: [Vitest](https://vitest.dev/)
 
@@ -43,10 +43,11 @@ Once the server is running, visit:
 Create a `.env` file in this directory with the following variables:
 
 ```env
-DATABASE_URL=postgres://user:password@localhost:5432/townops
 PORT=6001
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
+RESIDENT_ATOM_URL=http://localhost:5008
+CASE_ATOM_URL=http://localhost:5005
+JWKS_URI=http://localhost:5001/api/auth/jwks
 ```
 
 ### 2. Run Locally

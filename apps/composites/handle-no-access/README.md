@@ -1,6 +1,6 @@
-# 📁 Assignment Atom
+# 📁 Handle No Access Composite
 
-A backend microservice (Atom) dedicated to managing contractor assignments for cases. It acts as a raw data backplane layer constructed using **Hono**, **Bun**, and **Drizzle ORM** with native OpenTelemetry instrumentation.
+A backend microservice (Composite) that processes a contractor's "no access" report — updates the Assignment status, transitions the Case to `pending_resident_input`, and triggers a reschedule notification to the resident. Built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
 
 ---
 
@@ -9,7 +9,7 @@ A backend microservice (Atom) dedicated to managing contractor assignments for c
 - **Runtime**: [Bun](https://bun.sh/)
 - **Framework**: [Hono](https://hono.dev/)
 - **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
-- **Database ORM**: [Drizzle ORM](https://orm.drizzle.team/)
+- **Messaging**: RabbitMQ via `@townops/shared-ts`
 - **Logging**: Pino via customized `@townops/shared-ts`
 - **Testing**: [Vitest](https://vitest.dev/)
 
@@ -20,8 +20,8 @@ A backend microservice (Atom) dedicated to managing contractor assignments for c
 The API documentation is fully automated via OpenAPI specifications.
 Once the server is running, visit:
 
-- **Dashboard (Scalar)**: `http://localhost:5004/scalar`
-- **OpenAPI Spec (.json)**: `http://localhost:5004/openapi`
+- **Dashboard (Scalar)**: `http://localhost:6007/scalar`
+- **OpenAPI Spec (.json)**: `http://localhost:6007/openapi`
 
 ---
 
@@ -43,8 +43,10 @@ Once the server is running, visit:
 Create a `.env` file in this directory with the following variables:
 
 ```env
-DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
-PORT=5004
+PORT=6007
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+CASE_ATOM_URL=http://localhost:5005
+RESIDENT_ATOM_URL=http://localhost:5008
 JWKS_URI=http://localhost:5001/api/auth/jwks
 ```
 
@@ -63,6 +65,6 @@ To package and spin up the optimized docker runtime:
 # 1. Build Single-Stage Image
 bun run build:docker
 
-# 2. Run Container with port mapping
-docker run --env-file .env -p 5004:5004 assignment-atom
+# 2. Run Container with absolute reference port mapping
+docker run --env-file .env -p 6007:6007 handle-no-access-composite
 ```

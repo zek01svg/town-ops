@@ -1,6 +1,6 @@
 # 🤝 Assign Job Composite
 
-A backend microservice (Composite) dedicated to assigning jobs on top of downstream atoms and publishing events to RabbitMQ. It acts as an orchestrator built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
+A backend microservice (Composite) that listens for `case.opened` events, searches for the best available contractor via the OutSystems Contractor API, creates an assignment, and publishes a `job.assigned` event. Built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
 
 ---
 
@@ -9,7 +9,7 @@ A backend microservice (Composite) dedicated to assigning jobs on top of downstr
 - **Runtime**: [Bun](https://bun.sh/)
 - **Framework**: [Hono](https://hono.dev/)
 - **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
-- **Messaging**: [@cloudamqp/amqp-client](https://www.npmjs.com/package/@cloudamqp/amqp-client) (RabbitMQ)
+- **Messaging**: RabbitMQ via `@townops/shared-ts`
 - **Logging**: Pino via customized `@townops/shared-ts`
 - **Testing**: [Vitest](https://vitest.dev/)
 
@@ -44,13 +44,10 @@ Create a `.env` file in this directory with the following variables:
 
 ```env
 PORT=6002
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
-
-# Downstream atoms
-ASSIGNMENT_URL=http://localhost:5003
-CONTRACTOR_API_URL=http://localhost:5004
-METRICS_URL=http://localhost:5005
+CONTRACTOR_API_URL=https://your-outsystems-contractor-api.example.com
+ASSIGNMENT_ATOM_URL=http://localhost:5004
+METRICS_ATOM_URL=http://localhost:5006
 ```
 
 ### 2. Run Locally

@@ -43,10 +43,8 @@ Once the server is running, visit:
 Create a `.env` file in this directory with the following variables:
 
 ```env
-DATABASE_URL=postgres://user:password@localhost:5432/townops
+DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
 PORT=5003
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-RABBITMQ_URL=amqp://guest:guest@localhost:5672
 ```
 
 ### 2. Run Locally
