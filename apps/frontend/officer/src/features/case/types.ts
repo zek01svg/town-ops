@@ -1,12 +1,12 @@
 export type Urgency = "low" | "medium" | "high" | "emergency";
-export type CaseStatus = 
-  | "pending" 
-  | "assigned" 
-  | "dispatched" 
-  | "in_progress" 
+export type CaseStatus =
+  | "pending"
+  | "assigned"
+  | "dispatched"
+  | "in_progress"
   | "pending_resident_input"
-  | "completed" 
-  | "cancelled" 
+  | "completed"
+  | "cancelled"
   | "escalated";
 
 export type CaseItem = {

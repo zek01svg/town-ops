@@ -1,5 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { useState, useRef } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
 import { useOpenCaseMutation } from "../api/mutations";
 import { openCaseSchema, CASE_CATEGORIES } from "../validation-schemas";
 import type { CaseCategory } from "../validation-schemas";
@@ -67,7 +69,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="resident_id"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Resident UUID</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Resident UUID
+            </label>
             <Input
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
@@ -75,7 +79,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               className="rounded-none border-border bg-surface-container"
             />
             {field.state.meta.errors ? (
-              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+              <em className="text-xs text-destructive">
+                {field.state.meta.errors.join(", ")}
+              </em>
             ) : null}
           </div>
         )}
@@ -84,7 +90,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="category"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Category</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Category
+            </label>
             <Select
               value={field.state.value}
               onValueChange={(v) => field.handleChange(v as CaseCategory)}
@@ -95,14 +103,18 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               <SelectContent>
                 {CASE_CATEGORIES.map((cat) => (
                   <SelectItem key={cat.value} value={cat.value}>
-                    <span className="font-mono text-xs text-muted-foreground mr-2">{cat.value}</span>
+                    <span className="font-mono text-xs text-muted-foreground mr-2">
+                      {cat.value}
+                    </span>
                     {cat.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             {field.state.meta.errors.length > 0 ? (
-              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+              <em className="text-xs text-destructive">
+                {field.state.meta.errors.join(", ")}
+              </em>
             ) : null}
           </div>
         )}
@@ -112,7 +124,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="description"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Description</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Description
+            </label>
             <Input
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
@@ -127,14 +141,17 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="postal_code"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Postal Code</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Postal Code
+            </label>
             <Input
               value={field.state.value}
               maxLength={6}
               onChange={(e) => {
                 const val = e.target.value.replace(/\D/g, "");
                 field.handleChange(val);
-                if (geocodeTimeout.current) clearTimeout(geocodeTimeout.current);
+                if (geocodeTimeout.current)
+                  clearTimeout(geocodeTimeout.current);
                 if (val.length === 6) {
                   geocodeTimeout.current = setTimeout(async () => {
                     setGeocoding(true);
@@ -158,7 +175,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         children={(field) => (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs uppercase font-label tracking-widest text-primary">Address</label>
+              <label className="text-xs uppercase font-label tracking-widest text-primary">
+                Address
+              </label>
               {geocoding && (
                 <span className="text-[10px] font-label uppercase tracking-widest text-muted-foreground animate-pulse">
                   Looking up...
@@ -179,7 +198,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="priority"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Priority</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Priority
+            </label>
             <div className="flex gap-2">
               {["low", "medium", "high", "emergency"].map((p) => (
                 <Button
@@ -194,7 +215,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               ))}
             </div>
             {field.state.meta.errors ? (
-              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+              <em className="text-xs text-destructive">
+                {field.state.meta.errors.join(", ")}
+              </em>
             ) : null}
           </div>
         )}

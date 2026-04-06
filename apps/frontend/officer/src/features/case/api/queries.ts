@@ -16,7 +16,7 @@ export const caseQueries = {
         const res = await fetchWithAuth(
           `${env.VITE_CASE_ATOM_URL}/api/cases`,
           {},
-          env.VITE_AUTH_URL,
+          env.VITE_AUTH_URL
         );
         if (!res.ok) throw new Error(`Failed to fetch cases: ${res.status}`);
         const data = await res.json();

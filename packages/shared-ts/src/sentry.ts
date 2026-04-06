@@ -1,5 +1,5 @@
-import type { Context } from "hono";
 import * as Sentry from "@sentry/bun";
+import type { Context } from "hono";
 
 type SentryInitOptions = {
   serviceName?: string;
@@ -33,7 +33,8 @@ function parseSampleRate(value: string | undefined): number | undefined {
 export function initSentry(options: SentryInitOptions = {}) {
   if (initialized) return;
 
-  const dsn = options.dsn ?? process.env.SENTRY_DSN ?? process.env.SENTRY_BACKEND_DSN;
+  const dsn =
+    options.dsn ?? process.env.SENTRY_DSN ?? process.env.SENTRY_BACKEND_DSN;
   if (!dsn) return;
 
   const tracesSampleRate =

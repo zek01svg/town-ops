@@ -1,8 +1,8 @@
 import { queryOptions } from "@tanstack/react-query";
 
 import { env } from "@/env";
-import { fetchWithAuth } from "@/libr/auth-token";
 import { auth } from "@/libr/auth";
+import { fetchWithAuth } from "@/libr/auth-token";
 
 import { mapApiCaseToItem } from "../lib/map-case";
 import { caseKeys } from "./query-keys";
@@ -26,24 +26,26 @@ export const caseQueries = {
         const assignmentsRes = await fetchWithAuth(
           `${env.VITE_ASSIGNMENT_ATOM_URL}/api/assignments/contractor/${contractorId}`,
           {},
-          env.VITE_AUTH_URL,
+          env.VITE_AUTH_URL
         );
         if (!assignmentsRes.ok) return [];
         const { assignments } = await assignmentsRes.json();
         if (!assignments?.length) return [];
 
-        const caseIds: string[] = [...new Set(assignments.map((a: any) => a.caseId as string))];
+        const caseIds: string[] = new Set([
+          ...new Set(assignments.map((a: any) => a.caseId as string)),
+        ]);
 
         // Fetch all cases, then filter to only this contractor's
         const res = await fetchWithAuth(
           `${env.VITE_CASE_ATOM_URL}/api/cases`,
           {},
-          env.VITE_AUTH_URL,
+          env.VITE_AUTH_URL
         );
         if (!res.ok) throw new Error(`Failed to fetch cases: ${res.status}`);
         const data = await res.json();
         const allCases = (data.cases as unknown[]).map(mapApiCaseToItem);
-        return allCases.filter((c) => caseIds.includes(c.id));
+        return allCases.filter((c) => caseIds.has(c.id));
       },
     }),
 
@@ -56,9 +58,10 @@ export const caseQueries = {
         const res = await fetchWithAuth(
           `${env.VITE_APPOINTMENT_ATOM_URL}/api/appointments/${caseId}`,
           {},
-          env.VITE_AUTH_URL,
+          env.VITE_AUTH_URL
         );
-        if (!res.ok) throw new Error(`Failed to fetch appointments: ${res.status}`);
+        if (!res.ok)
+          throw new Error(`Failed to fetch appointments: ${res.status}`);
         return res.json();
       },
     }),

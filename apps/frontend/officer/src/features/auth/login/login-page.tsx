@@ -1,15 +1,22 @@
-"use client"
+"use client";
 
-import { useState } from "react";
-import { useForm } from "@tanstack/react-form";
-import { cn } from "@/libr/utils";
-import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { LayoutBottomIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { useForm } from "@tanstack/react-form";
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { env } from "@/env";
 import { auth } from "@/libr/auth";
+import { cn } from "@/libr/utils";
 
 export function LoginForm({
   className,
@@ -56,7 +63,13 @@ export function LoginForm({
   });
 
   return (
-    <div className={cn("flex flex-col gap-6 w-full max-w-md bg-card border border-border p-6 rounded-lg shadow-xl border-t-4 border-t-indigo-500", className)} {...props}>
+    <div
+      className={cn(
+        "flex flex-col gap-6 w-full max-w-md bg-card border border-border p-6 rounded-lg shadow-xl border-t-4 border-t-indigo-500",
+        className
+      )}
+      {...props}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -67,21 +80,31 @@ export function LoginForm({
         <FieldGroup>
           <div className="flex flex-col items-center gap-2 text-center">
             <div className="flex size-8 items-center justify-center rounded-md text-indigo-400">
-              <HugeiconsIcon icon={LayoutBottomIcon} strokeWidth={2} className="size-6" />
+              <HugeiconsIcon
+                icon={LayoutBottomIcon}
+                strokeWidth={2}
+                className="size-6"
+              />
             </div>
-            <h1 className="text-xl font-bold text-foreground">Welcome to TownOps</h1>
+            <h1 className="text-xl font-bold text-foreground">
+              Welcome to TownOps
+            </h1>
             <FieldDescription className="text-muted-foreground">
               Enter your credentials to access your dashboard workspace.
             </FieldDescription>
           </div>
 
-          {error && <p className="text-destructive text-sm text-center">{error}</p>}
+          {error && (
+            <p className="text-destructive text-sm text-center">{error}</p>
+          )}
 
           <form.Field
             name="email"
             children={(field) => (
               <Field orientation="vertical">
-                <FieldLabel htmlFor={field.name} className="text-foreground">Email</FieldLabel>
+                <FieldLabel htmlFor={field.name} className="text-foreground">
+                  Email
+                </FieldLabel>
                 <FieldContent>
                   <Input
                     id={field.name}
@@ -103,7 +126,9 @@ export function LoginForm({
             name="password"
             children={(field) => (
               <Field orientation="vertical">
-                <FieldLabel htmlFor={field.name} className="text-foreground">Password</FieldLabel>
+                <FieldLabel htmlFor={field.name} className="text-foreground">
+                  Password
+                </FieldLabel>
                 <FieldContent>
                   <Input
                     id={field.name}
@@ -121,13 +146,22 @@ export function LoginForm({
           />
 
           <Field>
-            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">Login</Button>
+            <Button
+              type="submit"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              Login
+            </Button>
           </Field>
         </FieldGroup>
       </form>
       <FieldDescription className="px-6 text-center text-muted-foreground">
-        By clicking continue, you agree to our <span className="text-muted-foreground underline">Terms of Service</span>{" "}
-        and <span className="text-muted-foreground underline">Privacy Policy</span>.
+        By clicking continue, you agree to our{" "}
+        <span className="text-muted-foreground underline">
+          Terms of Service
+        </span>{" "}
+        and{" "}
+        <span className="text-muted-foreground underline">Privacy Policy</span>.
       </FieldDescription>
     </div>
   );

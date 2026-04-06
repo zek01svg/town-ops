@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import {
   APIProvider,
@@ -6,12 +7,12 @@ import {
   Pin,
   InfoWindow,
 } from "@vis.gl/react-google-maps";
-import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
-import { caseQueries } from "@/features/case/api/queries";
-import { env } from "@/env";
 import { Clock } from "lucide-react";
 import { useState } from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { env } from "@/env";
+import { caseQueries } from "@/features/case/api/queries";
 import { useTheme } from "@/providers/theme-provider";
 
 export const Route = createFileRoute("/map")({
@@ -49,8 +50,7 @@ function priorityColor(priority: string) {
 }
 
 function MapPage() {
-  const hasJwt =
-    typeof window !== "undefined" && !!localStorage.getItem("jwt");
+  const hasJwt = typeof window !== "undefined" && !!localStorage.getItem("jwt");
   if (!hasJwt) {
     return <Navigate to="/" replace />;
   }

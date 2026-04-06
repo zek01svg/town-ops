@@ -13,11 +13,9 @@ vi.mock("hono/jwk", () => ({
 const mockUpload = vi
   .fn()
   .mockResolvedValue({ data: { path: "uploaded/path" }, error: null });
-const mockGetPublicUrl = vi
-  .fn()
-  .mockReturnValue({
-    data: { publicUrl: "http://supabase.com/uploaded/path" },
-  });
+const mockGetPublicUrl = vi.fn().mockReturnValue({
+  data: { publicUrl: "http://supabase.com/uploaded/path" },
+});
 
 vi.mock("../../src/supabase", () => ({
   supabase: {

@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import { env } from "@/env";
 import { fetchWithAuth } from "@/libr/auth-token";
 
@@ -25,7 +26,10 @@ export const auditQueries = {
         const safe = async (url: string) => {
           try {
             const res = await fetchWithAuth(url, {}, auth);
-            if (!res.ok) { console.warn(`[audit] ${url} → ${res.status}`); return null; }
+            if (!res.ok) {
+              console.warn(`[audit] ${url} → ${res.status}`);
+              return null;
+            }
             return res;
           } catch (e) {
             console.error(`[audit] ${url} → network error`, e);
@@ -39,7 +43,9 @@ export const auditQueries = {
             safe(`${env.VITE_APPOINTMENT_ATOM_URL}/api/appointments/${caseId}`),
             safe(`${env.VITE_ALERT_ATOM_URL}/api/alerts/case/${caseId}`),
             safe(`${env.VITE_PROOF_ATOM_URL}/api/proof/${caseId}`),
-            safe(`${env.VITE_ASSIGNMENT_ATOM_URL}/api/assignments/${caseId}/history`),
+            safe(
+              `${env.VITE_ASSIGNMENT_ATOM_URL}/api/assignments/${caseId}/history`
+            ),
           ]);
 
         const events: TimelineEvent[] = [];
@@ -113,8 +119,9 @@ export const auditQueries = {
         }
 
         // Sort chronologically
-        return events.sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        return events.toSorted(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
       },
     }),

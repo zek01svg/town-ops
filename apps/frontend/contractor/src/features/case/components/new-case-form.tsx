@@ -1,6 +1,8 @@
 import { useForm } from "@tanstack/react-form";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
 import { openCaseSchema } from "../validation-schemas";
 
 export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
@@ -40,7 +42,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="resident_id"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Resident UUID</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Resident UUID
+            </label>
             <Input
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
@@ -48,7 +52,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               className="rounded-none border-border bg-surface-container"
             />
             {field.state.meta.errors ? (
-              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+              <em className="text-xs text-destructive">
+                {field.state.meta.errors.join(", ")}
+              </em>
             ) : null}
           </div>
         )}
@@ -57,7 +63,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="category"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Category</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Category
+            </label>
             <Input
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
@@ -65,7 +73,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               className="rounded-none border-border bg-surface-container"
             />
             {field.state.meta.errors ? (
-              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+              <em className="text-xs text-destructive">
+                {field.state.meta.errors.join(", ")}
+              </em>
             ) : null}
           </div>
         )}
@@ -75,7 +85,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="description"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Description</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Description
+            </label>
             <Input
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
@@ -90,7 +102,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="address_details"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Address</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Address
+            </label>
             <Input
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
@@ -105,7 +119,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="postal_code"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Postal Code</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Postal Code
+            </label>
             <Input
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
@@ -120,7 +136,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
         name="priority"
         children={(field) => (
           <div className="space-y-2">
-            <label className="text-xs uppercase font-label tracking-widest text-primary">Priority</label>
+            <label className="text-xs uppercase font-label tracking-widest text-primary">
+              Priority
+            </label>
             <div className="flex gap-2">
               {["low", "medium", "high", "emergency"].map((p) => (
                 <Button
@@ -135,7 +153,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               ))}
             </div>
             {field.state.meta.errors ? (
-              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+              <em className="text-xs text-destructive">
+                {field.state.meta.errors.join(", ")}
+              </em>
             ) : null}
           </div>
         )}

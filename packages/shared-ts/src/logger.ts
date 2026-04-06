@@ -1,7 +1,7 @@
-import { context, trace } from '@opentelemetry/api';
-import pino from 'pino';
+import { context, trace } from "@opentelemetry/api";
+import pino from "pino";
 
-import { env } from './env';
+import { env } from "./env";
 
 /**
  * Shared Pino logger instance for TS services.
@@ -9,7 +9,7 @@ import { env } from './env';
  * making it fully compatible with Tempo/Jaeger tracing correlating logs & traces.
  */
 export const logger = pino({
-  level: 'info',
+  level: "info",
   mixin() {
     const span = trace.getSpan(context.active());
     if (span) {
@@ -19,12 +19,12 @@ export const logger = pino({
     return {};
   },
   transport:
-    env.NODE_ENV !== 'production'
+    env.NODE_ENV !== "production"
       ? {
-          target: 'pino-pretty',
+          target: "pino-pretty",
           options: {
             colorize: true,
-            ignore: 'pid,hostname',
+            ignore: "pid,hostname",
           },
         }
       : undefined,

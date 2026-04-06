@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   APIProvider,
@@ -6,12 +7,12 @@ import {
   Pin,
   InfoWindow,
 } from "@vis.gl/react-google-maps";
-import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
-import { caseQueries } from "@/features/case/api/queries";
-import { env } from "@/env";
 import { Clock } from "lucide-react";
 import { useState } from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { env } from "@/env";
+import { caseQueries } from "@/features/case/api/queries";
 import { useTheme } from "@/providers/theme-provider";
 
 export const Route = createFileRoute("/map")({
@@ -75,7 +76,10 @@ function MapPage() {
 
       <div className="flex gap-6">
         {/* Map */}
-        <div className="flex-1 border border-border overflow-hidden" style={{ minHeight: "520px" }}>
+        <div
+          className="flex-1 border border-border overflow-hidden"
+          style={{ minHeight: "520px" }}
+        >
           <APIProvider apiKey={env.VITE_GOOGLE_MAPS_API_KEY}>
             <Map
               style={{ width: "100%", height: "520px" }}
@@ -137,7 +141,13 @@ function MapPage() {
                       {selectedCase.address || "No address"}
                     </span>
                     <div className="flex gap-1 mt-1">
-                      <span className="text-[10px] uppercase font-bold px-1 py-0.5 rounded" style={{ background: priorityColor(selectedCase.priority).bg, color: "#fff" }}>
+                      <span
+                        className="text-[10px] uppercase font-bold px-1 py-0.5 rounded"
+                        style={{
+                          background: priorityColor(selectedCase.priority).bg,
+                          color: "#fff",
+                        }}
+                      >
                         {selectedCase.priority}
                       </span>
                       <span className="text-[10px] uppercase font-bold px-1 py-0.5 rounded bg-gray-200 text-gray-700">

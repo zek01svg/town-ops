@@ -1,9 +1,17 @@
-import { useRef, useState } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Upload, X, CheckCircle2 } from "lucide-react";
+import { useRef, useState } from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { auth } from "@/libr/auth";
+
 import { uploadProofFile, useCloseCaseMutation } from "../api/mutations";
 
 interface Props {
@@ -36,8 +44,14 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
   }
 
   async function handleSubmit() {
-    if (photos.length === 0) { setError("Add at least one photo."); return; }
-    if (!report.trim()) { setError("Write a completion report."); return; }
+    if (photos.length === 0) {
+      setError("Add at least one photo.");
+      return;
+    }
+    if (!report.trim()) {
+      setError("Write a completion report.");
+      return;
+    }
     setError(null);
     setUploading(true);
 
@@ -46,7 +60,9 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
       const uploaderId = session?.data?.user?.id ?? "unknown";
 
       const proofItems = await Promise.all(
-        photos.map((p) => uploadProofFile(p.file, caseId, uploaderId, p.type, report))
+        photos.map((p) =>
+          uploadProofFile(p.file, caseId, uploaderId, p.type, report)
+        )
       );
 
       closeCase.mutate(
@@ -98,23 +114,43 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
               <span className="text-[10px] font-label uppercase tracking-widest text-foreground font-bold">
                 Before Photos
               </span>
-              <Badge variant="secondary" className="rounded-none text-[10px]">{beforePhotos.length}</Badge>
+              <Badge variant="secondary" className="rounded-none text-[10px]">
+                {beforePhotos.length}
+              </Badge>
             </div>
-            <input ref={beforeRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => { if (e.target.files?.[0]) addPhoto(e.target.files[0], "before"); e.target.value = ""; }}
+            <input
+              ref={beforeRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.[0]) addPhoto(e.target.files[0], "before");
+                e.target.value = "";
+              }}
             />
             <div className="flex flex-wrap gap-2">
               {beforePhotos.map((p, i) => (
-                <div key={i} className="relative w-20 h-20 border border-border">
-                  <img src={p.preview} alt="uploaded proof" className="w-full h-full object-cover" />
-                  <button onClick={() => removePhoto(photos.indexOf(p))}
-                    className="absolute top-0.5 right-0.5 bg-destructive text-white rounded-full p-0.5">
+                <div
+                  key={i}
+                  className="relative w-20 h-20 border border-border"
+                >
+                  <img
+                    src={p.preview}
+                    alt="uploaded proof"
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    onClick={() => removePhoto(photos.indexOf(p))}
+                    className="absolute top-0.5 right-0.5 bg-destructive text-white rounded-full p-0.5"
+                  >
                     <X className="h-2.5 w-2.5" />
                   </button>
                 </div>
               ))}
-              <button onClick={() => beforeRef.current?.click()}
-                className="w-20 h-20 border border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+              <button
+                onClick={() => beforeRef.current?.click()}
+                className="w-20 h-20 border border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+              >
                 <Upload className="h-4 w-4" />
                 <span className="text-[9px] uppercase">Add</span>
               </button>
@@ -127,23 +163,43 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
               <span className="text-[10px] font-label uppercase tracking-widest text-foreground font-bold">
                 After Photos
               </span>
-              <Badge variant="secondary" className="rounded-none text-[10px]">{afterPhotos.length}</Badge>
+              <Badge variant="secondary" className="rounded-none text-[10px]">
+                {afterPhotos.length}
+              </Badge>
             </div>
-            <input ref={afterRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => { if (e.target.files?.[0]) addPhoto(e.target.files[0], "after"); e.target.value = ""; }}
+            <input
+              ref={afterRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.[0]) addPhoto(e.target.files[0], "after");
+                e.target.value = "";
+              }}
             />
             <div className="flex flex-wrap gap-2">
               {afterPhotos.map((p, i) => (
-                <div key={i} className="relative w-20 h-20 border border-border">
-                  <img src={p.preview} alt="uploaded proof" className="w-full h-full object-cover" />
-                  <button onClick={() => removePhoto(photos.indexOf(p))}
-                    className="absolute top-0.5 right-0.5 bg-destructive text-white rounded-full p-0.5">
+                <div
+                  key={i}
+                  className="relative w-20 h-20 border border-border"
+                >
+                  <img
+                    src={p.preview}
+                    alt="uploaded proof"
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    onClick={() => removePhoto(photos.indexOf(p))}
+                    className="absolute top-0.5 right-0.5 bg-destructive text-white rounded-full p-0.5"
+                  >
                     <X className="h-2.5 w-2.5" />
                   </button>
                 </div>
               ))}
-              <button onClick={() => afterRef.current?.click()}
-                className="w-20 h-20 border border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+              <button
+                onClick={() => afterRef.current?.click()}
+                className="w-20 h-20 border border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+              >
                 <Upload className="h-4 w-4" />
                 <span className="text-[9px] uppercase">Add</span>
               </button>
@@ -164,7 +220,9 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
           </div>
 
           {error && (
-            <p className="text-[10px] text-destructive uppercase tracking-wide">{error}</p>
+            <p className="text-[10px] text-destructive uppercase tracking-wide">
+              {error}
+            </p>
           )}
 
           <Button
@@ -173,7 +231,9 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
             className="rounded-none uppercase text-[10px] font-label tracking-widest w-full bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <CheckCircle2 className="h-3.5 w-3.5 mr-2" />
-            {uploading || closeCase.isPending ? "Submitting..." : "Submit & Close Job"}
+            {uploading || closeCase.isPending
+              ? "Submitting..."
+              : "Submit & Close Job"}
           </Button>
         </div>
       </SheetContent>

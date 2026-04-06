@@ -39,10 +39,9 @@ export function useHandleBreachMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: HandleBreachInput) => {
-      const res = await handleBreachClient.api.assignments["handle-breach"].$put(
-        { json: input },
-        { headers: getAuthHeader() }
-      );
+      const res = await handleBreachClient.api.assignments[
+        "handle-breach"
+      ].$put({ json: input }, { headers: getAuthHeader() });
       if (res.status === 401) clearAuth();
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
