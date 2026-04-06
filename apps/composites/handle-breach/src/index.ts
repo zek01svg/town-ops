@@ -7,6 +7,8 @@ import {
   honoLogger,
   rabbitmqClient,
   corsOrigins,
+  initSentry,
+  captureHonoException,
 } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -27,6 +29,8 @@ import { handleSlaBreach } from "./worker";
 
 const app = new Hono();
 
+initSentry({ serviceName: "handle-breach-composite" });
+
 const devOrigins = corsOrigins();
 if (devOrigins) {
   app.use(
@@ -43,6 +47,7 @@ if (devOrigins) {
 }
 
 app.onError((err, c) => {
+  captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
     "[handle-breach composite] internal server error"
@@ -156,13 +161,14 @@ const HandleBreachComposite = app
       // Step 2: Update Assignment → REASSIGNED to new assignee
       const assignmentRes = await assignmentClient.api.assignments[
         ":id"
-      ].status.$put(
+      ].reassign.$put(
         {
           param: { id: body.assignment_id },
           json: {
-            status: "REASSIGNED",
+            contractorId: body.new_assignee_id,
+            responseDueAt: new Date(Date.now() + 15 * 1000).toISOString(),
             changedBy: body.new_assignee_id,
-            reason: body.breach_details,
+            reason: body.breach_details ?? "SLA_BREACH",
           },
         },
         { headers: { Authorization: authHeader } }
@@ -242,7 +248,10 @@ const HandleBreachComposite = app
 
 // consume after server is ready
 await rabbitmqClient.connect();
-await rabbitmqClient.consume("handle-breach-queue", handleSlaBreach);
+await rabbitmqClient.consume("handle-breach-queue", handleSlaBreach, {
+  exchangeName: "townops.events",
+  routingKey: "sla.breached",
+});
 logger.info("handle-breach: consumer started on handle-breach-queue");
 
 export { app };

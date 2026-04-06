@@ -56,24 +56,37 @@ describe("Handle Breach Composite - RabbitMQ Integration", () => {
     const ASSIGNMENT_ID = "assign-integration-001";
 
     // Mock all downstream HTTP calls
-    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-      if (url.includes("/contractors/backup")) {
-        return {
-          ok: true,
-          json: async () => ({ worker_id: "backup-worker-int-01" }),
-        };
-      }
-      if (url.includes("/api/assignments/")) {
-        return { ok: true, json: async () => ({ assignments: {} }) };
-      }
-      if (url.includes("/api/cases/update-case-status")) {
-        return { ok: true, json: async () => ({ cases: {} }) };
-      }
-      if (url.includes("/api/metrics")) {
-        return { ok: true, json: async () => ({ metric: {} }) };
-      }
-      return { ok: false };
-    }) as unknown as typeof fetch;
+    globalThis.fetch = vi
+      .fn()
+      .mockImplementation(async (url: string, options?: RequestInit) => {
+        if (url.includes(`/api/assignments/${CASE_ID}`) && !options?.method) {
+          return {
+            ok: true,
+            json: async () => ({
+              assignments: {
+                id: ASSIGNMENT_ID,
+                status: "PENDING_ACCEPTANCE",
+              },
+            }),
+          };
+        }
+        if (url.includes("/contractors/backup")) {
+          return {
+            ok: true,
+            json: async () => ({ worker_id: "backup-worker-int-01" }),
+          };
+        }
+        if (url.includes("/api/assignments/") && options?.method === "PUT") {
+          return { ok: true, json: async () => ({ assignments: {} }) };
+        }
+        if (url.includes("/api/cases/update-case-status")) {
+          return { ok: true, json: async () => ({ cases: {} }) };
+        }
+        if (url.includes("/api/metrics")) {
+          return { ok: true, json: async () => ({ metric: {} }) };
+        }
+        return { ok: false };
+      }) as unknown as typeof fetch;
 
     // Listen for published event
     let receivedPayload: any = null;

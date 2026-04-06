@@ -6,6 +6,8 @@ import {
   honoLogger,
   rabbitmqClient,
   corsOrigins,
+  initSentry,
+  captureHonoException,
 } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -17,13 +19,14 @@ import {
 } from "hono-openapi";
 import { hc } from "hono/client";
 import { cors } from "hono/cors";
-import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
 import { env } from "./env";
 import { closeCaseSchema } from "./validation-schemas";
 
 const app = new Hono();
+
+initSentry({ serviceName: "close-case-composite" });
 
 const devOrigins = corsOrigins();
 if (devOrigins) {
@@ -41,22 +44,20 @@ if (devOrigins) {
 }
 
 app.onError((err, c) => {
+  captureHonoException(err, c);
   logger.error(
-    { error: err.message, stack: err.stack, route: c.req.path },
+    {
+      error: err.message,
+      cause: (err as any).cause?.message ?? (err as any).cause,
+      stack: err.stack,
+      route: c.req.path,
+    },
     "[close-case composite] internal server error"
   );
   return c.json({ error: err.message }, 500);
 });
 
 app.use("*", honoLogger());
-
-app.use(
-  "/api/*",
-  jwk({
-    jwks_uri: env.JWKS_URI,
-    alg: ["EdDSA"],
-  })
-);
 
 const CloseCaseComposite = app
   .get(
@@ -136,6 +137,10 @@ const CloseCaseComposite = app
         "Processing close-case request"
       );
 
+      logger.info(
+        { caseUrl: env.CASE_ATOM_URL, proofUrl: env.PROOF_ATOM_URL, body },
+        "close-case: env check"
+      );
       const caseClient = hc<CaseAtomType>(env.CASE_ATOM_URL);
       const proofClient = hc<ProofAtomType>(env.PROOF_ATOM_URL);
 

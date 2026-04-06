@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 
 export const rescheduleJobSchema = z.object({
-  appointmentId: z.string().uuid(),
+  appointmentId: z.string().uuid().optional(),
   residentId: z.string().uuid(),
   caseId: z.string().uuid(),
   assignmentId: z.string().uuid(),

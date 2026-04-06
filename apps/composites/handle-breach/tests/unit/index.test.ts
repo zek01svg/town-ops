@@ -17,6 +17,7 @@ vi.mock("@townops/shared-ts", () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+    debug: vi.fn(),
   },
   honoLogger: () => (c: any, next: any) => next(),
   rabbitmqClient: {
@@ -25,6 +26,8 @@ vi.mock("@townops/shared-ts", () => ({
     publish: vi.fn().mockResolvedValue(true),
   },
   corsOrigins: () => ["http://localhost:5173"],
+  initSentry: vi.fn(),
+  captureHonoException: vi.fn(),
 }));
 
 // Mock jwk middleware to bypass auth
@@ -74,7 +77,7 @@ function buildMockClients(
     api: {
       assignments: {
         ":id": {
-          status: { $put: mockAssignmentUpdate },
+          reassign: { $put: mockAssignmentUpdate },
         },
       },
     },
@@ -96,7 +99,10 @@ function buildMockClients(
   mockAssignmentUpdate.mockResolvedValue({
     ok: assignmentOk,
     json: async () => ({
-      assignments: { id: validBody.assignment_id, status: "REASSIGNED" },
+      assignments: {
+        id: validBody.assignment_id,
+        status: "PENDING_ACCEPTANCE",
+      },
     }),
   });
 
@@ -213,24 +219,40 @@ describe("Handle Breach Composite - Unit Tests", () => {
         contractor_id: "contractor-old",
       };
 
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-        if (url.includes("/contractors/backup")) {
-          return {
-            ok: true,
-            json: async () => ({ worker_id: "backup-worker-01" }),
-          };
-        }
-        if (url.includes("/api/assignments/")) {
-          return { ok: true, json: async () => ({}) };
-        }
-        if (url.includes("/api/cases/update-case-status")) {
-          return { ok: true, json: async () => ({}) };
-        }
-        if (url.includes("/api/metrics")) {
-          return { ok: true, json: async () => ({}) };
-        }
-        return { ok: false };
-      }) as unknown as typeof fetch;
+      globalThis.fetch = vi
+        .fn()
+        .mockImplementation(async (url: string, options?: RequestInit) => {
+          if (
+            url.includes(`/api/assignments/${event.case_id}`) &&
+            (!options?.method || options.method === "GET")
+          ) {
+            return {
+              ok: true,
+              json: async () => ({
+                assignments: {
+                  id: event.assignment_id,
+                  status: "PENDING_ACCEPTANCE",
+                },
+              }),
+            };
+          }
+          if (url.includes("/contractors/backup")) {
+            return {
+              ok: true,
+              json: async () => ({ worker_id: "backup-worker-01" }),
+            };
+          }
+          if (url.includes("/api/assignments/") && options?.method === "PUT") {
+            return { ok: true, json: async () => ({}) };
+          }
+          if (url.includes("/api/cases/update-case-status")) {
+            return { ok: true, json: async () => ({}) };
+          }
+          if (url.includes("/api/metrics")) {
+            return { ok: true, json: async () => ({}) };
+          }
+          return { ok: false };
+        }) as unknown as typeof fetch;
 
       await handleSlaBreach(JSON.stringify(event));
 
@@ -252,6 +274,46 @@ describe("Handle Breach Composite - Unit Tests", () => {
       ).resolves.toBeUndefined();
     });
 
+    it("should ignore breach if assignment already accepted", async () => {
+      const event = {
+        assignment_id: "aaa-accepted",
+        case_id: "bbb-accepted",
+        contractor_id: "contractor-old",
+      };
+
+      globalThis.fetch = vi
+        .fn()
+        .mockImplementation(async (url: string, options?: RequestInit) => {
+          if (
+            url.includes(`/api/assignments/${event.case_id}`) &&
+            (!options?.method || options.method === "GET")
+          ) {
+            return {
+              ok: true,
+              json: async () => ({
+                assignments: {
+                  id: event.assignment_id,
+                  status: "ACCEPTED",
+                },
+              }),
+            };
+          }
+          return { ok: false };
+        }) as unknown as typeof fetch;
+
+      await expect(
+        handleSlaBreach(JSON.stringify(event))
+      ).resolves.toBeUndefined();
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(rabbitmqClient.publish).not.toHaveBeenCalled();
+      const calls = (globalThis.fetch as any).mock.calls as Array<[string]>;
+      const calledBackup = calls.some((call) =>
+        call[0].includes("/contractors/backup")
+      );
+      expect(calledBackup).toBe(false);
+    });
+
     it("should throw when a downstream call fails (enabling NACK)", async () => {
       const event = {
         assignment_id: "aaa-333",
@@ -259,12 +321,28 @@ describe("Handle Breach Composite - Unit Tests", () => {
         contractor_id: "contractor-old",
       };
 
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-        if (url.includes("/contractors/backup")) {
-          return { ok: false, status: 503 };
-        }
-        return { ok: false };
-      }) as unknown as typeof fetch;
+      globalThis.fetch = vi
+        .fn()
+        .mockImplementation(async (url: string, options?: RequestInit) => {
+          if (
+            url.includes(`/api/assignments/${event.case_id}`) &&
+            (!options?.method || options.method === "GET")
+          ) {
+            return {
+              ok: true,
+              json: async () => ({
+                assignments: {
+                  id: event.assignment_id,
+                  status: "PENDING_ACCEPTANCE",
+                },
+              }),
+            };
+          }
+          if (url.includes("/contractors/backup")) {
+            return { ok: false, status: 503 };
+          }
+          return { ok: false };
+        }) as unknown as typeof fetch;
 
       await expect(handleSlaBreach(JSON.stringify(event))).rejects.toThrow(
         "Backup contractor query failed"
@@ -274,15 +352,31 @@ describe("Handle Breach Composite - Unit Tests", () => {
     it("should throw when assignment update fails (step 2)", async () => {
       const event = { assignment_id: "aaa-step2", case_id: "bbb-step2" };
 
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-        if (url.includes("/contractors/backup")) {
-          return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
-        }
-        if (url.includes("/api/assignments/")) {
-          return { ok: false, status: 500 };
-        }
-        return { ok: false };
-      }) as unknown as typeof fetch;
+      globalThis.fetch = vi
+        .fn()
+        .mockImplementation(async (url: string, options?: RequestInit) => {
+          if (
+            url.includes(`/api/assignments/${event.case_id}`) &&
+            (!options?.method || options.method === "GET")
+          ) {
+            return {
+              ok: true,
+              json: async () => ({
+                assignments: {
+                  id: event.assignment_id,
+                  status: "PENDING_ACCEPTANCE",
+                },
+              }),
+            };
+          }
+          if (url.includes("/contractors/backup")) {
+            return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
+          }
+          if (url.includes("/api/assignments/") && options?.method === "PUT") {
+            return { ok: false, status: 500 };
+          }
+          return { ok: false };
+        }) as unknown as typeof fetch;
 
       await expect(handleSlaBreach(JSON.stringify(event))).rejects.toThrow(
         "Assignment reassignment failed"
@@ -292,18 +386,34 @@ describe("Handle Breach Composite - Unit Tests", () => {
     it("should throw when case escalation fails (step 3)", async () => {
       const event = { assignment_id: "aaa-step3", case_id: "bbb-step3" };
 
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-        if (url.includes("/contractors/backup")) {
-          return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
-        }
-        if (url.includes("/api/assignments/")) {
-          return { ok: true, json: async () => ({}) };
-        }
-        if (url.includes("/api/cases/update-case-status")) {
-          return { ok: false, status: 500 };
-        }
-        return { ok: false };
-      }) as unknown as typeof fetch;
+      globalThis.fetch = vi
+        .fn()
+        .mockImplementation(async (url: string, options?: RequestInit) => {
+          if (
+            url.includes(`/api/assignments/${event.case_id}`) &&
+            (!options?.method || options.method === "GET")
+          ) {
+            return {
+              ok: true,
+              json: async () => ({
+                assignments: {
+                  id: event.assignment_id,
+                  status: "PENDING_ACCEPTANCE",
+                },
+              }),
+            };
+          }
+          if (url.includes("/contractors/backup")) {
+            return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
+          }
+          if (url.includes("/api/assignments/") && options?.method === "PUT") {
+            return { ok: true, json: async () => ({}) };
+          }
+          if (url.includes("/api/cases/update-case-status")) {
+            return { ok: false, status: 500 };
+          }
+          return { ok: false };
+        }) as unknown as typeof fetch;
 
       await expect(handleSlaBreach(JSON.stringify(event))).rejects.toThrow(
         "Case escalation failed"
@@ -313,21 +423,37 @@ describe("Handle Breach Composite - Unit Tests", () => {
     it("should throw when penalty recording fails (step 4)", async () => {
       const event = { assignment_id: "aaa-step4", case_id: "bbb-step4" };
 
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-        if (url.includes("/contractors/backup")) {
-          return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
-        }
-        if (url.includes("/api/assignments/")) {
-          return { ok: true, json: async () => ({}) };
-        }
-        if (url.includes("/api/cases/update-case-status")) {
-          return { ok: true, json: async () => ({}) };
-        }
-        if (url.includes("/api/metrics")) {
-          return { ok: false, status: 500 };
-        }
-        return { ok: false };
-      }) as unknown as typeof fetch;
+      globalThis.fetch = vi
+        .fn()
+        .mockImplementation(async (url: string, options?: RequestInit) => {
+          if (
+            url.includes(`/api/assignments/${event.case_id}`) &&
+            (!options?.method || options.method === "GET")
+          ) {
+            return {
+              ok: true,
+              json: async () => ({
+                assignments: {
+                  id: event.assignment_id,
+                  status: "PENDING_ACCEPTANCE",
+                },
+              }),
+            };
+          }
+          if (url.includes("/contractors/backup")) {
+            return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
+          }
+          if (url.includes("/api/assignments/") && options?.method === "PUT") {
+            return { ok: true, json: async () => ({}) };
+          }
+          if (url.includes("/api/cases/update-case-status")) {
+            return { ok: true, json: async () => ({}) };
+          }
+          if (url.includes("/api/metrics")) {
+            return { ok: false, status: 500 };
+          }
+          return { ok: false };
+        }) as unknown as typeof fetch;
 
       await expect(handleSlaBreach(JSON.stringify(event))).rejects.toThrow(
         "Penalty recording failed"

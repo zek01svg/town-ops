@@ -2,7 +2,13 @@ import { Scalar } from "@scalar/hono-api-reference";
 import type { AppointmentAtomType } from "@townops/appointment-atom";
 import type { AssignmentAtomType } from "@townops/assignment-atom";
 import type { CaseAtomType } from "@townops/case-atom";
-import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  corsOrigins,
+  initSentry,
+  captureHonoException,
+} from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -13,13 +19,14 @@ import {
 } from "hono-openapi";
 import { hc } from "hono/client";
 import { cors } from "hono/cors";
-import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
 import { env } from "./env";
 import { acceptJobSchema } from "./validation-schemas";
 
 const app = new Hono();
+
+initSentry({ serviceName: "accept-job-composite" });
 
 const devOrigins = corsOrigins();
 if (devOrigins) {
@@ -37,6 +44,7 @@ if (devOrigins) {
 }
 
 app.onError((err, c) => {
+  captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
     "[accept-job composite] internal server error"
@@ -45,14 +53,6 @@ app.onError((err, c) => {
 });
 
 app.use("*", honoLogger());
-
-app.use(
-  "/api/*",
-  jwk({
-    jwks_uri: env.JWKS_URI,
-    alg: ["EdDSA"],
-  })
-);
 
 const AcceptJobComposite = app
   .get(

@@ -1,5 +1,11 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger, rabbitmqClient } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  rabbitmqClient,
+  initSentry,
+  captureHonoException,
+} from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, openAPIRouteHandler, resolver } from "hono-openapi";
@@ -10,7 +16,10 @@ import { env } from "./env";
 
 const app = new Hono();
 
+initSentry({ serviceName: "assign-job-composite" });
+
 app.onError((err, c) => {
+  captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
     "[assign-job composite] internal server error"

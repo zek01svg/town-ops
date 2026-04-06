@@ -2,7 +2,13 @@ import { Scalar } from "@scalar/hono-api-reference";
 import type { AppointmentAtomType } from "@townops/appointment-atom";
 import type { CaseAtomType } from "@townops/case-atom";
 import type { ResidentAtomType } from "@townops/resident-atom";
-import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  corsOrigins,
+  initSentry,
+  captureHonoException,
+} from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -21,6 +27,8 @@ import { rescheduleJobSchema } from "./validation-schemas";
 
 const app = new Hono();
 
+initSentry({ serviceName: "reschedule-job-composite" });
+
 const devOrigins = corsOrigins();
 if (devOrigins) {
   app.use(
@@ -37,6 +45,7 @@ if (devOrigins) {
 }
 
 app.onError((err, c) => {
+  captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
     "[reschedule-job composite] internal server error"
@@ -114,6 +123,7 @@ const RescheduleJobComposite = app
           400
         );
       }
+      return undefined;
     }),
     async (c) => {
       const body = c.req.valid("json");
