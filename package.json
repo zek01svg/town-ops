@@ -17,7 +17,13 @@
     "dev": "pnpm turbo run dev --concurrency=20",
     "build": "pnpm turbo run build",
     "start": "pnpm turbo run start",
-    "test": "pnpm turbo run test"
+    "test": "pnpm turbo run test",
+    "test:integration": "vitest run --config tests/integration/vitest.config.ts",
+    "test:e2e": "playwright test --config tooling/playwright/playwright.config.ts",
+    "test:e2e:officer": "playwright test --config tooling/playwright/playwright.config.ts --project officer",
+    "test:e2e:contractor": "playwright test --config tooling/playwright/playwright.config.ts --project contractor",
+    "test:e2e:resident": "playwright test --config tooling/playwright/playwright.config.ts --project resident",
+    "test:e2e:ui": "playwright test --config tooling/playwright/playwright.config.ts --ui"
   },
   "dependencies": {
     "@cloudamqp/amqp-client": "^3.4.1",
@@ -33,6 +39,8 @@
     "@testcontainers/postgresql": "catalog:",
     "@testcontainers/rabbitmq": "catalog:",
     "@types/pg": "catalog:",
+    "@types/react": "catalog:react19",
+    "@types/react-dom": "catalog:react19",
     "@vitest/coverage-istanbul": "^4.1.2",
     "@vitest/ui": "^4.1.2",
     "dotenv-cli": "catalog:",
