@@ -7,7 +7,15 @@ import { env } from "./env";
 
 export interface ContractorSearchResult {
   ContractorUuid: string;
-  name: string;
+}
+
+export interface ContractorDetail {
+  Id: number;
+  Name: string;
+  ContactNum: string;
+  Email: string;
+  IsActive: boolean;
+  ContractorUuid: string;
 }
 
 export interface ContractorMetrics {
@@ -32,7 +40,31 @@ export async function searchContractors(
   if (!res.ok) {
     throw new Error(`Contractor search failed: HTTP ${res.status}`);
   }
-  return res.json() as Promise<ContractorSearchResult[]>;
+  const results = (await res.json()) as ContractorSearchResult[];
+  // dedupe and filter out stale pre-seed UUIDs
+  const seen = new Set<string>();
+  return results.filter((c) => {
+    if (!c.ContractorUuid.startsWith("c0ffee01") || seen.has(c.ContractorUuid))
+      return false;
+    seen.add(c.ContractorUuid);
+    return true;
+  });
+}
+
+/**
+ * Fetch full contractor details by UUID from the OutSystems Contractor API.
+ */
+export async function getContractorByUuid(
+  uuid: string
+): Promise<ContractorDetail> {
+  const url = `${env.CONTRACTOR_API_URL}/contractors/by-uuid/${encodeURIComponent(uuid)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(
+      `Contractor detail fetch failed for ${uuid}: HTTP ${res.status}`
+    );
+  }
+  return res.json() as Promise<ContractorDetail>;
 }
 
 /**
@@ -85,13 +117,14 @@ export async function createAssignment(
   caseId: string,
   contractorId: string
 ): Promise<{ id: string; caseId: string; contractorId: string }> {
+  const responseDueAt = new Date(Date.now() + 15 * 1000).toISOString();
   const client = hc<AssignmentAtomType>(env.ASSIGNMENT_ATOM_URL);
   const res = await client.api.assignments.$post({
     json: {
       caseId,
       contractorId,
       source: "AUTO_ASSIGN",
-      responseDueAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 mins to respond
+      responseDueAt,
     },
   });
 
@@ -137,13 +170,32 @@ export async function assignContractor(
     "assign-job: selected best contractor"
   );
 
-  const assignment = await createAssignment(caseId, best.contractorId);
+  const [assignment, contractorDetail] = await Promise.all([
+    createAssignment(caseId, best.contractorId),
+    getContractorByUuid(best.contractorId),
+  ]);
+
+  await rabbitmqClient.publishToQueue(
+    "sla-timers-queue",
+    {
+      assignment_id: assignment.id,
+      case_id: caseId,
+      contractor_id: best.contractorId,
+      postal_code: postalCode,
+      category_code: categoryCode,
+    },
+    { expirationMs: 15_000 }
+  );
 
   await rabbitmqClient.publish("townops.events", "job.assigned", {
     assignmentId: assignment.id,
     caseId,
     contractorId: best.contractorId,
+    contractorName: contractorDetail.Name,
+    contractorEmail: contractorDetail.Email,
+    contractorContact: contractorDetail.ContactNum,
     status: "PENDING_ACCEPTANCE",
+    email: contractorDetail.Email,
   });
 
   logger.info(
