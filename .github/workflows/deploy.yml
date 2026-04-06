@@ -1,0 +1,198 @@
+name: Deploy TownOps to GCP Cloud Run
+
+on:
+  push:
+    branches: [development, main]
+    paths:
+      - "infrastructure/terraform/**"
+      - "apps/**"
+      - "packages/**"
+      - ".github/workflows/deploy.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: asia-southeast1
+  TURBO_CACHE_DIR: .turbo
+
+jobs:
+  terraform:
+    name: Terraform (Infra)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Bootstrap state bucket (safe if exists)
+        working-directory: infrastructure/terraform/bootstrap
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -var="project_id=${GCP_PROJECT_ID}" \
+            -var="region=${GCP_REGION}" \
+            -var="bucket_name=${GCP_PROJECT_ID}-tf-state"
+
+      - name: Terraform Init & Apply
+        env:
+          TF_VAR_project_id: ${{ env.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ env.GCP_REGION }}
+          TF_VAR_github_repo: ${{ github.repository }}
+        working-directory: infrastructure/terraform
+        run: |
+          terraform init
+          terraform apply -auto-approve
+
+  build-and-deploy:
+    name: Build & Deploy (${{ matrix.name }})
+    needs: terraform
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: alert-atom
+            path: apps/atoms/alert
+            pkg: "@townops/alert-atom"
+          - name: appointment-atom
+            path: apps/atoms/appointment
+            pkg: "@townops/appointment-atom"
+          - name: assignment-atom
+            path: apps/atoms/assignment
+            pkg: "@townops/assignment-atom"
+          - name: auth-atom
+            path: apps/atoms/auth
+            pkg: "@townops/auth-atom"
+          - name: case-atom
+            path: apps/atoms/case
+            pkg: "@townops/case-atom"
+          - name: metrics-atom
+            path: apps/atoms/metrics
+            pkg: "@townops/metrics-atom"
+          - name: proof-atom
+            path: apps/atoms/proof
+            pkg: "@townops/proof-atom"
+          - name: resident-atom
+            path: apps/atoms/resident
+            pkg: "@townops/resident-atom"
+          - name: accept-job-composite
+            path: apps/composites/accept-job
+            pkg: "@townops/accept-job-composite"
+          - name: assign-job-composite
+            path: apps/composites/assign-job
+            pkg: "@townops/assign-job-composite"
+          - name: close-case-composite
+            path: apps/composites/close-case
+            pkg: "@townops/close-case-composite"
+          - name: handle-breach-composite
+            path: apps/composites/handle-breach
+            pkg: "@townops/handle-breach-composite"
+          - name: handle-no-access-composite
+            path: apps/composites/handle-no-access
+            pkg: "@townops/handle-no-access-composite"
+          - name: open-case-composite
+            path: apps/composites/open-case
+            pkg: "@townops/open-case-composite"
+          - name: reschedule-job-composite
+            path: apps/composites/reschedule-job
+            pkg: "@townops/reschedule-job-composite"
+          - name: contractor-frontend
+            path: apps/frontend/contractor
+            pkg: "@townops/contractor-frontend"
+          - name: officer-frontend
+            path: apps/frontend/officer
+            pkg: "@townops/officer-frontend"
+          - name: resident-frontend
+            path: apps/frontend/resident
+            pkg: "@townops/resident-frontend"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Set image vars
+        run: |
+          AR_REPO="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/townops"
+          echo "AR_REPO=${AR_REPO}" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${AR_REPO}/${{ matrix.name }}:${{ github.sha }}" >> $GITHUB_ENV
+          echo "IMAGE_LATEST=${AR_REPO}/${{ matrix.name }}:latest" >> $GITHUB_ENV
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Setup Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.TURBO_CACHE_DIR }}
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml', 'turbo.json') }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app
+        run: pnpm turbo run build --filter=${{ matrix.pkg }}
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & Push Image
+        run: |
+          docker build -t $IMAGE_TAG -t $IMAGE_LATEST ${{ matrix.path }}
+          docker push $IMAGE_TAG
+          docker push $IMAGE_LATEST
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ matrix.name }} \
+            --image $IMAGE_TAG \
+            --region ${{ env.GCP_REGION }} \
+            --project ${{ env.GCP_PROJECT_ID }} \
+            --update-env-vars "SENTRY_BACKEND_DSN=${{ secrets.SENTRY_BACKEND_DSN }},SENTRY_ENVIRONMENT=${{ github.ref_name }},SENTRY_RELEASE=${{ github.sha }}" \
+            --quiet
