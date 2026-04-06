@@ -1,5 +1,11 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  corsOrigins,
+  initSentry,
+  captureHonoException,
+} from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, openAPIRouteHandler, validator } from "hono-openapi";
@@ -12,6 +18,8 @@ import * as appointmentService from "./service";
 import { getAppointmentSchema } from "./validation-schemas";
 
 const app = new Hono();
+
+initSentry({ serviceName: "appointment-atom" });
 
 const devOrigins = corsOrigins();
 if (devOrigins) {
@@ -29,6 +37,7 @@ if (devOrigins) {
 }
 
 app.onError((err, c) => {
+  captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
     "[appointment atom] internal server error"

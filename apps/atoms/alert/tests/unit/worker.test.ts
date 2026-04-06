@@ -1,4 +1,14 @@
+import { rabbitmqClient } from "@townops/shared-ts";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+import {
+  getJobAssignedEmail,
+  getCaseEscalatedEmail,
+  getCaseNoAccessEmail,
+  getJobCompletedEmail,
+  getGenericAlertEmail,
+} from "../../src/email-templates";
+import { startAlertQueueWorker } from "../../src/worker";
 
 vi.hoisted(() => {
   process.env.PORT = "5006";
@@ -55,19 +65,6 @@ vi.mock("resend", () => ({
   }),
 }));
 
-import { rabbitmqClient } from "@townops/shared-ts";
-
-/* eslint-disable import/first */
-import {
-  getJobAssignedEmail,
-  getCaseEscalatedEmail,
-  getCaseNoAccessEmail,
-  getJobCompletedEmail,
-  getGenericAlertEmail,
-} from "../../src/email-templates";
-import { startAlertQueueWorker } from "../../src/worker";
-/* eslint-enable import/first */
-
 const VALID_UUID_1 = "123e4567-e89b-12d3-a456-426614174000";
 const VALID_UUID_2 = "123e4567-e89b-12d3-a456-426614174001";
 
@@ -110,7 +107,8 @@ describe("Alert Worker", () => {
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mocked.consume).toHaveBeenCalledWith(
         "alert-queue",
-        expect.any(Function)
+        expect.any(Function),
+        { exchangeName: "townops.events", routingKey: "#" }
       );
     });
   });

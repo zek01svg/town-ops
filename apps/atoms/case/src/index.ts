@@ -1,5 +1,11 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  corsOrigins,
+  initSentry,
+  captureHonoException,
+} from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -19,6 +25,8 @@ import { getCaseSchema, updateCaseStatusSchema } from "./validation-schemas";
 
 const app = new Hono();
 
+initSentry({ serviceName: "case-atom" });
+
 const devOrigins = corsOrigins();
 if (devOrigins) {
   app.use(
@@ -35,6 +43,7 @@ if (devOrigins) {
 }
 
 app.onError((err, c) => {
+  captureHonoException(err, c);
   if (
     err.message.includes("no authorization") ||
     err.message.includes("Unauthorized") ||

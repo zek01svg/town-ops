@@ -292,4 +292,72 @@ describe("Assignment Atom - HTTP Routes", () => {
       expect(data.error).toBe("Validation failed");
     });
   });
+
+  describe("PUT /api/assignments/:id/reassign", () => {
+    it("should reassign assignment and record history", async () => {
+      const updatedAssignment = {
+        ...MOCK_ASSIGNMENT,
+        contractorId: "new-contractor",
+        status: "PENDING_ACCEPTANCE",
+        source: "BREACH_REASSIGN",
+        responseDueAt: new Date().toISOString(),
+        assignedAt: new Date().toISOString(),
+        acceptedAt: null,
+      };
+
+      let capturedSetValues: any = null;
+      const mockInsertHistory = vi
+        .fn()
+        .mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+
+      mockTransaction.mockImplementation(async (cb: (tx: any) => any) => {
+        const tx = {
+          query: {
+            assignments: {
+              findFirst: vi.fn().mockResolvedValue({ status: "ACCEPTED" }),
+            },
+          },
+          update: vi.fn().mockReturnValue({
+            set: (values: any) => {
+              capturedSetValues = values;
+              return {
+                where: vi.fn().mockReturnValue({
+                  returning: vi.fn().mockResolvedValue([updatedAssignment]),
+                }),
+              };
+            },
+          }),
+          insert: mockInsertHistory,
+        };
+        return cb(tx);
+      });
+
+      const res = await app.request(
+        `/api/assignments/${VALID_ASSIGNMENT_ID}/reassign`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contractorId: "new-contractor",
+            changedBy: "system",
+            reason: "SLA_BREACH",
+          }),
+        }
+      );
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.assignments.status).toBe("PENDING_ACCEPTANCE");
+      expect(data.assignments.source).toBe("BREACH_REASSIGN");
+      expect(capturedSetValues).toEqual(
+        expect.objectContaining({
+          contractorId: "new-contractor",
+          status: "PENDING_ACCEPTANCE",
+          source: "BREACH_REASSIGN",
+        })
+      );
+      expect(capturedSetValues.responseDueAt).toBeDefined();
+      expect(mockInsertHistory).toHaveBeenCalledOnce();
+    });
+  });
 });

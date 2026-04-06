@@ -8,6 +8,13 @@ export const updateAssignmentStatusSchema = z.object({
   reason: z.string().optional(),
 });
 
+export const reassignAssignmentSchema = z.object({
+  contractorId: z.string().uuid(),
+  responseDueAt: z.string().optional(),
+  changedBy: z.string().min(1, "changedBy is required"),
+  reason: z.string().optional(),
+});
+
 export const getAssignmentByCaseSchema = z
   .string()
   .uuid("Invalid case ID format");

@@ -1,5 +1,11 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  corsOrigins,
+  initSentry,
+  captureHonoException,
+} from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -9,7 +15,6 @@ import {
   validator,
 } from "hono-openapi";
 import { cors } from "hono/cors";
-import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
 import {
@@ -22,10 +27,15 @@ import * as assignmentService from "./service";
 import {
   getAssignmentByCaseSchema,
   getAssignmentByIdSchema,
+  reassignAssignmentSchema,
   updateAssignmentStatusSchema,
 } from "./validation-schemas";
 
 const app = new Hono();
+
+initSentry({ serviceName: "assignment-atom" });
+
+const SLA_REASSIGN_WINDOW_MS = 15 * 1000;
 
 const devOrigins = corsOrigins();
 if (devOrigins) {
@@ -43,8 +53,14 @@ if (devOrigins) {
 }
 
 app.onError((err, c) => {
+  captureHonoException(err, c);
   logger.error(
-    { error: err.message, stack: err.stack, route: c.req.path },
+    {
+      error: err.message,
+      stack: err.stack,
+      cause: (err as any).cause?.message ?? (err as any).cause,
+      route: c.req.path,
+    },
     "[assignment atom] internal server error"
   );
   return c.json({ error: err.message }, 500);
@@ -52,14 +68,6 @@ app.onError((err, c) => {
 
 // custom logging middleware
 app.use("*", honoLogger() as any);
-
-app.use(
-  "/api/*",
-  jwk({
-    jwks_uri: env.JWKS_URI,
-    alg: ["EdDSA"],
-  })
-);
 
 const assignmentsRouter = new Hono()
   .post(
@@ -96,6 +104,30 @@ const assignmentsRouter = new Hono()
       );
 
       return c.json({ assignments: assignment }, 201);
+    }
+  )
+  .get(
+    "/contractor/:contractor_id",
+    describeRoute({
+      description: "Get all assignments for a contractor",
+      responses: {
+        200: {
+          description: "Assignments found",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({ assignments: z.array(assignmentsSelectSchema) })
+              ),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const { contractor_id } = c.req.param();
+      const result =
+        await assignmentService.getAssignmentsByContractorId(contractor_id);
+      return c.json({ assignments: result }, 200);
     }
   )
   .get(
@@ -178,6 +210,68 @@ const assignmentsRouter = new Hono()
         "Status history fetched"
       );
       return c.json({ history }, 200);
+    }
+  )
+  .put(
+    "/:id/reassign",
+    describeRoute({
+      description:
+        "Reassign an existing assignment to a new contractor and reset SLA",
+      responses: {
+        200: {
+          description: "Assignment reassigned",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({ assignments: assignmentsSelectSchema })
+              ),
+            },
+          },
+        },
+        404: { description: "Assignment not found" },
+      },
+    }),
+    validator(
+      "param",
+      z.object({ id: getAssignmentByIdSchema }),
+      (result, c) => {
+        if (!result.success) return c.json({ error: "Validation failed" }, 400);
+      }
+    ),
+    validator("json", reassignAssignmentSchema, (result, c) => {
+      if (!result.success) return c.json({ error: "Validation failed" }, 400);
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const { contractorId, responseDueAt, changedBy, reason } =
+        c.req.valid("json");
+
+      const newResponseDueAt =
+        responseDueAt ??
+        new Date(Date.now() + SLA_REASSIGN_WINDOW_MS).toISOString();
+
+      const result = await assignmentService.reassignAssignment(
+        id,
+        contractorId,
+        newResponseDueAt,
+        changedBy,
+        reason ?? "SLA_BREACH"
+      );
+
+      if (!result) {
+        return c.json({ error: "Assignment not found" }, 404);
+      }
+
+      logger.info(
+        {
+          route: "/api/assignments/:id/reassign",
+          assignmentId: id,
+          contractorId,
+        },
+        "Assignment reassigned"
+      );
+
+      return c.json({ assignments: result }, 200);
     }
   )
   .put(

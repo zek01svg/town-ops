@@ -1,5 +1,11 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  corsOrigins,
+  initSentry,
+  captureHonoException,
+} from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
@@ -23,6 +29,8 @@ import { startAlertQueueWorker } from "./worker";
 
 const app = new Hono();
 
+initSentry({ serviceName: "alert-atom" });
+
 const devOrigins = corsOrigins();
 if (devOrigins) {
   app.use(
@@ -39,6 +47,7 @@ if (devOrigins) {
 }
 
 app.onError((err, c) => {
+  captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
     "[alert atom] internal server error"

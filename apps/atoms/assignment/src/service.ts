@@ -12,6 +12,15 @@ export async function createAssignment(values: any) {
 }
 
 /**
+ * Get all assignments for a contractor.
+ */
+export async function getAssignmentsByContractorId(contractorId: string) {
+  return db.query.assignments.findMany({
+    where: eq(assignments.contractorId, contractorId),
+  });
+}
+
+/**
  * Find the first assignment matching the given Case ID.
  */
 export async function getAssignmentByCaseId(caseId: string) {
@@ -68,6 +77,54 @@ export async function updateAssignmentStatus(
       assignmentId: id,
       fromStatus: current.status as any,
       toStatus: status,
+      changedBy,
+      reason,
+    });
+
+    return updated;
+  });
+}
+
+/**
+ * Reassign an existing assignment to a new contractor and reset SLA window.
+ */
+export async function reassignAssignment(
+  id: string,
+  contractorId: string,
+  responseDueAt: string,
+  changedBy: string,
+  reason?: string
+) {
+  return db.transaction(async (tx) => {
+    const current = await tx.query.assignments.findFirst({
+      where: eq(assignments.id, id),
+      columns: { status: true },
+    });
+
+    if (!current) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+
+    const [updated] = await tx
+      .update(assignments)
+      .set({
+        contractorId,
+        status: "PENDING_ACCEPTANCE",
+        source: "BREACH_REASSIGN",
+        responseDueAt,
+        assignedAt: now,
+        acceptedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(assignments.id, id))
+      .returning();
+
+    await tx.insert(assignmentStatusHistory).values({
+      assignmentId: id,
+      fromStatus: current.status as any,
+      toStatus: "PENDING_ACCEPTANCE",
       changedBy,
       reason,
     });

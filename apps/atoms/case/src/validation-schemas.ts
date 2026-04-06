@@ -8,6 +8,7 @@ export const updateCaseStatusSchema = z.object({
     "assigned",
     "dispatched",
     "in_progress",
+    "pending_resident_input",
     "completed",
     "cancelled",
     "escalated",

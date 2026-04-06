@@ -1,11 +1,16 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  corsOrigins,
+  initSentry,
+  captureHonoException,
+} from "@townops/shared-ts";
 import { createInsertSchema } from "drizzle-zod";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, openAPIRouteHandler, validator } from "hono-openapi";
 import { cors } from "hono/cors";
-import { jwk } from "hono/jwk";
 
 import { contractorMetrics } from "./database/schema";
 import { env } from "./env";
@@ -15,6 +20,8 @@ import { getMetricSchema } from "./validation-schemas";
 const insertMetricSchema = createInsertSchema(contractorMetrics);
 
 const app = new Hono();
+
+initSentry({ serviceName: "metrics-atom" });
 
 const devOrigins = corsOrigins();
 if (devOrigins) {
@@ -32,6 +39,7 @@ if (devOrigins) {
 }
 
 app.onError((err, c) => {
+  captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
     "[metrics atom] internal server error"
@@ -40,7 +48,6 @@ app.onError((err, c) => {
 });
 
 app.use("*", honoLogger());
-app.use("/api/*", jwk({ jwks_uri: env.JWKS_URI, alg: ["EdDSA"] }));
 
 const metricsRoutes = app
   .get(

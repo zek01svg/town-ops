@@ -17,5 +17,5 @@ export const alertPayloadSchema = z.object({
   description: z.string().optional(),
   message: z.string().optional(),
   channel: z.enum(["email", "sms"]).optional().default("email"),
-  email: z.email(),
+  email: z.email().optional(),
 });

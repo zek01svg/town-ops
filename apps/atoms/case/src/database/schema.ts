@@ -38,6 +38,7 @@ export const caseStatus = pgEnum("case_status", [
   "assigned",
   "dispatched",
   "in_progress",
+  "pending_resident_input",
   "completed",
   "cancelled",
   "escalated",
