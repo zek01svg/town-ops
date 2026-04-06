@@ -125,6 +125,49 @@ class RabbitMQClient {
   }
 
   /**
+   * @method publishToQueue
+   * @param queueName - The name of the queue to publish to.
+   * @param message - The message to publish.
+   * @param options - Optional parameters for publishing the message.
+   * @description Publishes a message directly to a queue (default exchange).
+   */
+  async publishToQueue(
+    queueName: QueueName,
+    message: string | object,
+    options?: { contentType?: string; expirationMs?: number }
+  ): Promise<void> {
+    if (!this.channel) await this.connect();
+    const channel = this.channel;
+    if (!channel) throw new Error("RabbitMQ channel not connected");
+
+    const data =
+      typeof message === "string" ? message : JSON.stringify(message);
+    const contentType =
+      options?.contentType ||
+      (typeof message === "object" ? "application/json" : "text/plain");
+
+    const queueArguments = DEFAULT_QUEUE_ARGUMENTS[queueName];
+    await channel.queue(queueName, { durable: true }, queueArguments);
+
+    const dlx = queueArguments?.["x-dead-letter-exchange"];
+    if (dlx) {
+      await channel.exchangeDeclare(dlx, "topic", { durable: true });
+    }
+
+    const publishOptions: Record<string, any> = {
+      contentType,
+      deliveryMode: 2,
+    };
+
+    if (options?.expirationMs !== undefined) {
+      publishOptions.expiration = String(options.expirationMs);
+    }
+
+    await channel.basicPublish("", queueName, data, publishOptions);
+    logger.debug({ queueName }, "Message published to RabbitMQ queue");
+  }
+
+  /**
    * @method consume
    * @param queueName - The name of the queue to consume from.
    * @param callback - The callback function to handle messages.
