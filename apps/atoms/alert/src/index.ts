@@ -15,7 +15,6 @@ import {
   validator,
 } from "hono-openapi";
 import { cors } from "hono/cors";
-import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
 import { selectAlertSchema } from "./database/schema";
@@ -57,9 +56,6 @@ app.onError((err, c) => {
 
 // custom logging middleware
 app.use("*", honoLogger());
-
-// jwt auth middleware except health & api documentation
-app.use("/api/*", jwk({ jwks_uri: env.JWKS_URI, alg: ["EdDSA"] }));
 
 const alertRoutes = app
   .get(

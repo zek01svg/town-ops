@@ -15,7 +15,6 @@ import {
   validator,
 } from "hono-openapi";
 import { cors } from "hono/cors";
-import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
 import { selectProfileSchema } from "./database/schema";
@@ -58,15 +57,6 @@ app.onError((err, c) => {
 
 // custom logging middleware
 app.use("*", honoLogger());
-
-// JWK auth middleware for all api routes
-app.use(
-  "/api/*",
-  jwk({
-    jwks_uri: env.JWKS_URI,
-    alg: ["EdDSA"],
-  })
-);
 
 const residentRouter = new Hono()
   .get(

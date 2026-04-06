@@ -15,7 +15,6 @@ import {
   validator,
 } from "hono-openapi";
 import { cors } from "hono/cors";
-import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
 import { insertCaseSchema, selectCaseSchema } from "./database/schema";
@@ -44,13 +43,6 @@ if (devOrigins) {
 
 app.onError((err, c) => {
   captureHonoException(err, c);
-  if (
-    err.message.includes("no authorization") ||
-    err.message.includes("Unauthorized") ||
-    err.message.includes("invalid")
-  ) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
     "[case atom] internal server error"
@@ -60,14 +52,6 @@ app.onError((err, c) => {
 
 // custom logging middleware
 app.use("*", honoLogger());
-
-app.use(
-  "/api/*",
-  jwk({
-    jwks_uri: env.JWKS_URI,
-    alg: ["EdDSA"],
-  })
-);
 
 const casesRouter = new Hono()
   .get(

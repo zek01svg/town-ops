@@ -10,7 +10,6 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, openAPIRouteHandler, validator } from "hono-openapi";
 import { cors } from "hono/cors";
-import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
 import { env } from "./env";
@@ -47,7 +46,6 @@ app.onError((err, c) => {
 });
 
 app.use("*", honoLogger());
-app.use("/api/*", jwk({ jwks_uri: env.JWKS_URI, alg: ["EdDSA"] }));
 
 const proofRouter = new Hono()
   .get(
