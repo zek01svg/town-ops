@@ -41,6 +41,7 @@ catalog:
   "@hugeicons/core-free-icons": ^4.1.1
   "@hugeicons/react": "^1.1.6"
   "@sentry/react": ^10.47.0
+  "@sentry/bun": ^10.47.0
   dotenv: ^17.4.0
   lucide-react: ^1.7.0
   react-kanban-kit: 0.0.2-beta.6
