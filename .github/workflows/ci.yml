@@ -124,4 +124,4 @@ jobs:
       - name: Install TS dependencies
         run: pnpm install --frozen-lockfile
       - name: Run TS Tests
-        run: pnpm test --if-present
+        run: pnpm test
