@@ -36,7 +36,7 @@ export function AppShell({
               {userRole}
             </span>
             <span className="text-sm font-bold font-label tracking-tight uppercase">
-              HI, {userName}!
+              {userName}
             </span>
           </div>
           {avatarSrc && (

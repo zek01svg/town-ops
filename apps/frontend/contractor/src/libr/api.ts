@@ -3,6 +3,7 @@ import type { AppointmentAtomType } from "@townops/appointment-atom";
 import type { AssignmentAtomType } from "@townops/assignment-atom";
 import type { CaseAtomType } from "@townops/case-atom";
 import type { CloseCaseCompositeType } from "@townops/close-case-composite";
+import type { HandleNoAccessCompositeType } from "@townops/handle-no-access-composite";
 import type { RescheduleJobCompositeType } from "@townops/reschedule-job-composite";
 import { hc } from "hono/client";
 
@@ -20,6 +21,9 @@ export const acceptJobClient = hc<AcceptJobCompositeType>(
 );
 export const closeCaseClient = hc<CloseCaseCompositeType>(
   env.VITE_CLOSE_CASE_URL
+);
+export const handleNoAccessClient = hc<HandleNoAccessCompositeType>(
+  env.VITE_HANDLE_NO_ACCESS_URL
 );
 export const rescheduleJobClient = hc<RescheduleJobCompositeType>(
   env.VITE_RESCHEDULE_JOB_URL

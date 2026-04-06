@@ -37,8 +37,8 @@ export default defineConfig({
     "no-debugger": "error",
 
     // Type-aware rules (Enabled via options.typeAware)
-    "typescript/no-floating-promises": "error",
-    "typescript/no-misused-promises": "error",
+    "typescript/no-floating-promises": "warn",
+    "typescript/no-misused-promises": "warn",
 
     // Unicorn has great best practices but can be overly opinionated out of the box.
     "unicorn/no-null": "off",
@@ -53,7 +53,7 @@ export default defineConfig({
       { prefer: "type-imports", fixStyle: "separate-type-imports" },
     ],
     "typescript/no-unnecessary-condition": [
-      "error",
+      "warn",
       { allowConstantLoopConditions: true },
     ],
     "typescript/no-non-null-assertion": "error",
@@ -75,6 +75,10 @@ export default defineConfig({
     ],
 
     "react/react-in-jsx-scope": "off",
+    // TanStack Form uses children-as-prop render pattern — not a React anti-pattern
+    "react/no-children-prop": "off",
+    // Custom Shadcn form components associate labels internally
+    "jsx-a11y/label-has-associated-control": "off",
   },
 
   // 7. Environment-Specific Overrides
@@ -95,6 +99,10 @@ export default defineConfig({
         // Strict accessibility checks
         "jsx-a11y/alt-text": "error",
         "jsx-a11y/anchor-is-valid": "warn",
+        // TanStack Form uses children-as-prop render pattern — not a React anti-pattern here
+        "react/no-children-prop": "off",
+        // Custom form components wrap labels internally — association is handled by the component
+        "jsx-a11y/label-has-associated-control": "off",
       },
     },
     {

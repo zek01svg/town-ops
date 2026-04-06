@@ -23,6 +23,14 @@ export const env: Env = {
     window.__env?.VITE_APPOINTMENT_ATOM_URL ??
     import.meta.env.VITE_APPOINTMENT_ATOM_URL ??
     "http://localhost:5004",
+  VITE_ALERT_ATOM_URL:
+    window.__env?.VITE_ALERT_ATOM_URL ??
+    import.meta.env.VITE_ALERT_ATOM_URL ??
+    "http://localhost:5006",
+  VITE_PROOF_ATOM_URL:
+    window.__env?.VITE_PROOF_ATOM_URL ??
+    import.meta.env.VITE_PROOF_ATOM_URL ??
+    "http://localhost:5005",
   VITE_ACCEPT_JOB_URL:
     window.__env?.VITE_ACCEPT_JOB_URL ??
     import.meta.env.VITE_ACCEPT_JOB_URL ??
@@ -35,4 +43,12 @@ export const env: Env = {
     window.__env?.VITE_RESCHEDULE_JOB_URL ??
     import.meta.env.VITE_RESCHEDULE_JOB_URL ??
     "http://localhost:6006",
+  VITE_HANDLE_NO_ACCESS_URL:
+    window.__env?.VITE_HANDLE_NO_ACCESS_URL ??
+    import.meta.env.VITE_HANDLE_NO_ACCESS_URL ??
+    "http://localhost:6007",
+  VITE_GOOGLE_MAPS_API_KEY:
+    window.__env?.VITE_GOOGLE_MAPS_API_KEY ??
+    import.meta.env.VITE_GOOGLE_MAPS_API_KEY ??
+    "",
 };
