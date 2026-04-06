@@ -172,6 +172,21 @@ services:
           minute: 30
           policy: local
 
+  - name: handle-no-access-composite
+    url: http://host.docker.internal:6007
+    routes:
+      - name: handle-no-access-route
+        paths:
+          - /api/cases/no-access
+        methods:
+          - PUT
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
+
   - name: reschedule-job-composite
     url: http://host.docker.internal:6006
     routes:
