@@ -1,157 +1,64 @@
-# 🏢 TownOps: Enterprise Maintenance Management System
+# 🏘️ TownOps: Estate Maintenance Management System
 
-[![CI/CD](https://github.com/zek01svg/town-ops/actions/workflows/ci.yml/badge.svg)](https://github.com/zek01svg/town-ops/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-blue.svg)](https://nodejs.org/)
-[![Python Version](https://img.shields.io/badge/python-%3E%3D3.11-blue.svg)](https://www.python.org/)
-[![pnpm](https://img.shields.io/badge/pnpm-%3E%3D10.0.0-orange.svg)](https://pnpm.io/)
-[![uv](https://img.shields.io/badge/uv-%3E%3D0.5.0-purple.svg)](https://astral.sh/uv)
+TownOps digitises HDB estate maintenance workflows — from case creation through contractor dispatch, job acceptance, SLA monitoring, and closure — into a structured, auditable lifecycle.
 
----
+## 🏗️ Architecture
 
-### 🌟 Value Proposition
+Strictly layered **Atomic/Composite** microservices pattern:
 
-**TownOps** is an enterprise-grade maintenance management system designed for high-concurrency municipal operations. It addresses the complexity of urban maintenance by decoupling data ownership from business processes through a strictly layered **Atomic/Composite** architecture to ensure data integrity, horizontal scalability, and resilient asynchronous event handling.
+- **⚛️ Atoms** (`apps/atoms/`) — Data owners. Each atom owns exactly one domain schema, exposes a REST API, and never calls other services directly.
+- **🧩 Composites** (`apps/composites/`) — Business orchestrators. Stateless services that coordinate multiple atoms via HTTP and publish AMQP events.
+- **💻 Frontends** (`apps/frontend/`) — Role-specific React dashboards for officers, contractors, and residents.
+- **📦 Shared Packages** (`packages/`) — Cross-cutting utilities, UI components, and type definitions.
 
----
+See [`docs/architecture.md`](docs/architecture.md) for the full design and messaging patterns.
 
-## 📐 Architecture
+## ⚙️ Services
 
-TownOps follows a 3-tier microservices pattern to ensure separation of concerns and independent scalability.
+| Service                  | Port |
+| :----------------------- | :--- |
+| Case atom                | 5001 |
+| Resident atom            | 5002 |
+| Assignment atom          | 5003 |
+| Appointment atom         | 5004 |
+| Proof atom               | 5005 |
+| Alert atom               | 5006 |
+| Metrics atom             | 5007 |
+| Auth atom                | 5008 |
+| Open Case composite      | 6001 |
+| Assign Job composite     | 6002 |
+| Accept Job composite     | 6003 |
+| Close Case composite     | 6004 |
+| Handle Breach composite  | 6005 |
+| Reschedule Job composite | 6006 |
+| Contractor frontend      | 4000 |
+| Officer frontend         | 4001 |
 
-```mermaid
-graph TD
-    subgraph Client_Layer [Client Layer]
-        FE[React 19 Frontend]
-    end
-
-    subgraph Gateway_Layer [API Gateway]
-        Kong[Kong Gateway]
-    end
-
-    subgraph Service_Layer [Orchestration Layer]
-        subgraph Composites [Composite Services - Node/Bun/Hono]
-            OC[Open Case]
-            AJ[Assign Job]
-            CC[Close Case]
-        end
-
-        subgraph Atoms [Atomic Services - Python/FastAPI or Bun/Hono]
-            Case[Case Atom]
-            Alert[Alert Atom]
-            Res[Resident Atom]
-            Attr[Assignment Atom]
-        end
-    end
-
-    subgraph Infrastructure [Data & Messaging]
-        DB[(PostgreSQL)]
-        MQ[[RabbitMQ]]
-        Cache[(Redis)]
-    end
-
-    FE -->|HTTP/REST| Kong
-    Kong -->|HTTP/REST| Composites
-    Composites -->|HTTP/REST| Atoms
-    Atoms <-->|SQL/Drizzle| DB
-    Atoms -.->|AMQP Events| MQ
-    Composites -.->|Consume Events| MQ
-```
-
-> [!IMPORTANT]
-> **Architectural Rule:** Atomic services own their data and never call other services via HTTP. All cross-service communication occurs asynchronously via RabbitMQ.
-
----
-
-## ⚙️ Environment Configuration
-
-| Variable           | Description                      | Example                                  |
-| :----------------- | :------------------------------- | :--------------------------------------- |
-| `RABBITMQ_URL`     | URL for the message broker       | `amqp://guest:guest@localhost:5672`      |
-| `DATABASE_URL`     | Connection string for PostgreSQL | `postgres://user:pass@localhost:5432/db` |
-| `VITE_GATEWAY_URL` | External Gateway URL (Frontend)  | `http://localhost:8000`                  |
-| `KONG_ADMIN_API`   | Management API for the Gateway   | `http://localhost:8001`                  |
-| `CASE_PORT`        | Port for the Case Atomic Service | `5001`                                   |
-
-> [!TIP]
-> Use the provided `.env.example` as a template for your local `.env` file.
-
----
-
-## 🧪 Testing & Observability
-
-- **Unit Testing**:
-  - Python: `pytest`
-  - JavaScript/TypeScript: `vitest`
-- **E2E Testing**: Playwright handles cross-service system flows.
-- **Linting & Formatting**:
-  - `Ruff` for Python.
-  - `ESLint` + `Prettier` for TypeScript/React.
-- **Observability**: Error tracking via **Sentry** and centralized logging.
-
----
+See [`docs/service-map.md`](docs/service-map.md) for full details including routes and responsibilities.
 
 ## 🚀 Getting Started
 
-### 1. Initial Setup
-
-Install the necessary workspace managers and dependencies.
-
 ```bash
-# Install pnpm (if not already installed)
-npm install -g pnpm
-
-# Install JS/TS dependencies
+# Install dependencies
 pnpm install
 
-# Setup Python environment and dependencies
-uv sync
+# Push database schemas (run per atom)
+pnpm --filter @townops/case-atom db:push --force
+# ... repeat for each atom
+
+# Start all services
+pnpm run dev
 ```
 
-### 2. Infrastructure
+See [`docs/deployment.md`](docs/deployment.md) for full local setup, environment variables, and seed scripts.
 
-Launch the database, gateway, and message broker.
+## 📚 Documentation
 
-```bash
-cd infrastructure
-docker-compose up -d
-```
-
-### 3. Database Migrations
-
-Initialize your schemas using Drizzle (for individual atoms).
-
-```bash
-cd apps/atoms/case
-pnpm db:push
-```
-
-### 4. Development
-
-Start the local development server for all services.
-
-```bash
-pnpm dev
-```
-
----
-
-## 📂 Project Structure
-
-```text
-.
-├── .github/                 # GitHub Actions
-├── .vscode/                 # VSCode configs
-├── .husky/                  # Husky configs
-├── apps/                    # Microservices
-│   ├── atoms/               # Data-owning services
-│   ├── composites/          # Process orchestrators
-│   └── frontend/            # React app
-├── docs/                    # Detailed documentation
-├── packages/                # Shared internal libraries
-│   ├── shared-ts/           # Shared TypeScript utilities
-│   ├── shared-python/       # Shared Python utilities
-├── tooling/                 # Shared tooling configs (Oxlint, Ruff, Oxformat)
-├── infrastructure/          # Docker, Kong, RabbitMQ & Terraform configs
-└── tests/                   # E2E and Integration test suites
-```
+| Doc                                      | Description                                     |
+| :--------------------------------------- | :---------------------------------------------- |
+| [Architecture](docs/architecture.md)     | Atomic/Composite pattern, messaging, auth       |
+| [Service Map](docs/service-map.md)       | All services, ports, routes                     |
+| [Event Flow](docs/event-flow.md)         | AMQP event topology and routing                 |
+| [Case Lifecycle](docs/case-lifecycle.md) | Case/assignment state machines, SLA, proof flow |
+| [Deployment](docs/deployment.md)         | Local setup, env vars, seed data                |
+| [Tech Stack](docs/tech-stack.md)         | Framework and tooling choices                   |

@@ -4,20 +4,11 @@ This folder contains detailed specs regarding **TownOps** decoupled design patte
 
 ## 🗂️ Table of Contents
 
-| Document                                 | Description                                                                                 |
-| :--------------------------------------- | :------------------------------------------------------------------------------------------ |
-| 🏗️ **[Architecture](./architecture.md)** | Covers the **Atomic/Composite** philosophy, RabbitMQ design patterns, and decoupling Rules. |
-| 🗺️ **[Service Map](./service-map.md)**   | Full list of active microservice instances, port assignments, and static module paths.      |
-| ⚡ **[Event Flow](./event-flow.md)**     | Details Pub/Sub streams handling eventual consistency triggers and SLA alerts.              |
-| 🚀 **[Deployment](./deployment.md)**     | Notes on local environment setup triggers and container topologies.                         |
-| 🛠 **[Tech Stack](./tech-stack.md)**     | Tech stack used in the project.                                                             |
-
----
-
-## 💡 Core Setup Breakdown
-
-TownOps enforces strict isolation of execution nodes based on responsibilities:
-
-- **Atoms (`/apps/atoms`)**: Agnostic data owners. Each Atom owns exactly one data schema and broadcasts alters using RabbitMQ streams.
-- **Composites (`/apps/composites`)**: Business orchestrators. Maintains stateless responses coordinating multiple HTTP Rest node boundaries.
-- **Shared Nodes (`/packages`)**: Centralized static types bundles, styles components, and reusable utilities linked with automated Catalogs for version alignment.
+| Document                                     | Description                                                                                 |
+| :------------------------------------------- | :------------------------------------------------------------------------------------------ |
+| 🏗️ **[Architecture](./architecture.md)**     | Covers the **Atomic/Composite** philosophy, RabbitMQ design patterns, and decoupling rules. |
+| 🗺️ **[Service Map](./service-map.md)**       | Full list of active microservice instances, port assignments, and routes.                   |
+| ⚡ **[Event Flow](./event-flow.md)**         | Pub/Sub event catalogue, routing keys, and SLA DLX pattern.                                 |
+| 🔄 **[Case Lifecycle](./case-lifecycle.md)** | Case and assignment status state machines, SLA window, and proof/closure flow.              |
+| 🚀 **[Deployment](./deployment.md)**         | Local environment setup, env vars, DB migrations, and seed scripts.                         |
+| 🛠 **[Tech Stack](./tech-stack.md)**         | Framework and tooling choices.                                                              |
