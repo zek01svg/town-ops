@@ -1,5 +1,11 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { logger, honoLogger, corsOrigins } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  corsOrigins,
+  initSentry,
+  captureHonoException,
+} from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
@@ -10,6 +16,8 @@ import { auth } from "./auth";
 import { env } from "./env";
 
 const app = new Hono();
+
+initSentry({ serviceName: "auth-atom" });
 
 const devOrigins = corsOrigins();
 if (devOrigins) {
@@ -27,6 +35,7 @@ if (devOrigins) {
 }
 
 app.onError((err, c) => {
+  captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
     "[auth atom] internal server error"

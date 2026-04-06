@@ -33,11 +33,17 @@ export const auth = betterAuth({
     "http://localhost:5174",
     "http://localhost:5175",
   ],
-  additionalFields: {
-    user: {
+  user: {
+    additionalFields: {
       role: {
         type: "string",
         input: true, // dev: allow role to be set at sign-up for seeding
+      },
+      contractorId: {
+        type: "string",
+        fieldName: "contractor_id",
+        input: true, // contractor's OutSystems UUID
+        required: false,
       },
     },
   },
