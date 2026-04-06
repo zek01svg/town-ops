@@ -11,7 +11,6 @@
     "prepare": "husky",
     "format:fix": "pnpm oxfmt --config tooling/oxfmt/.oxfmtrc.json --write .",
     "format:check": "pnpm oxfmt --config tooling/oxfmt/.oxfmtrc.json --check .",
-    "lint:py": "uv run ruff check . --config tooling/ruff/ruff.toml",
     "lint:js": "pnpm oxlint --config=tooling/oxlint/oxlint.config.ts",
     "clean": "pnpm turbo run clean",
     "dev": "pnpm turbo run dev --concurrency=20",

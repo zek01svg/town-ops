@@ -212,7 +212,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               </span>
             </div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              You must acknowledge this job within 15 seconds of assignment or
+              You must acknowledge this job within 1 minute of assignment or
               it will be escalated.
             </p>
             <Button
