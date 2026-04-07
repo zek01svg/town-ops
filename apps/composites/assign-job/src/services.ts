@@ -1,22 +1,10 @@
 import type { AssignmentAtomType } from "@townops/assignment-atom";
+import type { ContractorAtomType } from "@townops/contractor-atom";
 import type { MetricsAtomType } from "@townops/metrics-atom";
 import { logger, rabbitmqClient } from "@townops/shared-ts";
 import { hc } from "hono/client";
 
 import { env } from "./env";
-
-export interface ContractorSearchResult {
-  ContractorUuid: string;
-}
-
-export interface ContractorDetail {
-  Id: number;
-  Name: string;
-  ContactNum: string;
-  Email: string;
-  IsActive: boolean;
-  ContractorUuid: string;
-}
 
 export interface ContractorMetrics {
   contractorId: string;
@@ -25,46 +13,53 @@ export interface ContractorMetrics {
 }
 
 /**
- * Search for eligible contractors via the OutSystems Contractor API.
- * (Stays as fetch since it is an external non-Hono service)
+ * Search for eligible contractors via the Contractor atom.
  */
 export async function searchContractors(
   sectorCode: string,
   categoryCode: string
-): Promise<ContractorSearchResult[]> {
-  const url = new URL(`${env.CONTRACTOR_API_URL}/contractors/search`);
-  url.searchParams.set("SectorCode", sectorCode);
-  url.searchParams.set("CategoryCode", categoryCode);
-
-  const res = await fetch(url.toString());
+): Promise<
+  { id: string; name: string; email: string; contactNum: string | null }[]
+> {
+  const client = hc<ContractorAtomType>(env.CONTRACTOR_ATOM_URL);
+  const res = await client.api.contractors.search.$get({
+    query: { sectorCode, categoryCode },
+  });
   if (!res.ok) {
     throw new Error(`Contractor search failed: HTTP ${res.status}`);
   }
-  const results = (await res.json()) as ContractorSearchResult[];
-  // dedupe and filter out stale pre-seed UUIDs
-  const seen = new Set<string>();
-  return results.filter((c) => {
-    if (!c.ContractorUuid.startsWith("c0ffee01") || seen.has(c.ContractorUuid))
-      return false;
-    seen.add(c.ContractorUuid);
-    return true;
-  });
+  const data = await res.json();
+  return data.contractors as {
+    id: string;
+    name: string;
+    email: string;
+    contactNum: string | null;
+  }[];
 }
 
 /**
- * Fetch full contractor details by UUID from the OutSystems Contractor API.
+ * Fetch full contractor details by ID from the Contractor atom.
  */
-export async function getContractorByUuid(
-  uuid: string
-): Promise<ContractorDetail> {
-  const url = `${env.CONTRACTOR_API_URL}/contractors/by-uuid/${encodeURIComponent(uuid)}`;
-  const res = await fetch(url);
+export async function getContractorById(id: string): Promise<{
+  id: string;
+  name: string;
+  email: string;
+  contactNum: string | null;
+}> {
+  const client = hc<ContractorAtomType>(env.CONTRACTOR_ATOM_URL);
+  const res = await client.api.contractors[":id"].$get({
+    param: { id },
+  });
   if (!res.ok) {
-    throw new Error(
-      `Contractor detail fetch failed for ${uuid}: HTTP ${res.status}`
-    );
+    throw new Error(`Contractor fetch failed for ${id}: HTTP ${res.status}`);
   }
-  return res.json() as Promise<ContractorDetail>;
+  const data = await res.json();
+  return data.contractor as {
+    id: string;
+    name: string;
+    email: string;
+    contactNum: string | null;
+  };
 }
 
 /**
@@ -164,7 +159,7 @@ export async function assignContractor(
   }
 
   const metricsResults = await Promise.all(
-    contractors.map((c) => getContractorMetrics(c.ContractorUuid))
+    contractors.map((c) => getContractorMetrics(c.id))
   );
 
   const best = selectBest(metricsResults);
@@ -175,7 +170,7 @@ export async function assignContractor(
 
   const [assignment, contractorDetail] = await Promise.all([
     createAssignment(caseId, best.contractorId),
-    getContractorByUuid(best.contractorId),
+    getContractorById(best.contractorId),
   ]);
 
   await rabbitmqClient.publishToQueue(
@@ -194,11 +189,11 @@ export async function assignContractor(
     assignmentId: assignment.id,
     caseId,
     contractorId: best.contractorId,
-    contractorName: contractorDetail.Name,
-    contractorEmail: contractorDetail.Email,
-    contractorContact: contractorDetail.ContactNum,
+    contractorName: contractorDetail.name,
+    contractorEmail: contractorDetail.email,
+    contractorContact: contractorDetail.contactNum,
     status: "PENDING_ACCEPTANCE",
-    email: contractorDetail.Email,
+    email: contractorDetail.email,
   });
 
   logger.info(

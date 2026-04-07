@@ -18,6 +18,7 @@
   "dependencies": {
     "@t3-oss/env-core": "catalog:",
     "@townops/assignment-atom": "workspace:*",
+    "@townops/contractor-atom": "workspace:*",
     "@townops/metrics-atom": "workspace:*",
     "@townops/shared-ts": "workspace:*",
     "hono": "catalog:",

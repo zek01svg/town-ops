@@ -8,7 +8,7 @@ export const env = createEnv({
     CASE_ATOM_URL: z.url(),
     ASSIGNMENT_ATOM_URL: z.url(),
     METRICS_ATOM_URL: z.url(),
-    CONTRACTOR_API_URL: z.url(),
+    CONTRACTOR_ATOM_URL: z.url(),
     JWKS_URI: z.url(),
   },
   runtimeEnv: {
@@ -17,7 +17,7 @@ export const env = createEnv({
     CASE_ATOM_URL: process.env.CASE_ATOM_URL,
     ASSIGNMENT_ATOM_URL: process.env.ASSIGNMENT_ATOM_URL,
     METRICS_ATOM_URL: process.env.METRICS_ATOM_URL,
-    CONTRACTOR_API_URL: process.env.CONTRACTOR_API_URL,
+    CONTRACTOR_ATOM_URL: process.env.CONTRACTOR_ATOM_URL,
     JWKS_URI: process.env.JWKS_URI,
   },
   skipValidation: process.env.npm_lifecycle_event === "lint",
