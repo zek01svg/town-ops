@@ -124,4 +124,8 @@ jobs:
       - name: Install TS dependencies
         run: pnpm install --frozen-lockfile
       - name: Run TS Tests
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+          OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost
+          OTEL_EXPORTER_OTLP_HEADERS: Authorization=test
         run: pnpm test
