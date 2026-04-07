@@ -140,6 +140,18 @@ services:
     ports:
       - "5008:5008"
 
+  contractor-atom:
+    build: apps/atoms/contractor
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 5009
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+    ports:
+      - "5009:5009"
+
   # ─── Composites ───────────────────────────────────────────────────────────────
 
   open-case-composite:
@@ -166,7 +178,7 @@ services:
     environment:
       PORT: 6002
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      CONTRACTOR_API_URL: ${CONTRACTOR_API_URL}
+      CONTRACTOR_ATOM_URL: http://contractor-atom:5009
       ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
       METRICS_ATOM_URL: http://metrics-atom:5006
     ports:
@@ -215,7 +227,7 @@ services:
       CASE_ATOM_URL: http://case-atom:5005
       ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
       METRICS_ATOM_URL: http://metrics-atom:5006
-      CONTRACTOR_API_URL: ${CONTRACTOR_API_URL}
+      CONTRACTOR_ATOM_URL: http://contractor-atom:5009
       JWKS_URI: http://auth-atom:5001/api/auth/jwks
     ports:
       - "6005:6005"
