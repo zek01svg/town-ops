@@ -1,6 +1,6 @@
 # 🤝 Close Case Composite
 
-A backend microservice (Composite) dedicated to closing a case by storing proof items, updating the Case status to `CLOSED`, and emitting a `job.done` event to RabbitMQ. It acts as an orchestrator built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
+A backend microservice (Composite) dedicated to closing a case — stores before/after proof items via the Proof atom, updates the Case status to `closed`, and emits a `job.done` event to RabbitMQ. Built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
 
 ---
 
@@ -9,7 +9,7 @@ A backend microservice (Composite) dedicated to closing a case by storing proof 
 - **Runtime**: [Bun](https://bun.sh/)
 - **Framework**: [Hono](https://hono.dev/)
 - **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
-- **Messaging**: [@cloudamqp/amqp-client](https://www.npmjs.com/package/@cloudamqp/amqp-client) (RabbitMQ)
+- **Messaging**: RabbitMQ via `@townops/shared-ts`
 - **Logging**: Pino via customized `@townops/shared-ts`
 - **Testing**: [Vitest](https://vitest.dev/)
 
@@ -44,11 +44,10 @@ Create a `.env` file in this directory with the following variables:
 
 ```env
 PORT=6004
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
-CASE_ATOM_URL=http://localhost:5001
-PROOF_ATOM_URL=http://localhost:5002
-JWKS_URI=http://localhost:8080/realms/townops/protocol/openid-connect/certs
+CASE_ATOM_URL=http://localhost:5005
+PROOF_ATOM_URL=http://localhost:5007
+JWKS_URI=http://localhost:5001/api/auth/jwks
 ```
 
 ### 2. Run Locally

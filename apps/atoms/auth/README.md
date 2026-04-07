@@ -43,9 +43,10 @@ Once the server is running, visit:
 Create a `.env` file in this directory with the following variables:
 
 ```env
-DATABASE_URL=postgres://user:password@localhost:5432/townops
+DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
 PORT=5001
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+BETTER_AUTH_SECRET=change-me-min-32-chars
+BETTER_AUTH_URL=http://localhost:5001
 ```
 
 ### 2. Run Locally
@@ -64,5 +65,5 @@ To package and spin up the optimized docker runtime:
 bun run build:docker
 
 # 2. Run Container with absolute reference port mapping
-docker run --env-file .env -p 5001:5001 case-atom
+docker run --env-file .env -p 5001:5001 auth-atom
 ```

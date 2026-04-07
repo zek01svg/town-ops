@@ -1,6 +1,6 @@
 # 🤝 Accept Job Composite
 
-A backend microservice (Composite) dedicated to accepting a job by updating Assignment and Case statuses and creating an Appointment block. It acts as an orchestrator built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
+A backend microservice (Composite) dedicated to accepting a job — updates the Assignment status to `ACCEPTED`, transitions the Case to `in_progress`, and creates an Appointment block for the scheduled time window. Built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
 
 ---
 
@@ -9,7 +9,7 @@ A backend microservice (Composite) dedicated to accepting a job by updating Assi
 - **Runtime**: [Bun](https://bun.sh/)
 - **Framework**: [Hono](https://hono.dev/)
 - **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
-- **Messaging**: [@cloudamqp/amqp-client](https://www.npmjs.com/package/@cloudamqp/amqp-client) (RabbitMQ)
+- **Messaging**: RabbitMQ via `@townops/shared-ts`
 - **Logging**: Pino via customized `@townops/shared-ts`
 - **Testing**: [Vitest](https://vitest.dev/)
 
@@ -44,10 +44,11 @@ Create a `.env` file in this directory with the following variables:
 
 ```env
 PORT=6003
-OTEL_EXPORTER_OTLP_ENDPOINT=your-otel-endpoint
-APPOINTMENT_SERVICE_URL=http://localhost:5004
-ASSIGNMENT_SERVICE_URL=http://localhost:5003
-CASE_SERVICE_URL=http://localhost:5001
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+ASSIGNMENT_ATOM_URL=http://localhost:5004
+CASE_ATOM_URL=http://localhost:5005
+APPOINTMENT_ATOM_URL=http://localhost:5003
+JWKS_URI=http://localhost:5001/api/auth/jwks
 ```
 
 ### 2. Run Locally

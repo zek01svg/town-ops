@@ -1,6 +1,6 @@
 # 🤝 Handle Breach Composite
 
-A backend microservice (Composite) dedicated to handling SLA breaches by consuming `SLA_Breached` events from RabbitMQ, re-querying for backup workers, updating Assignment and Case statuses to `ESCALATED`, recording penalties, and publishing alerts. It acts as an orchestrator built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
+A backend microservice (Composite) dedicated to handling SLA breaches — consumes `sla.breached` events from RabbitMQ, reassigns the job to a backup contractor, escalates the Case status to `escalated`, records a penalty score against the original contractor, and publishes an alert. Built with **Hono** and **Bun** with native OpenTelemetry instrumentation.
 
 ---
 
@@ -9,7 +9,7 @@ A backend microservice (Composite) dedicated to handling SLA breaches by consumi
 - **Runtime**: [Bun](https://bun.sh/)
 - **Framework**: [Hono](https://hono.dev/)
 - **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
-- **Messaging**: [@cloudamqp/amqp-client](https://www.npmjs.com/package/@cloudamqp/amqp-client) (RabbitMQ)
+- **Messaging**: RabbitMQ via `@townops/shared-ts`
 - **Logging**: Pino via customized `@townops/shared-ts`
 - **Testing**: [Vitest](https://vitest.dev/)
 
@@ -44,15 +44,12 @@ Create a `.env` file in this directory with the following variables:
 
 ```env
 PORT=6005
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
-
-# Downstream atoms
-CASE_ATOM_URL=http://localhost:5001
-ASSIGNMENT_ATOM_URL=http://localhost:5003
-METRICS_ATOM_URL=http://localhost:5005
-CONTRACTOR_API_URL=http://localhost:5004
-JWKS_URI=http://localhost:8080/realms/townops/protocol/openid-connect/certs
+CASE_ATOM_URL=http://localhost:5005
+ASSIGNMENT_ATOM_URL=http://localhost:5004
+METRICS_ATOM_URL=http://localhost:5006
+CONTRACTOR_API_URL=https://your-outsystems-contractor-api.example.com
+JWKS_URI=http://localhost:5001/api/auth/jwks
 ```
 
 ### 2. Run Locally

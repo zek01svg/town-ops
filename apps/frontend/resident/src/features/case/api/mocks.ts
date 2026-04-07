@@ -1,0 +1,48 @@
+import type { CaseItem } from "../types";
+
+export const mockCases: CaseItem[] = [
+  {
+    id: "CASE-1001",
+    residentId: "res-1",
+    address: "Blk 123 Ang Mo Kio Ave 4 #05-12",
+    category: "PL",
+    priority: "high",
+    status: "pending",
+    description: "Water pipe bursting in kitchen ceilings.",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "CASE-1002",
+    residentId: "res-2",
+    address: "Blk 456 Jurong West St 41 #12-32",
+    category: "LE",
+    priority: "medium",
+    status: "dispatched",
+    description: "Corridor lighting flickering issues.",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "CASE-1003",
+    residentId: "res-3",
+    address: "Blk 789 Bedok North Rd #02-10",
+    category: "CW",
+    priority: "low",
+    status: "escalated",
+    description: "Slight cracks on void deck pillars surface.",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "CASE-1004",
+    residentId: "res-4",
+    address: "Blk 101 Tampines St 11 #08-22",
+    category: "PC",
+    priority: "high",
+    status: "pending",
+    description: "No water supply reported for the block.",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];

@@ -90,7 +90,10 @@ export async function getContractorMetrics(
   return {
     contractorId,
     totalJobs: rows.length,
-    totalScore: rows.reduce((sum, m) => sum + m.scoreDelta, 0),
+    totalScore: rows.reduce(
+      (sum: number, m: { scoreDelta: number }) => sum + m.scoreDelta,
+      0
+    ),
   };
 }
 
@@ -117,7 +120,7 @@ export async function createAssignment(
   caseId: string,
   contractorId: string
 ): Promise<{ id: string; caseId: string; contractorId: string }> {
-  const responseDueAt = new Date(Date.now() + 15 * 1000).toISOString();
+  const responseDueAt = new Date(Date.now() + 60 * 1000).toISOString();
   const client = hc<AssignmentAtomType>(env.ASSIGNMENT_ATOM_URL);
   const res = await client.api.assignments.$post({
     json: {
@@ -184,7 +187,7 @@ export async function assignContractor(
       postal_code: postalCode,
       category_code: categoryCode,
     },
-    { expirationMs: 15_000 }
+    { expirationMs: 60_000 }
   );
 
   await rabbitmqClient.publish("townops.events", "job.assigned", {

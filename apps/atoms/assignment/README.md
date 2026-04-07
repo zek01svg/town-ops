@@ -1,6 +1,6 @@
 # 📁 Assignment Atom
 
-A backend microservice (Atom) dedicated to managing assignments. It acts as a raw data backplane layer constructed using **Hono**, **Bun**, and **Drizzle ORM** with native OpenTelemetry instrumentation.
+A backend microservice (Atom) dedicated to managing contractor assignments for cases. It acts as a raw data backplane layer constructed using **Hono**, **Bun**, and **Drizzle ORM** with native OpenTelemetry instrumentation.
 
 ---
 
@@ -20,8 +20,8 @@ A backend microservice (Atom) dedicated to managing assignments. It acts as a ra
 The API documentation is fully automated via OpenAPI specifications.
 Once the server is running, visit:
 
-- **Dashboard (Scalar)**: `http://localhost:5003/scalar`
-- **OpenAPI Spec (.json)**: `http://localhost:5003/openapi`
+- **Dashboard (Scalar)**: `http://localhost:5004/scalar`
+- **OpenAPI Spec (.json)**: `http://localhost:5004/openapi`
 
 ---
 
@@ -43,15 +43,15 @@ Once the server is running, visit:
 Create a `.env` file in this directory with the following variables:
 
 ```env
-DATABASE_URL=postgres://user:password@localhost:5432/townops
-PORT=5003
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
+PORT=5004
+JWKS_URI=http://localhost:5001/api/auth/jwks
 ```
 
 ### 2. Run Locally
 
 ```bash
-pnpm i
+bun install
 bun run dev
 ```
 
@@ -64,5 +64,5 @@ To package and spin up the optimized docker runtime:
 bun run build:docker
 
 # 2. Run Container with port mapping
-docker run --env-file .env -p 5003:5003 assignment-atom
+docker run --env-file .env -p 5004:5004 assignment-atom
 ```
