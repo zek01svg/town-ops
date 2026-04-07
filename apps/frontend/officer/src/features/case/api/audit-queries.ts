@@ -53,16 +53,28 @@ export const auditQueries = {
         if (assignmentRes?.ok) {
           const { assignments: a } = await assignmentRes.json();
           if (a) {
+            // Resolve contractor name from contractor atom
+            const contractorRes = await safe(
+              `${env.VITE_CONTRACTOR_ATOM_URL}/api/contractors/${a.contractorId}`
+            );
+            const contractorName = contractorRes?.ok
+              ? (
+                  (await contractorRes.json()) as {
+                    contractor: { name: string };
+                  }
+                ).contractor.name
+              : `Contractor ${a.contractorId.slice(0, 8)}…`;
+
             events.push({
               type: "Assigned",
-              actor: `Contractor ${a.contractorId.slice(0, 8)}…`,
+              actor: contractorName,
               timestamp: a.assignedAt,
               description: `Job assigned via ${a.source.replace(/_/g, " ").toLowerCase()}. Response due ${new Date(a.responseDueAt).toLocaleString()}.`,
             });
             if (a.acceptedAt) {
               events.push({
                 type: "Accepted",
-                actor: `Contractor ${a.contractorId.slice(0, 8)}…`,
+                actor: contractorName,
                 timestamp: a.acceptedAt,
                 description: "Assignment accepted by contractor.",
               });
