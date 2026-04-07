@@ -15,24 +15,27 @@ See [`docs/architecture.md`](docs/architecture.md) for the full design and messa
 
 ## ⚙️ Services
 
-| Service                  | Port |
-| :----------------------- | :--- |
-| Case atom                | 5001 |
-| Resident atom            | 5002 |
-| Assignment atom          | 5003 |
-| Appointment atom         | 5004 |
-| Proof atom               | 5005 |
-| Alert atom               | 5006 |
-| Metrics atom             | 5007 |
-| Auth atom                | 5008 |
-| Open Case composite      | 6001 |
-| Assign Job composite     | 6002 |
-| Accept Job composite     | 6003 |
-| Close Case composite     | 6004 |
-| Handle Breach composite  | 6005 |
-| Reschedule Job composite | 6006 |
-| Contractor frontend      | 4000 |
-| Officer frontend         | 4001 |
+| Service                    | Port |
+| :------------------------- | :--- |
+| Auth atom                  | 5001 |
+| Alert atom                 | 5002 |
+| Appointment atom           | 5003 |
+| Assignment atom            | 5004 |
+| Case atom                  | 5005 |
+| Metrics atom               | 5006 |
+| Proof atom                 | 5007 |
+| Resident atom              | 5008 |
+| Contractor atom            | 5009 |
+| Open Case composite        | 6001 |
+| Assign Job composite       | 6002 |
+| Accept Job composite       | 6003 |
+| Close Case composite       | 6004 |
+| Handle Breach composite    | 6005 |
+| Reschedule Job composite   | 6006 |
+| Handle No Access composite | 6007 |
+| Officer frontend           | 3001 |
+| Contractor frontend        | 3002 |
+| Resident frontend          | 3003 |
 
 See [`docs/service-map.md`](docs/service-map.md) for full details including routes and responsibilities.
 
