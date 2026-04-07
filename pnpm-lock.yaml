@@ -872,6 +872,9 @@ importers:
       '@townops/assignment-atom':
         specifier: workspace:*
         version: link:../../atoms/assignment
+      '@townops/contractor-atom':
+        specifier: workspace:*
+        version: link:../../atoms/contractor
       '@townops/metrics-atom':
         specifier: workspace:*
         version: link:../../atoms/metrics
@@ -958,6 +961,9 @@ importers:
       '@townops/case-atom':
         specifier: workspace:*
         version: link:../../atoms/case
+      '@townops/contractor-atom':
+        specifier: workspace:*
+        version: link:../../atoms/contractor
       '@townops/metrics-atom':
         specifier: workspace:*
         version: link:../../atoms/metrics
