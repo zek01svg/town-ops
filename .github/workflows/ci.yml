@@ -48,8 +48,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  lint:
-    name: Lint
+  lint-and-format:
+    name: Lint and Format
     needs: [changes]
     if: ${{ needs.changes.outputs.ts == 'true' || needs.changes.outputs.shared == 'true' }}
     runs-on: ubuntu-latest
@@ -86,7 +86,7 @@ jobs:
       - name: Check Formatting
         run: bun run format:check
       - name: Lint JS/TS
-        run: pnpm lint:js
+        run: bun run lint:check
 
   test:
     name: Test
@@ -128,4 +128,4 @@ jobs:
           DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
           OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost
           OTEL_EXPORTER_OTLP_HEADERS: Authorization=test
-        run: pnpm test
+        run: bun run test
