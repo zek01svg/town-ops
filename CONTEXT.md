@@ -1,0 +1,88 @@
+# TownOps
+
+TownOps manages resident-owned estate maintenance Cases from reporting through
+contractor allocation, attendance, and completion.
+
+## Language
+
+### Participants
+
+**Resident**:
+A person to whom a Case belongs. A Resident or an Officer may originate the
+Case, but every Case belongs to exactly one Resident.
+_Avoid_: Requester, customer, tenant
+
+**Officer**:
+A town-council staff member who may originate and oversee Cases on behalf of
+Residents.
+_Avoid_: Administrator, admin
+
+**Contractor**:
+A service-provider organization or sole provider eligible to perform
+maintenance work. People using TownOps for a Contractor act on its behalf.
+_Avoid_: Worker, vendor
+
+### Maintenance work
+
+**Case**:
+A resident-owned maintenance need recorded for allocation and completion.
+_Avoid_: Service request, ticket, issue
+
+**Job**:
+The Contractor-facing view of a Case after it has been allocated. It is not a
+separate domain entity.
+_Avoid_: Using Job when Case, Assignment, or Appointment is meant precisely
+
+**Assignment**:
+The evolving allocation of a Case to a Contractor. It retains its identity when
+the Case is reallocated to another Contractor.
+_Avoid_: Job, Appointment
+
+**Appointment**:
+A planned time interval for a Contractor to attend a Case under its Assignment.
+A Case may have multiple Appointments after rescheduling.
+_Avoid_: Assignment, booking
+
+**Proof Item**:
+One before-work photo, after-work photo, or signature submitted as evidence that
+a Case can be completed.
+_Avoid_: Proof when referring to one item
+
+### Eligibility
+
+**Maintenance Category**:
+A classification shared by a Case's required work and a Contractor's
+capabilities.
+_Avoid_: Category, service category
+
+**Postal Sector**:
+The geographic coverage unit identified by the first two digits of a Singapore
+postal code.
+_Avoid_: Sector, service area
+
+### Exceptions and performance
+
+**Acceptance SLA**:
+The obligation for a Contractor to accept an Assignment before its response
+deadline.
+_Avoid_: SLA without naming the obligation
+
+**Acceptance SLA Breach**:
+A Contractor's failure to accept an Assignment before its Acceptance SLA
+deadline.
+_Avoid_: Generic SLA breach
+
+**Escalation**:
+The response to an Acceptance SLA Breach that reallocates the Assignment to
+another eligible Contractor and flags the Case for Officer attention.
+_Avoid_: Reassignment when no Officer attention is implied
+
+**No Access**:
+The condition in which a Contractor cannot enter the work location. The
+Assignment remains active while the Case waits for Resident input and a new
+Appointment.
+_Avoid_: Cancellation, reassignment
+
+**Performance Entry**:
+A reasoned increase or decrease to a Contractor's performance score.
+_Avoid_: Metric, score event
