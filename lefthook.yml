@@ -1,0 +1,12 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: oxlint
+      glob: "*.{js,ts,jsx,tsx}"
+      run: pnpm oxlint --config tooling/oxlint/oxlint.config.ts --quiet --fix {staged_files}
+      stage_fixed: true
+
+    - name: oxfmt
+      glob: "*.{js,ts,jsx,tsx,md,css,yml,yaml,json}"
+      run: pnpm oxfmt --config tooling/oxfmt/.oxfmtrc.json --write {staged_files}
+      stage_fixed: true
