@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -103,6 +104,41 @@ export const cases = pgTable(
       for: "select",
       to: ["public"],
     }),
+  ]
+);
+
+export const caseOperations = pgTable("case_operations", {
+  operationId: text("operation_id").primaryKey(),
+  // This row is the transaction's durable idempotency claim, created before
+  // its Case. The transaction rolls it back if Case creation fails.
+  caseId: uuid("case_id").notNull(),
+  createdAt: timestamp("created_at", {
+    withTimezone: true,
+    mode: "string",
+  }).defaultNow(),
+});
+
+export const caseHistory = pgTable(
+  "case_history",
+  {
+    id: uuid()
+      .default(sql`uuid_generate_v4()`)
+      .primaryKey()
+      .notNull(),
+    caseId: uuid("case_id")
+      .notNull()
+      .references(() => cases.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    actorId: uuid("actor_id").notNull(),
+    actorRole: text("actor_role").notNull(),
+    operationId: text("operation_id").notNull(),
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "string",
+    }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("case_history_operation_id_idx").on(table.operationId),
   ]
 );
 

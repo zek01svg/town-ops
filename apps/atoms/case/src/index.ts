@@ -1,4 +1,7 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { Scalar } from "@scalar/hono-api-reference";
+import { CreateCaseActivityInputSchema } from "@townops/orchestration-contract";
 import {
   logger,
   honoLogger,
@@ -23,6 +26,17 @@ import * as caseService from "./service";
 import { getCaseSchema, updateCaseStatusSchema } from "./validation-schemas";
 
 const app = new Hono();
+
+function hasWorkerIdentity(authorization: string | undefined) {
+  if (!authorization?.startsWith("Bearer ")) return false;
+
+  const encoder = new TextEncoder();
+  const expected = encoder.encode(env.WORKER_SERVICE_TOKEN);
+  const received = encoder.encode(authorization.slice("Bearer ".length));
+  return (
+    received.length === expected.length && timingSafeEqual(received, expected)
+  );
+}
 
 initSentry({ serviceName: "case-atom" });
 
@@ -174,6 +188,20 @@ const casesRouter = new Hono()
     }
   );
 
+const internalCasesRouter = new Hono()
+  .use("*", async (c, next) => {
+    if (!hasWorkerIdentity(c.req.header("Authorization"))) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    return next();
+  })
+  .post("/", validator("json", CreateCaseActivityInputSchema), async (c) => {
+    const body = c.req.valid("json");
+    const newCase = await caseService.createCaseForOperation(body);
+
+    return c.json({ case: newCase }, 201);
+  });
+
 const caseAtomRoutes = app
   .get(
     "/health",
@@ -196,6 +224,7 @@ const caseAtomRoutes = app
     }
   )
   .route("/api/cases", casesRouter)
+  .route("/internal/cases", internalCasesRouter)
   .get(
     "/openapi",
     openAPIRouteHandler(app, {

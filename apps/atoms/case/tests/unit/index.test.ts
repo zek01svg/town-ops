@@ -7,6 +7,7 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
   // Set mock environment variables before running tests
   process.env.DATABASE_URL = "postgres://root:password@localhost:5432/testdb";
   process.env.PORT = "5001";
+  process.env.WORKER_SERVICE_TOKEN = "a".repeat(32);
   process.env.JWT_SECRET = "supersecret";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
@@ -195,6 +196,18 @@ describe("Case Atom API Endpoints", () => {
       });
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe("POST /internal/cases", () => {
+    it("rejects requests without the Worker service identity", async () => {
+      const res = await app.request("/internal/cases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(401);
     });
   });
 });

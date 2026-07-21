@@ -12,6 +12,7 @@ export async function setup() {
 
   process.env.DATABASE_URL = dbUrl;
   process.env.PORT = "5008";
+  process.env.WORKER_SERVICE_TOKEN = "a".repeat(32);
   process.env.JWKS_URI = "http://localhost:5001/.well-known/jwks.json";
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
