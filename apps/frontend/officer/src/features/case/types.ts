@@ -16,7 +16,7 @@ export type CaseItem = {
   category: string;
   priority: Urgency;
   status: CaseStatus;
-  description: string;
+  description?: string;
   createdAt: string;
   updatedAt: string;
 };

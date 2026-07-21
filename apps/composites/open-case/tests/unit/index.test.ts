@@ -20,6 +20,8 @@ vi.mock("@townops/shared-ts", () => ({
     publish: vi.fn().mockResolvedValue(true),
   },
   corsOrigins: () => ["http://localhost:5173"],
+  initSentry: vi.fn(),
+  captureHonoException: vi.fn(),
 }));
 
 // Mock jwk middleware to bypass auth
@@ -115,7 +117,7 @@ describe("Open Case Composite - Unit Tests", () => {
           caseId: "case-uuid",
           residentId: validRequestBody.resident_id,
           category: validRequestBody.category,
-        })
+        }),
       );
     });
 

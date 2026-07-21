@@ -8,12 +8,7 @@ import {
 } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import {
-  describeRoute,
-  openAPIRouteHandler,
-  resolver,
-  validator,
-} from "hono-openapi";
+import { describeRoute, openAPIRouteHandler, resolver, validator } from "hono-openapi";
 import { cors } from "hono/cors";
 import { z } from "zod/v4";
 
@@ -32,6 +27,12 @@ const app = new Hono();
 
 initSentry({ serviceName: "contractor-atom" });
 
+function requiredContractorId(c: Context): string {
+  const id = c.req.param("id");
+  if (!id) throw new Error("Missing contractor id route parameter");
+  return id;
+}
+
 const devOrigins = corsOrigins();
 if (devOrigins) {
   app.use(
@@ -43,7 +44,7 @@ if (devOrigins) {
       exposeHeaders: ["Content-Length"],
       maxAge: 600,
       credentials: true,
-    })
+    }),
   );
 }
 
@@ -51,7 +52,7 @@ app.onError((err, c) => {
   captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
-    "[contractor atom] internal server error"
+    "[contractor atom] internal server error",
   );
   return c.json({ error: err.message }, 500);
 });
@@ -73,7 +74,7 @@ const categoriesRouter = new Hono()
               schema: resolver(
                 z.object({
                   categories: z.array(z.object({ categoryCode: z.string() })),
-                })
+                }),
               ),
             },
           },
@@ -81,10 +82,10 @@ const categoriesRouter = new Hono()
       },
     }),
     async (c) => {
-      const id = c.req.param("id");
+      const id = requiredContractorId(c);
       const categories = await contractorService.getCategoriesByContractor(id);
       return c.json({ categories }, 200);
-    }
+    },
   )
   .post(
     "/",
@@ -97,13 +98,13 @@ const categoriesRouter = new Hono()
     }),
     validator("json", categoryCodeSchema),
     async (c) => {
-      const id = c.req.param("id");
+      const id = requiredContractorId(c);
       const { categoryCode } = c.req.valid("json");
       const row = await contractorService.addCategory(id, categoryCode);
       if (!row) return c.json({ message: "already assigned" }, 409);
       logger.info({ contractorId: id, categoryCode }, "category added");
       return c.json({ category: row }, 201);
-    }
+    },
   )
   .delete(
     "/:code",
@@ -115,13 +116,13 @@ const categoriesRouter = new Hono()
       },
     }),
     async (c) => {
-      const id = c.req.param("id");
+      const id = requiredContractorId(c);
       const code = c.req.param("code");
       const row = await contractorService.removeCategory(id, code);
       if (!row) return c.json({ error: "not found" }, 404);
       logger.info({ contractorId: id, categoryCode: code }, "category removed");
       return c.json({ category: row }, 200);
-    }
+    },
   );
 
 // ─── /api/contractors/:id/sectors ────────────────────────────────────────────
@@ -139,7 +140,7 @@ const sectorsRouter = new Hono()
               schema: resolver(
                 z.object({
                   sectors: z.array(z.object({ sectorCode: z.string() })),
-                })
+                }),
               ),
             },
           },
@@ -147,10 +148,10 @@ const sectorsRouter = new Hono()
       },
     }),
     async (c) => {
-      const id = c.req.param("id");
+      const id = requiredContractorId(c);
       const sectors = await contractorService.getSectorsByContractor(id);
       return c.json({ sectors }, 200);
-    }
+    },
   )
   .post(
     "/",
@@ -163,13 +164,13 @@ const sectorsRouter = new Hono()
     }),
     validator("json", sectorCodeSchema),
     async (c) => {
-      const id = c.req.param("id");
+      const id = requiredContractorId(c);
       const { sectorCode } = c.req.valid("json");
       const row = await contractorService.addSector(id, sectorCode);
       if (!row) return c.json({ message: "already assigned" }, 409);
       logger.info({ contractorId: id, sectorCode }, "sector added");
       return c.json({ sector: row }, 201);
-    }
+    },
   )
   .delete(
     "/:code",
@@ -181,13 +182,13 @@ const sectorsRouter = new Hono()
       },
     }),
     async (c) => {
-      const id = c.req.param("id");
+      const id = requiredContractorId(c);
       const code = c.req.param("code");
       const row = await contractorService.removeSector(id, code);
       if (!row) return c.json({ error: "not found" }, 404);
       logger.info({ contractorId: id, sectorCode: code }, "sector removed");
       return c.json({ sector: row }, 200);
-    }
+    },
   );
 
 // ─── /api/contractors ─────────────────────────────────────────────────────────
@@ -212,7 +213,7 @@ const contractorsRouter = new Hono()
       const rows = await contractorService.getAllContractors();
       logger.info({ count: rows.length }, "all contractors retrieved");
       return c.json({ contractors: rows }, 200);
-    }
+    },
   )
   .post(
     "/",
@@ -229,13 +230,12 @@ const contractorsRouter = new Hono()
       const contractor = await contractorService.createContractor(body);
       logger.info({ contractorId: contractor.id }, "contractor created");
       return c.json({ contractor }, 201);
-    }
+    },
   )
   .get(
     "/search",
     describeRoute({
-      description:
-        "Search for active contractors by sector code and category code",
+      description: "Search for active contractors by sector code and category code",
       responses: {
         200: {
           description: "Matching contractors",
@@ -250,9 +250,9 @@ const contractorsRouter = new Hono()
                       email: z.string(),
                       contactNum: z.string().nullable(),
                       isActive: z.boolean(),
-                    })
+                    }),
                   ),
-                })
+                }),
               ),
             },
           },
@@ -262,16 +262,13 @@ const contractorsRouter = new Hono()
     validator("query", searchQuerySchema),
     async (c) => {
       const { sectorCode, categoryCode } = c.req.valid("query");
-      const results = await contractorService.searchContractors(
-        sectorCode,
-        categoryCode
-      );
+      const results = await contractorService.searchContractors(sectorCode, categoryCode);
       logger.info(
         { sectorCode, categoryCode, count: results.length },
-        "contractor search executed"
+        "contractor search executed",
       );
       return c.json({ contractors: results }, 200);
-    }
+    },
   )
   .get(
     "/:id",
@@ -289,7 +286,7 @@ const contractorsRouter = new Hono()
       if (!contractor) return c.json({ error: "not found" }, 404);
       logger.info({ contractorId: id }, "contractor retrieved");
       return c.json({ contractor }, 200);
-    }
+    },
   )
   .put(
     "/:id",
@@ -309,13 +306,12 @@ const contractorsRouter = new Hono()
       if (!contractor) return c.json({ error: "not found" }, 404);
       logger.info({ contractorId: id }, "contractor updated");
       return c.json({ contractor }, 200);
-    }
+    },
   )
   .delete(
     "/:id",
     describeRoute({
-      description:
-        "Deactivate a contractor (soft delete — sets is_active=false)",
+      description: "Deactivate a contractor (soft delete — sets is_active=false)",
       responses: {
         200: { description: "Contractor deactivated" },
         404: { description: "Contractor not found" },
@@ -328,7 +324,7 @@ const contractorsRouter = new Hono()
       if (!contractor) return c.json({ error: "not found" }, 404);
       logger.info({ contractorId: id }, "contractor deactivated");
       return c.json({ contractor }, 200);
-    }
+    },
   )
   .route("/:id/categories", categoriesRouter)
   .route("/:id/sectors", sectorsRouter);
@@ -354,7 +350,7 @@ const contractorAtomRoutes = app
     async (c: Context) => {
       logger.info({ route: "/health" }, "health check verified");
       return c.json({ status: "healthy" }, 200);
-    }
+    },
   )
   .route("/api/contractors", contractorsRouter)
   .get(
@@ -367,18 +363,16 @@ const contractorAtomRoutes = app
           description:
             "Contractor management — search by sector/category, full CRUD, category and sector assignment",
         },
-        servers: [
-          { url: `http://localhost:${env.PORT}`, description: "Local Server" },
-        ],
+        servers: [{ url: `http://localhost:${env.PORT}`, description: "Local Server" }],
       },
-    })
+    }),
   )
   .get(
     "/scalar",
     Scalar({
       url: "/openapi",
       theme: "deepSpace",
-    })
+    }),
   );
 
 export { app };

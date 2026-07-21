@@ -22,6 +22,7 @@ export async function getResidentsByPostalCode(postalCode: string) {
  */
 export async function createResident(values: any) {
   const [newResident] = await db.insert(profiles).values(values).returning();
+  if (!newResident) throw new Error("Resident insert did not return a row");
   return newResident;
 }
 

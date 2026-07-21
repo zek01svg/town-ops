@@ -11,12 +11,7 @@ import {
 } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import {
-  describeRoute,
-  openAPIRouteHandler,
-  resolver,
-  validator,
-} from "hono-openapi";
+import { describeRoute, openAPIRouteHandler, resolver, validator } from "hono-openapi";
 import { hc } from "hono/client";
 import { cors } from "hono/cors";
 import { jwk } from "hono/jwk";
@@ -40,7 +35,7 @@ if (devOrigins) {
       exposeHeaders: ["Content-Length"],
       maxAge: 600,
       credentials: true,
-    })
+    }),
   );
 }
 
@@ -48,7 +43,7 @@ app.onError((err, c) => {
   captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
-    "[open case composite] internal server error"
+    "[open case composite] internal server error",
   );
   return c.json({ error: err.message }, 500);
 });
@@ -61,7 +56,7 @@ app.use(
   jwk({
     jwks_uri: env.JWKS_URI,
     alg: ["EdDSA"],
-  })
+  }),
 );
 
 const OpenCaseComposite = app
@@ -83,7 +78,7 @@ const OpenCaseComposite = app
     async (c: Context) => {
       logger.info({ route: "/health" }, "Health check verified");
       return c.json({ status: "healthy" }, 200);
-    }
+    },
   )
   .post(
     "/api/cases/open-case",
@@ -106,7 +101,7 @@ const OpenCaseComposite = app
                     description: z.string().nullable(),
                     created_at: z.string(),
                   }),
-                })
+                }),
               ),
             },
           },
@@ -119,13 +114,11 @@ const OpenCaseComposite = app
       if (!result.success) {
         logger.warn(
           { error: result.error, route: "/api/cases/open-case" },
-          "Validation failed for open case request"
+          "Validation failed for open case request",
         );
-        return c.json(
-          { error: "Validation failed", details: result.error },
-          400
-        );
+        return c.json({ error: "Validation failed", details: result.error }, 400);
       }
+      return undefined;
     }),
     async (c) => {
       const body = c.req.valid("json");
@@ -134,7 +127,7 @@ const OpenCaseComposite = app
           route: "/api/cases/open-case",
           residentId: body.resident_id,
         },
-        "Processing open case request"
+        "Processing open case request",
       );
 
       // 1. Verify resident exists
@@ -147,7 +140,7 @@ const OpenCaseComposite = app
           headers: {
             Authorization: c.req.header("Authorization") ?? "",
           },
-        }
+        },
       );
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!residentResponse.ok) {
@@ -170,7 +163,7 @@ const OpenCaseComposite = app
           headers: {
             Authorization: c.req.header("Authorization") ?? "",
           },
-        }
+        },
       );
 
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -205,9 +198,9 @@ const OpenCaseComposite = app
             created_at: new Date().toISOString(),
           },
         },
-        201
+        201,
       );
-    }
+    },
   )
   .get(
     "/openapi",
@@ -218,18 +211,16 @@ const OpenCaseComposite = app
           version: "1.0.0",
           description: "Composite Service for opening a case",
         },
-        servers: [
-          { url: `http://localhost:${env.PORT}`, description: "Local Server" },
-        ],
+        servers: [{ url: `http://localhost:${env.PORT}`, description: "Local Server" }],
       },
-    })
+    }),
   )
   .get(
     "/scalar",
     Scalar({
       url: "/openapi",
       theme: "deepSpace",
-    })
+    }),
   );
 
 export { app };

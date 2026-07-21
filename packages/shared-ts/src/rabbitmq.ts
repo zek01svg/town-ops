@@ -12,10 +12,7 @@ type QueueName =
   | "error-audit-queue"
   | "sla-timers-queue";
 
-const DEFAULT_QUEUE_ARGUMENTS: Record<
-  QueueName,
-  Record<string, string> | undefined
-> = {
+const DEFAULT_QUEUE_ARGUMENTS: Record<QueueName, Record<string, string> | undefined> = {
   "assign-job-queue": { "x-dead-letter-exchange": "townops.dlx" },
   "alert-queue": { "x-dead-letter-exchange": "townops.dlx" },
   "metrics-queue": { "x-dead-letter-exchange": "townops.dlx" },
@@ -78,7 +75,7 @@ class RabbitMQClient {
    */
   async declareExchange(
     name: string,
-    type: "direct" | "fanout" | "topic" | "headers" = "topic"
+    type: "direct" | "fanout" | "topic" | "headers" = "topic",
   ): Promise<void> {
     if (!this.channel) await this.connect();
     const channel = this.channel;
@@ -105,17 +102,15 @@ class RabbitMQClient {
       | "sla.breached"
       | "#",
     message: string | object,
-    options?: { contentType?: string }
+    options?: { contentType?: string },
   ): Promise<void> {
     if (!this.channel) await this.connect();
     const channel = this.channel;
     if (!channel) throw new Error("RabbitMQ channel not connected");
 
-    const data =
-      typeof message === "string" ? message : JSON.stringify(message);
+    const data = typeof message === "string" ? message : JSON.stringify(message);
     const contentType =
-      options?.contentType ||
-      (typeof message === "object" ? "application/json" : "text/plain");
+      options?.contentType || (typeof message === "object" ? "application/json" : "text/plain");
 
     await channel.basicPublish(exchangeName, routingKey, data, {
       contentType,
@@ -134,20 +129,18 @@ class RabbitMQClient {
   async publishToQueue(
     queueName: QueueName,
     message: string | object,
-    options?: { contentType?: string; expirationMs?: number }
+    options?: { contentType?: string; expirationMs?: number },
   ): Promise<void> {
     if (!this.channel) await this.connect();
     const channel = this.channel;
     if (!channel) throw new Error("RabbitMQ channel not connected");
 
-    const data =
-      typeof message === "string" ? message : JSON.stringify(message);
+    const data = typeof message === "string" ? message : JSON.stringify(message);
     const contentType =
-      options?.contentType ||
-      (typeof message === "object" ? "application/json" : "text/plain");
+      options?.contentType || (typeof message === "object" ? "application/json" : "text/plain");
 
     const queueArguments = DEFAULT_QUEUE_ARGUMENTS[queueName];
-    await channel.queue(queueName, { durable: true }, queueArguments);
+    await channel.queueDeclare(queueName, { durable: true }, queueArguments);
 
     const dlx = queueArguments?.["x-dead-letter-exchange"];
     if (dlx) {
@@ -188,7 +181,7 @@ class RabbitMQClient {
         | "sla.breached"
         | "#";
       arguments?: Record<string, any>;
-    }
+    },
   ): Promise<unknown> {
     if (!this.channel) await this.connect();
     const channel = this.channel;
@@ -201,45 +194,39 @@ class RabbitMQClient {
       ? { ...DEFAULT_QUEUE_ARGUMENTS[queueName], ...options?.arguments }
       : options?.arguments;
 
-    const q = await channel.queue(queueName, { durable: true }, queueArguments);
+    await channel.queueDeclare(queueName, { durable: true }, queueArguments);
 
     // Optional binding to an exchange
     if (options?.exchangeName && options.routingKey) {
       await channel.exchangeDeclare(options.exchangeName, "topic", {
         durable: true,
       });
-      await channel.queueBind(
-        queueName,
-        options.exchangeName,
-        options.routingKey
-      );
+      await channel.queueBind(queueName, options.exchangeName, options.routingKey);
       logger.info(
         {
           queueName,
           exchangeName: options.exchangeName,
           routingKey: options.routingKey,
         },
-        "Bound queue to exchange"
+        "Bound queue to exchange",
       );
     }
 
     logger.info({ queueName }, "Starting RabbitMQ consumer");
 
-    const consumer = await q.subscribe(
+    const consumer = await channel.basicConsume(
+      queueName,
       { noAck: false },
       async (msg: AMQPMessage) => {
         try {
           await callback(msg);
           await msg.ack();
         } catch (e) {
-          logger.error(
-            { err: e, queueName },
-            "Error processing RabbitMQ message"
-          );
+          logger.error({ err: e, queueName }, "Error processing RabbitMQ message");
           // Requeue set to false, so it gets handled by DLX if configured
           await msg.nack(true, false);
         }
-      }
+      },
     );
 
     return consumer;

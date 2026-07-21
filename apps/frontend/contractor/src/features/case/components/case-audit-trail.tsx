@@ -24,13 +24,13 @@ function useAssignment(caseId: string) {
         const res = await fetchWithAuth(
           `${env.VITE_ASSIGNMENT_ATOM_URL}/api/assignments/${caseId}`,
           {},
-          env.VITE_AUTH_URL
+          env.VITE_AUTH_URL,
         );
         if (!res.ok) return null;
         const data = await res.json();
         return data.assignments ?? null;
       },
-    })
+    }),
   );
 }
 
@@ -57,9 +57,7 @@ interface Props {
 }
 
 export function CaseAuditTrail({ caseId, caseData }: Props) {
-  const { data: events = [], isLoading } = useQuery(
-    auditQueries.timeline(caseId)
-  );
+  const { data: events = [], isLoading } = useQuery(auditQueries.timeline(caseId));
   const { data: assignment } = useAssignment(caseId);
   const acceptJob = useAcceptJobMutation();
   const noAccess = useNoAccessMutation();
@@ -69,9 +67,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
   const isPendingAcceptance = assignment?.status === "PENDING_ACCEPTANCE";
   const isAccepted = assignment?.status === "ACCEPTED";
   const isAwaitingResident = caseData?.status === "pending_resident_input";
-  const countdown = useCountdown(
-    isPendingAcceptance ? assignment?.responseDueAt : undefined
-  );
+  const countdown = useCountdown(isPendingAcceptance ? assignment?.responseDueAt : undefined);
   const isOverdue = countdown === "OVERDUE";
 
   function handleAccept() {
@@ -92,7 +88,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
             qc.invalidateQueries({ queryKey: caseKeys.assignment(caseId) });
             qc.invalidateQueries({ queryKey: caseKeys.all });
           },
-        }
+        },
       );
     });
   }
@@ -102,9 +98,9 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
     void getContractorId().then((contractorId) => {
       noAccess.mutate(
         {
-          case_id: caseId,
-          assignment_id: assignment.id,
-          contractor_id: contractorId,
+          caseId,
+          assignmentId: assignment.id,
+          contractorId,
           reason: "Contractor reported no access at site.",
         },
         {
@@ -112,18 +108,14 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
             qc.invalidateQueries({ queryKey: caseKeys.assignment(caseId) });
             qc.invalidateQueries({ queryKey: caseKeys.all });
           },
-        }
+        },
       );
     });
   }
 
   return (
     <>
-      <CloseJobSheet
-        open={closeJobOpen}
-        onOpenChange={setCloseJobOpen}
-        caseId={caseId}
-      />
+      <CloseJobSheet open={closeJobOpen} onOpenChange={setCloseJobOpen} caseId={caseId} />
       <div className="flex flex-col gap-6">
         {caseData && (
           <div className="flex flex-col gap-2 border border-border p-4 bg-card">
@@ -131,9 +123,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               <span className="text-[10px] font-label uppercase tracking-widest text-muted-foreground">
                 Case ID
               </span>
-              <span className="text-xs font-mono text-primary">
-                {caseData.id.slice(0, 8)}...
-              </span>
+              <span className="text-xs font-mono text-primary">{caseData.id.slice(0, 8)}...</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-[10px] font-label uppercase tracking-widest text-muted-foreground">
@@ -149,8 +139,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               </span>
               <Badge
                 variant={
-                  caseData.priority === "high" ||
-                  caseData.priority === "emergency"
+                  caseData.priority === "high" || caseData.priority === "emergency"
                     ? "destructive"
                     : "outline"
                 }
@@ -212,8 +201,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               </span>
             </div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              You must acknowledge this job within 1 minute of assignment or it
-              will be escalated.
+              You must acknowledge this job within 1 minute of assignment or it will be escalated.
             </p>
             <Button
               onClick={handleAccept}
@@ -224,9 +212,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               {acceptJob.isPending ? "Acknowledging..." : "Acknowledge Job"}
             </Button>
             {acceptJob.isError && (
-              <p className="text-[10px] text-destructive uppercase">
-                {acceptJob.error?.message}
-              </p>
+              <p className="text-[10px] text-destructive uppercase">{acceptJob.error?.message}</p>
             )}
           </div>
         )}
@@ -237,8 +223,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               Job In Progress
             </span>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              When the job is complete, attach before/after photos and submit
-              your report.
+              When the job is complete, attach before/after photos and submit your report.
             </p>
             <div className="flex flex-col gap-2">
               <Button
@@ -258,9 +243,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
                 Report No Access
               </Button>
               {noAccess.isError && (
-                <p className="text-[10px] text-destructive uppercase">
-                  {noAccess.error?.message}
-                </p>
+                <p className="text-[10px] text-destructive uppercase">{noAccess.error?.message}</p>
               )}
             </div>
           </div>
@@ -272,8 +255,8 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               Awaiting Resident Response
             </span>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              The resident has been notified to reschedule. This job will
-              re-open once a new slot is selected.
+              The resident has been notified to reschedule. This job will re-open once a new slot is
+              selected.
             </p>
           </div>
         )}
@@ -296,15 +279,10 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
         ) : (
           <div className="flex flex-col gap-6 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-border/50">
             {events.map((event, i) => (
-              <div
-                key={`${event.timestamp}-${i}`}
-                className="relative pl-8 group"
-              >
+              <div key={`${event.timestamp}-${i}`} className="relative pl-8 group">
                 <div
                   className={`absolute left-0 top-1.5 h-4 w-4 rounded-full bg-popover border-2 z-10 flex items-center justify-center ${
-                    i === events.length - 1
-                      ? "border-emerald-500"
-                      : "border-primary"
+                    i === events.length - 1 ? "border-emerald-500" : "border-primary"
                   }`}
                 >
                   <div

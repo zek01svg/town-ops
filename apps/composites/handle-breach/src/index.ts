@@ -12,12 +12,7 @@ import {
 } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import {
-  describeRoute,
-  openAPIRouteHandler,
-  resolver,
-  validator,
-} from "hono-openapi";
+import { describeRoute, openAPIRouteHandler, resolver, validator } from "hono-openapi";
 import { hc } from "hono/client";
 import { cors } from "hono/cors";
 import { jwk } from "hono/jwk";
@@ -42,7 +37,7 @@ if (devOrigins) {
       exposeHeaders: ["Content-Length"],
       maxAge: 600,
       credentials: true,
-    })
+    }),
   );
 }
 
@@ -50,7 +45,7 @@ app.onError((err, c) => {
   captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
-    "[handle-breach composite] internal server error"
+    "[handle-breach composite] internal server error",
   );
   return c.json({ error: err.message }, 500);
 });
@@ -62,7 +57,7 @@ app.use(
   jwk({
     jwks_uri: env.JWKS_URI,
     alg: ["EdDSA"],
-  })
+  }),
 );
 
 const HandleBreachComposite = app
@@ -84,7 +79,7 @@ const HandleBreachComposite = app
     async (c: Context) => {
       logger.info({ route: "/health" }, "Health check verified");
       return c.json({ status: "healthy" }, 200);
-    }
+    },
   )
   .put(
     "/api/assignments/handle-breach",
@@ -102,7 +97,7 @@ const HandleBreachComposite = app
                   assignment: z.record(z.string(), z.unknown()),
                   case: z.record(z.string(), z.unknown()),
                   metrics: z.record(z.string(), z.unknown()),
-                })
+                }),
               ),
             },
           },
@@ -115,13 +110,11 @@ const HandleBreachComposite = app
       if (!result.success) {
         logger.warn(
           { error: result.error, route: "/api/assignments/handle-breach" },
-          "Validation failed for handle-breach request"
+          "Validation failed for handle-breach request",
         );
-        return c.json(
-          { error: "Validation failed", details: result.error },
-          400
-        );
+        return c.json({ error: "Validation failed", details: result.error }, 400);
       }
+      return undefined;
     }),
     async (c) => {
       const body = c.req.valid("json");
@@ -133,7 +126,7 @@ const HandleBreachComposite = app
           caseId: body.case_id,
           assignmentId: body.assignment_id,
         },
-        "Processing handle-breach request"
+        "Processing handle-breach request",
       );
 
       const caseClient = hc<CaseAtomType>(env.CASE_ATOM_URL);
@@ -145,23 +138,18 @@ const HandleBreachComposite = app
         {
           json: { id: body.case_id, status: "escalated" },
         },
-        { headers: { Authorization: authHeader } }
+        { headers: { Authorization: authHeader } },
       );
 
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!caseRes.ok) {
-        logger.error(
-          { caseId: body.case_id },
-          "Step 1 failed: case escalation"
-        );
+        logger.error({ caseId: body.case_id }, "Step 1 failed: case escalation");
         return c.json({ error: "Failed to escalate case" }, 500);
       }
       const caseData = (await caseRes.json()) as any;
 
       // Step 2: Update Assignment → REASSIGNED to new assignee
-      const assignmentRes = await assignmentClient.api.assignments[
-        ":id"
-      ].reassign.$put(
+      const assignmentRes = await assignmentClient.api.assignments[":id"].reassign.$put(
         {
           param: { id: body.assignment_id },
           json: {
@@ -171,14 +159,14 @@ const HandleBreachComposite = app
             reason: body.breach_details ?? "SLA_BREACH",
           },
         },
-        { headers: { Authorization: authHeader } }
+        { headers: { Authorization: authHeader } },
       );
 
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!assignmentRes.ok) {
         logger.error(
           { assignmentId: body.assignment_id },
-          "Step 2 failed: assignment reassignment"
+          "Step 2 failed: assignment reassignment",
         );
         return c.json({ error: "Failed to reassign assignment" }, 500);
       }
@@ -193,23 +181,17 @@ const HandleBreachComposite = app
             reason: "SLA_BREACH",
           },
         },
-        { headers: { Authorization: authHeader } }
+        { headers: { Authorization: authHeader } },
       );
 
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!metricsRes.ok) {
-        logger.error(
-          { assignmentId: body.assignment_id },
-          "Step 3 failed: penalty recording"
-        );
+        logger.error({ assignmentId: body.assignment_id }, "Step 3 failed: penalty recording");
         return c.json({ error: "Failed to record penalty" }, 500);
       }
       const metricsData = (await metricsRes.json()) as any;
 
-      logger.info(
-        { caseId: body.case_id },
-        "handle-breach: manual breach handled successfully"
-      );
+      logger.info({ caseId: body.case_id }, "handle-breach: manual breach handled successfully");
 
       return c.json(
         {
@@ -218,9 +200,9 @@ const HandleBreachComposite = app
           assignment: assignmentData.assignments ?? assignmentData,
           metrics: metricsData.metric ?? metricsData,
         },
-        200
+        200,
       );
-    }
+    },
   )
   .get(
     "/openapi",
@@ -232,18 +214,16 @@ const HandleBreachComposite = app
           description:
             "Hybrid composite service: HTTP endpoint for manual breach handling and AMQP consumer for automated SLA breach processing.",
         },
-        servers: [
-          { url: `http://localhost:${env.PORT}`, description: "Local Server" },
-        ],
+        servers: [{ url: `http://localhost:${env.PORT}`, description: "Local Server" }],
       },
-    })
+    }),
   )
   .get(
     "/scalar",
     Scalar({
       url: "/openapi",
       theme: "deepSpace",
-    })
+    }),
   );
 
 // consume after server is ready
