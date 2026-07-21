@@ -8,7 +8,7 @@
   ],
   "type": "module",
   "scripts": {
-    "prepare": "husky",
+    "prepare": "lefthook install",
     "format:fix": "pnpm oxfmt --config tooling/oxfmt/.oxfmtrc.json --write .",
     "format:check": "pnpm oxfmt --config tooling/oxfmt/.oxfmtrc.json --check .",
     "lint:js": "pnpm oxlint --config=tooling/oxlint/oxlint.config.ts",
@@ -37,24 +37,23 @@
     "@scalar/hono-api-reference": "catalog:",
     "@testcontainers/postgresql": "catalog:",
     "@testcontainers/rabbitmq": "catalog:",
+    "@testing-library/react": "catalog:",
     "@types/pg": "catalog:",
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
-    "@vitest/coverage-istanbul": "^4.1.10",
-    "@vitest/ui": "^4.1.10",
+    "@vitest/coverage-istanbul": "catalog:",
+    "@vitest/ui": "catalog:",
     "dotenv-cli": "catalog:",
     "drizzle-kit": "catalog:",
     "hono-openapi": "catalog:",
-    "husky": "^9.1.7",
     "lefthook": "^2.1.10",
-    "lint-staged": "^17.1.0",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.74.0",
     "oxlint-tsgolint": "^0.25.0",
     "rimraf": "catalog:",
     "turbo": "^2.10.5",
     "typescript": "catalog:",
-    "vitest": "^4.1.10"
+    "vitest": "catalog:"
   },
   "packageManager": "pnpm@11.15.0"
 }

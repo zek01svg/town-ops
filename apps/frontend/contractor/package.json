@@ -62,6 +62,7 @@
     "@vitejs/plugin-react-swc": "catalog:",
     "dotenv-cli": "catalog:",
     "hono-openapi": "catalog:",
+    "jsdom": "catalog:",
     "postcss": "catalog:",
     "rimraf": "catalog:",
     "shadcn": "catalog:",
