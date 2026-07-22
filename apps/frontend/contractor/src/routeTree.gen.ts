@@ -9,8 +9,8 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root";
-import { Route as IndexRouteImport } from "./routes/index";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
+import { Route as IndexRouteImport } from "./routes/index";
 import { Route as MapRouteImport } from "./routes/map";
 
 const IndexRoute = IndexRouteImport.update({

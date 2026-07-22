@@ -11,8 +11,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { Route as rootRouteImport } from "./routes/__root";
-import { Route as IndexRouteImport } from "./routes/index";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
+import { Route as IndexRouteImport } from "./routes/index";
 import { Route as MapRouteImport } from "./routes/map";
 
 const R404LazyRouteImport = createFileRoute("/404")();
