@@ -1,5 +1,8 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { CommitAllocationInputSchema } from "@townops/orchestration-contract";
+import {
+  AcceptAllocationAttemptInputSchema,
+  CommitAllocationInputSchema,
+} from "@townops/orchestration-contract";
 import {
   logger,
   honoLogger,
@@ -407,6 +410,27 @@ const internalAssignmentsRouter = new Hono()
         return c.json(result, 200);
       }
       return c.json(result, 201);
+    }
+  )
+  .post(
+    "/allocation-attempts/acceptance",
+    describeRoute({
+      description: "Accept the current pending allocation Attempt",
+    }),
+    validator("json", AcceptAllocationAttemptInputSchema),
+    async (c) => {
+      const result = await assignmentService.acceptAllocationAttempt(
+        c.req.valid("json")
+      );
+      if (result.outcome === "CASE_MISMATCH") return c.json(result, 404);
+      if (
+        result.outcome === "ASSIGNMENT_NOT_PENDING" ||
+        result.outcome === "ATTEMPT_NOT_PENDING" ||
+        result.outcome === "ATTEMPT_NOT_OWNED"
+      ) {
+        return c.json(result, 409);
+      }
+      return c.json(result, result.outcome === "ACCEPTED" ? 201 : 200);
     }
   );
 

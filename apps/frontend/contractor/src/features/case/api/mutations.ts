@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { env } from "@/env";
-import { acceptJobClient, closeCaseClient, rescheduleJobClient } from "@/libr/api";
+import { closeCaseClient, rescheduleJobClient } from "@/libr/api";
 import { clearAuth, getAuthHeader } from "@/libr/auth-token";
 
 import { caseKeys } from "./query-keys";
@@ -11,8 +11,11 @@ async function throwIfRequestFailed(res: Response) {
   if (res.status === 401) clearAuth();
   const error = (await res.json().catch(() => ({}))) as {
     message?: string;
+    error?: { message?: string };
   };
-  throw new Error(error.message ?? `Error ${res.status}`);
+  throw new Error(
+    error.error?.message ?? error.message ?? `Error ${res.status}`
+  );
 }
 
 export async function uploadProofFile(
@@ -20,7 +23,7 @@ export async function uploadProofFile(
   caseId: string,
   uploaderId: string,
   type: "before" | "after",
-  remarks?: string,
+  remarks?: string
 ): Promise<string> {
   const form = new FormData();
   form.append("file", file);
@@ -40,20 +43,31 @@ export async function uploadProofFile(
 }
 
 export type AcceptJobInput = {
-  case_id: string;
-  assignment_id: string;
-  contractor_id: string;
-  start_time: string;
-  end_time: string;
+  caseId: string;
+  attemptId: string;
+  startTime: string;
+  endTime: string;
+  idempotencyKey: string;
 };
 
 export function useAcceptJobMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: AcceptJobInput) => {
-      const res = await acceptJobClient.api.jobs["accept-job"].$put(
-        { json: input },
-        { headers: getAuthHeader() },
+      const res = await fetch(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/allocation-attempts/${input.attemptId}/acceptance`,
+        {
+          method: "PUT",
+          headers: {
+            ...getAuthHeader(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": input.idempotencyKey,
+          },
+          body: JSON.stringify({
+            startTime: input.startTime,
+            endTime: input.endTime,
+          }),
+        }
       );
       await throwIfRequestFailed(res);
       return res.json();
@@ -79,7 +93,7 @@ export function useCloseCaseMutation() {
     mutationFn: async (input: CloseCaseInput) => {
       const res = await closeCaseClient.api.cases["close-case"].$post(
         { json: input },
-        { headers: getAuthHeader() },
+        { headers: getAuthHeader() }
       );
       await throwIfRequestFailed(res);
       return res.json();
@@ -103,7 +117,7 @@ export function useRescheduleJobMutation() {
     mutationFn: async (input: RescheduleJobInput) => {
       const res = await rescheduleJobClient.api.cases["reschedule-job"].$post(
         { json: input },
-        { headers: getAuthHeader() },
+        { headers: getAuthHeader() }
       );
       await throwIfRequestFailed(res);
       return res.json();
@@ -126,11 +140,14 @@ export function useNoAccessMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: NoAccessInput) => {
-      const res = await fetch(`${env.VITE_HANDLE_NO_ACCESS_URL}/api/cases/no-access`, {
-        method: "PUT",
-        headers: { ...getAuthHeader(), "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
+      const res = await fetch(
+        `${env.VITE_HANDLE_NO_ACCESS_URL}/api/cases/no-access`,
+        {
+          method: "PUT",
+          headers: { ...getAuthHeader(), "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        }
+      );
       await throwIfRequestFailed(res);
       return res.json();
     },

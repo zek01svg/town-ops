@@ -66,13 +66,13 @@ Auth atom additionally requires:
 
 ## 3. 🗄️ Database Setup
 
-Run schema push for each atom (use `--force` to reset if needed):
+Run schema changes for each atom (use `--force` to reset if needed):
 
 ```bash
 pnpm --filter @townops/case-atom db:push
 pnpm --filter @townops/resident-atom db:push
 pnpm --filter @townops/assignment-atom db:push
-pnpm --filter @townops/appointment-atom db:push
+pnpm --filter @townops/appointment-atom db:apply
 pnpm --filter @townops/proof-atom db:push
 pnpm --filter @townops/alert-atom db:push
 pnpm --filter @townops/metrics-atom db:push

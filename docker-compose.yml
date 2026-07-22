@@ -156,6 +156,7 @@ services:
     environment:
       PORT: 5003
       DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
     ports:
       - "5003:5003"
 
@@ -284,6 +285,7 @@ services:
       RESIDENT_ATOM_URL: http://resident-atom:5008
       AUTH_ATOM_URL: http://auth-atom:5001
       ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
+      APPOINTMENT_ATOM_URL: http://appointment-atom:5003
     ports:
       - "6010:6010"
 
@@ -313,6 +315,7 @@ services:
       CONTRACTOR_ATOM_URL: http://contractor-atom:5009
       METRICS_ATOM_URL: http://metrics-atom:5006
       ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
+      APPOINTMENT_ATOM_URL: http://appointment-atom:5003
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
 
   assign-job-composite:

@@ -1,4 +1,7 @@
-import type { CreateCaseActivityInput } from "@townops/orchestration-contract";
+import type {
+  CreateCaseActivityInput,
+  RecordAllocationAcceptanceInput,
+} from "@townops/orchestration-contract";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import db from "./database/db";
@@ -263,5 +266,35 @@ export async function markCaseAssignedForOperation(input: {
       );
 
     return { outcome: "ASSIGNED" as const };
+  });
+}
+
+/** Append the acceptance audit event once without changing the Case status. */
+export async function recordAllocationAcceptance(
+  input: RecordAllocationAcceptanceInput
+) {
+  return db.transaction(async (tx) => {
+    const [caseRecord] = await tx
+      .select()
+      .from(cases)
+      .where(eq(cases.id, input.caseId))
+      .for("update");
+    if (!caseRecord) throw new Error("Case was not found to record acceptance");
+
+    const [created] = await tx
+      .insert(caseHistory)
+      .values({ ...input, eventType: "ALLOCATION_ATTEMPT_ACCEPTED" })
+      .onConflictDoNothing()
+      .returning();
+    if (created) return created;
+
+    const [existing] = await tx
+      .select()
+      .from(caseHistory)
+      .where(eq(caseHistory.operationId, input.operationId));
+    if (!existing) {
+      throw new Error("Case acceptance history was not found after a conflict");
+    }
+    return existing;
   });
 }

@@ -195,6 +195,7 @@ export const allocationAttempts = pgTable(
     actorRole: text("actor_role").notNull(),
     reason: text(),
     operationId: text("operation_id").notNull(),
+    acceptanceOperationId: text("acceptance_operation_id"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
       .defaultNow()
       .notNull(),
@@ -203,6 +204,9 @@ export const allocationAttempts = pgTable(
     // The idempotency claim for one allocation attempt — same pattern as
     // case_history's operation_id unique index.
     uniqueIndex("allocation_attempts_operation_id_idx").on(table.operationId),
+    uniqueIndex("allocation_attempts_acceptance_operation_id_idx").on(
+      table.acceptanceOperationId
+    ),
   ]
 );
 

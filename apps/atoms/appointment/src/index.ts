@@ -1,10 +1,16 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import {
+  ConfirmAppointmentSlotInputSchema,
+  ReleaseAppointmentSlotInputSchema,
+  ReserveAppointmentSlotInputSchema,
+} from "@townops/orchestration-contract";
+import {
   logger,
   honoLogger,
   corsOrigins,
   initSentry,
   captureHonoException,
+  workerAuth,
 } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -45,6 +51,65 @@ app.onError((err, c) => {
 });
 
 app.use("*", honoLogger());
+
+const appointmentSlotRoutes = new Hono()
+  .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
+  .post(
+    "/reservations",
+    validator("json", ReserveAppointmentSlotInputSchema),
+    async (c) => {
+      const result = await appointmentService.reserveAppointmentSlot(
+        c.req.valid("json")
+      );
+      if (result.outcome === "CONFLICT") {
+        return c.json(
+          { error: "Appointment slot overlaps an active reservation" },
+          409
+        );
+      }
+      if (result.outcome === "PAST") {
+        return c.json({ error: "Appointment slot must be in the future" }, 400);
+      }
+      return c.json({ claim: result.claim }, 201);
+    }
+  )
+  .post(
+    "/confirmations",
+    validator("json", ConfirmAppointmentSlotInputSchema),
+    async (c) => {
+      const result = await appointmentService.confirmAppointmentSlot(
+        c.req.valid("json")
+      );
+      if (result.outcome !== "CONFIRMED") {
+        return c.json(
+          { error: "Appointment slot is not available to confirm" },
+          409
+        );
+      }
+      return c.json({ appointment: result.appointment }, 201);
+    }
+  )
+  .post(
+    "/releases",
+    validator("json", ReleaseAppointmentSlotInputSchema),
+    async (c) => {
+      const result = await appointmentService.releaseAppointmentSlot(
+        c.req.valid("json")
+      );
+      if (result.outcome === "CLAIM_ACTIVE") {
+        return c.json(
+          { error: "Active appointment slots cannot be released" },
+          409
+        );
+      }
+      if (result.outcome === "CLAIM_NOT_FOUND") {
+        return c.json({ error: "Appointment slot claim was not found" }, 404);
+      }
+      return c.json({ outcome: result.outcome }, 200);
+    }
+  );
+
+app.route("/internal/appointment-slots", appointmentSlotRoutes);
 
 const appointmentRoutes = app
   .get(

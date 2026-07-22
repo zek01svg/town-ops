@@ -6,10 +6,14 @@ import {
 } from "@temporalio/client";
 import {
   AccountRoleSchema,
+  AcceptAllocationInputSchema,
+  AcceptAllocationResultSchema,
   AllocationAttemptDtoSchema,
+  AppointmentDtoSchema,
   AssignmentDtoSchema,
   CaseDtoSchema,
   canonicalManualAllocationPayload,
+  canonicalAcceptAllocationPayload,
   canonicalOpenCasePayload,
   caseWorkflowId,
   MeDtoSchema,
@@ -27,7 +31,9 @@ import {
 } from "@townops/orchestration-contract";
 import type {
   AccountRole,
+  AcceptAllocationResult,
   AllocationAttemptDto,
+  AppointmentDto,
   ApiError,
   AssignmentDto,
   CaseDto,
@@ -49,6 +55,9 @@ const residentAtomResponseSchema = z.object({
 const assignmentAtomResponseSchema = z.object({
   assignment: z.unknown().nullable(),
   attempt: z.unknown().nullable(),
+});
+const appointmentAtomResponseSchema = z.object({
+  appointments: z.array(z.unknown()),
 });
 const officerAttentionAtomResponseSchema = z.object({
   attentions: z.array(OfficerAttentionDtoSchema),
@@ -78,6 +87,7 @@ type GatewayDependencies = {
   residentAtomUrl: string;
   authAtomUrl: string;
   assignmentAtomUrl?: string;
+  appointmentAtomUrl?: string;
   authenticate?: MiddlewareHandler;
   fetchImpl?: typeof fetch;
   updateTimeoutMs?: number;
@@ -182,6 +192,41 @@ type CaseAssignment = {
   assignment: AssignmentDto;
   currentAttempt: AllocationAttemptDto | null;
 };
+
+function toAppointmentDto(record: unknown): AppointmentDto | null {
+  const source = record as Record<string, unknown>;
+  const appointment = AppointmentDtoSchema.safeParse({
+    ...source,
+    status: String(source.status).toUpperCase(),
+  });
+  return appointment.success ? appointment.data : null;
+}
+
+async function lookupAppointment(
+  appointmentAtomUrl: string,
+  fetchImpl: typeof fetch,
+  caseId: string,
+  attemptId: string | undefined
+) {
+  if (!attemptId) return null;
+  try {
+    const response = await fetchImpl(
+      `${appointmentAtomUrl}/api/appointments/${caseId}`
+    );
+    if (!response.ok) return null;
+    const parsed = appointmentAtomResponseSchema.safeParse(
+      await response.json().catch(() => undefined)
+    );
+    if (!parsed.success) return null;
+    return (
+      parsed.data.appointments
+        .map(toAppointmentDto)
+        .find((appointment) => appointment?.attemptId === attemptId) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Looks up a Case's stable Assignment and current pending Attempt from the
@@ -313,6 +358,7 @@ export function createGatewayApp({
   residentAtomUrl,
   authAtomUrl,
   assignmentAtomUrl = "http://localhost:5004",
+  appointmentAtomUrl = "http://localhost:5003",
   authenticate,
   fetchImpl = fetch,
   updateTimeoutMs = 20_000,
@@ -324,7 +370,7 @@ export function createGatewayApp({
     cors({
       origin: (origin) => (browserOrigins.has(origin) ? origin : undefined),
       allowHeaders: ["Authorization", "Content-Type", "Idempotency-Key"],
-      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowMethods: ["GET", "POST", "PUT", "OPTIONS"],
       credentials: true,
       exposeHeaders: ["Retry-After"],
     })
@@ -608,6 +654,195 @@ export function createGatewayApp({
 
     return c.json({ data: result.data, operation }, 201);
   });
+
+  app.put(
+    "/api/cases/:caseId/allocation-attempts/:attemptId/acceptance",
+    async (c) => {
+      const actor = resolveActor(c.get("jwtPayload"));
+      if (!actor) {
+        return error(c, 401, {
+          code: "INVALID_TOKEN",
+          message: "Token subject is invalid",
+          retryable: false,
+        });
+      }
+      const contractorId = z.uuid().safeParse(actor.contractorId);
+      if (actor.role !== "CONTRACTOR" || !contractorId.success) {
+        return error(c, 403, {
+          code: "FORBIDDEN",
+          message: "Contractor access is required",
+          retryable: false,
+        });
+      }
+
+      const caseId = z.uuid().safeParse(c.req.param("caseId"));
+      const attemptId = z.uuid().safeParse(c.req.param("attemptId"));
+      if (!caseId.success || !attemptId.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Case ID and Allocation Attempt ID must be UUIDs",
+          retryable: false,
+        });
+      }
+      const idempotencyKey = idempotencyKeySchema.safeParse(
+        c.req.header("Idempotency-Key")
+      );
+      if (!idempotencyKey.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Idempotency-Key must be a UUID",
+          retryable: false,
+        });
+      }
+      const input = AcceptAllocationInputSchema.safeParse(
+        await c.req.json().catch(() => undefined)
+      );
+      if (!input.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Appointment interval is invalid",
+          retryable: false,
+          details: input.error.flatten(),
+        });
+      }
+      const caseAssignment = await lookupCaseAssignment(
+        assignmentAtomUrl,
+        fetchImpl,
+        caseId.data
+      );
+      if (
+        !caseAssignment ||
+        !caseAssignment.currentAttempt ||
+        caseAssignment.currentAttempt.id !== attemptId.data ||
+        caseAssignment.currentAttempt.contractorId !== contractorId.data
+      ) {
+        return error(c, 404, {
+          code: "ALLOCATION_ATTEMPT_NOT_FOUND",
+          message: "Allocation Attempt was not found",
+          retryable: false,
+        });
+      }
+
+      const operation = operationForCase(
+        caseId.data,
+        idempotencyKey.data,
+        canonicalAcceptAllocationPayload(
+          caseId.data,
+          attemptId.data,
+          input.data
+        )
+      );
+      const startWorkflowOperation = new WithStartWorkflowOperation(
+        WORKFLOW_NAMES.case,
+        {
+          workflowId: operation.workflowId,
+          taskQueue: ORCHESTRATION_TASK_QUEUE,
+          args: [{ caseId: caseId.data }],
+          workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+        }
+      );
+      const update = workflowClient.executeUpdateWithStart(
+        UPDATE_NAMES.acceptAllocation,
+        {
+          args: [
+            {
+              idempotencyKey: operation.idempotencyKey,
+              payloadHash: operation.updateId.slice(
+                operation.idempotencyKey.length + 1
+              ),
+              operationId: operation.updateId,
+              actorId: actor.accountId,
+              actorRole: "CONTRACTOR",
+              contractorId: contractorId.data,
+              caseId: caseId.data,
+              assignmentId: caseAssignment.assignment.id,
+              attemptId: attemptId.data,
+              input: input.data,
+            },
+          ],
+          updateId: operation.updateId,
+          startWorkflowOperation,
+        }
+      );
+      void update.catch(() => undefined);
+
+      let result: AcceptAllocationResult;
+      try {
+        result = AcceptAllocationResultSchema.parse(
+          await withTimeout(update, updateTimeoutMs)
+        );
+      } catch (caught) {
+        if (
+          caught instanceof Error &&
+          caught.message === "workflow update timed out"
+        ) {
+          c.header("Retry-After", "2");
+          return error(c, 504, {
+            code: "WORKFLOW_UPDATE_PENDING",
+            message: "Allocation acceptance is still being processed",
+            retryable: true,
+            operation,
+          });
+        }
+        if (isTemporalUnavailable(caught)) {
+          return error(c, 503, {
+            code: "TEMPORAL_UNAVAILABLE",
+            message: "Case workflow service is unavailable",
+            retryable: true,
+            operation,
+          });
+        }
+        return error(c, 500, {
+          code: "WORKFLOW_UPDATE_FAILED",
+          message: "Allocation acceptance could not be completed",
+          retryable: false,
+          operation,
+        });
+      }
+
+      if (result.kind === "SUCCESS") {
+        return c.json({ data: result.data, operation }, 200);
+      }
+      if (result.kind === "IDEMPOTENCY_KEY_REUSED") {
+        return error(c, 409, {
+          code: "IDEMPOTENCY_KEY_REUSED",
+          message: "Idempotency-Key was already used with a different request",
+          retryable: false,
+          operation,
+        });
+      }
+      if (result.kind === "APPOINTMENT_CONFLICT") {
+        return error(c, 409, {
+          code: "APPOINTMENT_CONFLICT",
+          message: "The requested appointment slot is unavailable",
+          retryable: false,
+          operation,
+        });
+      }
+      if (result.kind === "APPOINTMENT_NOT_FUTURE") {
+        return error(c, 400, {
+          code: "APPOINTMENT_NOT_FUTURE",
+          message: "Appointment start time must be in the future",
+          retryable: false,
+          operation,
+        });
+      }
+      if (result.kind === "CASE_MISMATCH") {
+        return error(c, 404, {
+          code: "ALLOCATION_ATTEMPT_NOT_FOUND",
+          message: "Allocation Attempt was not found",
+          retryable: false,
+          operation,
+        });
+      }
+      return error(c, 409, {
+        code: result.kind,
+        message: "Allocation Attempt is no longer available for acceptance",
+        retryable: false,
+        operation,
+      });
+    }
+  );
 
   app.post("/api/cases/:caseId/allocation-attempts", async (c) => {
     const actor = resolveActor(c.get("jwtPayload"));
@@ -974,6 +1209,13 @@ export function createGatewayApp({
       }
     }
 
+    const appointment = await lookupAppointment(
+      appointmentAtomUrl,
+      fetchImpl,
+      caseId.data,
+      caseAssignment?.currentAttempt?.id
+    );
+
     return c.json({
       data: {
         ...caseDto,
@@ -981,6 +1223,7 @@ export function createGatewayApp({
           ? {
               ...caseAssignment.assignment,
               currentAttempt: caseAssignment.currentAttempt,
+              appointment,
             }
           : null,
       },

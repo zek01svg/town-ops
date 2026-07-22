@@ -17,6 +17,7 @@ const config = z
     CONTRACTOR_ATOM_URL: z.url().default("http://localhost:5009"),
     METRICS_ATOM_URL: z.url().default("http://localhost:5006"),
     ASSIGNMENT_ATOM_URL: z.url().default("http://localhost:5004"),
+    APPOINTMENT_ATOM_URL: z.url().default("http://localhost:5003"),
     WORKER_SERVICE_TOKEN: z.string().min(32),
   })
   .parse(process.env);
@@ -46,6 +47,7 @@ const worker = await Worker.create({
       metricsAtomUrl: config.METRICS_ATOM_URL,
       assignmentAtomUrl: config.ASSIGNMENT_ATOM_URL,
       caseAtomUrl: config.CASE_ATOM_URL,
+      appointmentAtomUrl: config.APPOINTMENT_ATOM_URL,
       workerServiceToken: config.WORKER_SERVICE_TOKEN,
     }),
   },

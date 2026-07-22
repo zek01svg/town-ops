@@ -1,7 +1,9 @@
+import { eq } from "drizzle-orm";
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 
 let db: any;
 let cases: any;
+let caseHistory: any;
 let app: any;
 
 vi.mock("hono/jwk", () => ({
@@ -21,6 +23,7 @@ describe("Case Atom Integration Tests", () => {
 
     db = dbModule.default;
     cases = schemaModule.cases;
+    caseHistory = schemaModule.caseHistory;
     app = appModule.app;
   });
 
@@ -76,6 +79,46 @@ describe("Case Atom Integration Tests", () => {
       const getData = await getRes.json();
       expect(getData.cases).toHaveLength(1);
       expect(getData.cases[0].id).toBe(caseId);
+    });
+  });
+
+  it("records allocation acceptance history once with its Contractor actor", async () => {
+    const [caseRecord] = await db
+      .insert(cases)
+      .values({
+        residentId: crypto.randomUUID(),
+        category: "LE",
+        description: "Acceptance history test",
+      })
+      .returning();
+    const body = {
+      caseId: caseRecord.id,
+      operationId: `accept/${crypto.randomUUID()}`,
+      actorId: crypto.randomUUID(),
+      actorRole: "CONTRACTOR",
+    };
+    const request = () =>
+      app.request(`/internal/cases/${caseRecord.id}/allocation-acceptance`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${"a".repeat(32)}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+    expect((await request()).status).toBe(201);
+    expect((await request()).status).toBe(201);
+    const history = await db
+      .select()
+      .from(caseHistory)
+      .where(eq(caseHistory.caseId, caseRecord.id));
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      eventType: "ALLOCATION_ATTEMPT_ACCEPTED",
+      actorId: body.actorId,
+      actorRole: "CONTRACTOR",
+      operationId: body.operationId,
     });
   });
 });

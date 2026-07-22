@@ -16,27 +16,27 @@ export async function setup() {
   process.env.PORT = "5000";
   process.env.JWKS_URI = "http://localhost/.well-known/jwks.json";
   process.env.DATABASE_URL = dbUrl;
+  process.env.WORKER_SERVICE_TOKEN =
+    "test-worker-service-token-at-least-32-chars";
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
 
-  const pool = new Pool({ connectionString: dbUrl });
-  try {
-    await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
-    console.log("[Integration Setup] Installed 'uuid-ossp' extension.");
-  } catch (err) {
-    console.warn("[Integration Setup] Failed to install extension:", err);
-  } finally {
-    await pool.end();
-  }
-
-  console.log("[Integration Setup] Pushing schema with drizzle-kit...");
+  console.log("[Integration Setup] Applying appointment migration...");
 
   try {
-    execSync("bun drizzle-kit push", {
+    execSync("bun run src/database/apply-slot-claim-constraint.ts", {
       env: { ...process.env, DATABASE_URL: dbUrl },
       stdio: "pipe",
     });
-    console.log("[Integration Setup] Schema setup completed.");
+    const pool = new Pool({ connectionString: dbUrl });
+    const journal = await pool.query(
+      "SELECT id FROM townops_migrations.appointment_atom"
+    );
+    await pool.end();
+    if (journal.rows[0]?.id !== "0000_prs_142_slot_claim_exclusion") {
+      throw new Error("Appointment migration journal was not recorded");
+    }
+    console.log("[Integration Setup] Appointment migration completed.");
   } catch (error: any) {
     await container.stop();
     throw error;

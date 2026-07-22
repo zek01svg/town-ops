@@ -1,6 +1,6 @@
 import { useQuery, queryOptions, useQueryClient } from "@tanstack/react-query";
 import { Clock, History, User, CheckCircle } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,29 +14,44 @@ import { caseKeys } from "../api/query-keys";
 import type { CaseItem } from "../types";
 import { CloseJobSheet } from "./close-job-sheet";
 
-function useAssignment(caseId: string) {
-  return useQuery(
-    queryOptions({
-      queryKey: caseKeys.assignment(caseId),
-      enabled: !!caseId && !!localStorage.getItem("jwt"),
-      retry: false,
-      queryFn: async () => {
-        const res = await fetchWithAuth(
-          `${env.VITE_ASSIGNMENT_ATOM_URL}/api/assignments/${caseId}`,
-          {},
-          env.VITE_AUTH_URL,
-        );
-        if (!res.ok) return null;
-        const data = await res.json();
-        return data.assignments ?? null;
-      },
-    }),
-  );
-}
+type GatewayAssignment = {
+  id: string;
+  currentAttempt: {
+    id: string;
+    status: "PENDING_ACCEPTANCE" | "ACCEPTED";
+    deadlineAt: string;
+  } | null;
+  appointment: {
+    startTime: string;
+    endTime: string;
+  } | null;
+};
 
 async function getContractorId(): Promise<string> {
   const session = await auth.getSession();
   return (session?.data?.user as any)?.contractorId ?? "unknown";
+}
+
+function useGatewayAssignment(caseId: string) {
+  return useQuery(
+    queryOptions({
+      queryKey: ["gateway-case", caseId],
+      enabled: !!caseId && !!localStorage.getItem("jwt"),
+      retry: false,
+      queryFn: async () => {
+        const res = await fetchWithAuth(
+          `${env.VITE_GATEWAY_URL}/api/cases/${caseId}`,
+          {},
+          env.VITE_AUTH_URL
+        );
+        if (!res.ok) return null;
+        const data = (await res.json()) as {
+          data?: { assignment?: GatewayAssignment | null };
+        };
+        return data.data?.assignment ?? null;
+      },
+    })
+  );
 }
 
 function useCountdown(targetIso: string | undefined) {
@@ -57,40 +72,53 @@ interface Props {
 }
 
 export function CaseAuditTrail({ caseId, caseData }: Props) {
-  const { data: events = [], isLoading } = useQuery(auditQueries.timeline(caseId));
-  const { data: assignment } = useAssignment(caseId);
+  const { data: events = [], isLoading } = useQuery(
+    auditQueries.timeline(caseId)
+  );
+  const { data: assignment } = useGatewayAssignment(caseId);
   const acceptJob = useAcceptJobMutation();
   const noAccess = useNoAccessMutation();
   const qc = useQueryClient();
+  const acceptanceKey = useRef<string | undefined>(undefined);
 
   const [closeJobOpen, setCloseJobOpen] = useState(false);
-  const isPendingAcceptance = assignment?.status === "PENDING_ACCEPTANCE";
-  const isAccepted = assignment?.status === "ACCEPTED";
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const attempt = assignment?.currentAttempt;
+  const isPendingAcceptance = attempt?.status === "PENDING_ACCEPTANCE";
+  const isAccepted = attempt?.status === "ACCEPTED";
   const isAwaitingResident = caseData?.status === "pending_resident_input";
-  const countdown = useCountdown(isPendingAcceptance ? assignment?.responseDueAt : undefined);
+  const countdown = useCountdown(
+    isPendingAcceptance ? attempt?.deadlineAt : undefined
+  );
   const isOverdue = countdown === "OVERDUE";
+  const isAcceptanceRetry = acceptanceKey.current !== undefined;
+  const isValidAppointment =
+    !!startTime &&
+    !!endTime &&
+    Date.parse(endTime) > Date.parse(startTime) &&
+    (isAcceptanceRetry || Date.parse(startTime) > Date.now());
 
   function handleAccept() {
-    if (!assignment) return;
-    const now = new Date();
-    const end = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2h window default
-    void getContractorId().then((contractorId) => {
-      acceptJob.mutate(
-        {
-          case_id: caseId,
-          assignment_id: assignment.id,
-          contractor_id: contractorId,
-          start_time: now.toISOString(),
-          end_time: end.toISOString(),
+    if (!attempt || !isValidAppointment) return;
+    const idempotencyKey = acceptanceKey.current ?? crypto.randomUUID();
+    acceptanceKey.current = idempotencyKey;
+    acceptJob.mutate(
+      {
+        caseId,
+        attemptId: attempt.id,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date(endTime).toISOString(),
+        idempotencyKey,
+      },
+      {
+        onSuccess: () => {
+          acceptanceKey.current = undefined;
+          void qc.invalidateQueries({ queryKey: ["gateway-case", caseId] });
+          void qc.invalidateQueries({ queryKey: caseKeys.all });
         },
-        {
-          onSuccess: () => {
-            qc.invalidateQueries({ queryKey: caseKeys.assignment(caseId) });
-            qc.invalidateQueries({ queryKey: caseKeys.all });
-          },
-        },
-      );
-    });
+      }
+    );
   }
 
   function handleNoAccess() {
@@ -105,17 +133,21 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
         },
         {
           onSuccess: () => {
-            qc.invalidateQueries({ queryKey: caseKeys.assignment(caseId) });
-            qc.invalidateQueries({ queryKey: caseKeys.all });
+            void qc.invalidateQueries({ queryKey: ["gateway-case", caseId] });
+            void qc.invalidateQueries({ queryKey: caseKeys.all });
           },
-        },
+        }
       );
     });
   }
 
   return (
     <>
-      <CloseJobSheet open={closeJobOpen} onOpenChange={setCloseJobOpen} caseId={caseId} />
+      <CloseJobSheet
+        open={closeJobOpen}
+        onOpenChange={setCloseJobOpen}
+        caseId={caseId}
+      />
       <div className="flex flex-col gap-6">
         {caseData && (
           <div className="flex flex-col gap-2 border border-border p-4 bg-card">
@@ -123,7 +155,9 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               <span className="text-[10px] font-label uppercase tracking-widest text-muted-foreground">
                 Case ID
               </span>
-              <span className="text-xs font-mono text-primary">{caseData.id.slice(0, 8)}...</span>
+              <span className="text-xs font-mono text-primary">
+                {caseData.id.slice(0, 8)}...
+              </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-[10px] font-label uppercase tracking-widest text-muted-foreground">
@@ -139,7 +173,8 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               </span>
               <Badge
                 variant={
-                  caseData.priority === "high" || caseData.priority === "emergency"
+                  caseData.priority === "high" ||
+                  caseData.priority === "emergency"
                     ? "destructive"
                     : "outline"
                 }
@@ -201,18 +236,43 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               </span>
             </div>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              You must acknowledge this job within 1 minute of assignment or it will be escalated.
+              Choose the future appointment interval before accepting this
+              allocation.
             </p>
+            <label className="flex flex-col gap-1 text-[10px] font-label uppercase tracking-widest text-muted-foreground">
+              Appointment start
+              <input
+                type="datetime-local"
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
+                className="h-9 border border-border bg-background px-2 text-xs text-foreground"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[10px] font-label uppercase tracking-widest text-muted-foreground">
+              Appointment end
+              <input
+                type="datetime-local"
+                value={endTime}
+                onChange={(event) => setEndTime(event.target.value)}
+                className="h-9 border border-border bg-background px-2 text-xs text-foreground"
+              />
+            </label>
             <Button
               onClick={handleAccept}
-              disabled={acceptJob.isPending || isOverdue}
+              disabled={
+                acceptJob.isPending ||
+                (!isAcceptanceRetry && isOverdue) ||
+                !isValidAppointment
+              }
               className="rounded-none uppercase text-[10px] font-label tracking-widest w-full bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               <CheckCircle className="h-3.5 w-3.5 mr-2" />
               {acceptJob.isPending ? "Acknowledging..." : "Acknowledge Job"}
             </Button>
             {acceptJob.isError && (
-              <p className="text-[10px] text-destructive uppercase">{acceptJob.error?.message}</p>
+              <p className="text-[10px] text-destructive uppercase">
+                {acceptJob.error?.message}
+              </p>
             )}
           </div>
         )}
@@ -220,10 +280,12 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
         {isAccepted && (
           <div className="border border-emerald-500/50 bg-emerald-500/5 p-4 flex flex-col gap-3">
             <span className="text-[10px] font-label uppercase tracking-widest font-bold text-foreground">
-              Job In Progress
+              Appointment Scheduled
             </span>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              When the job is complete, attach before/after photos and submit your report.
+              {assignment?.appointment
+                ? `${new Date(assignment.appointment.startTime).toLocaleString()} — ${new Date(assignment.appointment.endTime).toLocaleString()}`
+                : "Your appointment is being confirmed."}
             </p>
             <div className="flex flex-col gap-2">
               <Button
@@ -243,7 +305,9 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
                 Report No Access
               </Button>
               {noAccess.isError && (
-                <p className="text-[10px] text-destructive uppercase">{noAccess.error?.message}</p>
+                <p className="text-[10px] text-destructive uppercase">
+                  {noAccess.error?.message}
+                </p>
               )}
             </div>
           </div>
@@ -255,8 +319,8 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               Awaiting Resident Response
             </span>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              The resident has been notified to reschedule. This job will re-open once a new slot is
-              selected.
+              The resident has been notified to reschedule. This job will
+              re-open once a new slot is selected.
             </p>
           </div>
         )}
@@ -279,10 +343,15 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
         ) : (
           <div className="flex flex-col gap-6 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-border/50">
             {events.map((event, i) => (
-              <div key={`${event.timestamp}-${i}`} className="relative pl-8 group">
+              <div
+                key={`${event.timestamp}-${i}`}
+                className="relative pl-8 group"
+              >
                 <div
                   className={`absolute left-0 top-1.5 h-4 w-4 rounded-full bg-popover border-2 z-10 flex items-center justify-center ${
-                    i === events.length - 1 ? "border-emerald-500" : "border-primary"
+                    i === events.length - 1
+                      ? "border-emerald-500"
+                      : "border-primary"
                   }`}
                 >
                   <div

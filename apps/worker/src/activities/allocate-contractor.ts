@@ -1,6 +1,11 @@
 import { ApplicationFailure } from "@temporalio/activity";
 import {
+  AcceptAllocationAttemptResultSchema,
+  AcceptAllocationCommandSchema,
+  AcceptAllocationResultSchema,
   AllocationSnapshotSchema,
+  AppointmentDtoSchema,
+  AppointmentSlotClaimDtoSchema,
   CommitAllocationInputSchema,
   CommitAllocationResultSchema,
   MarkCaseAssignedResultSchema,
@@ -8,6 +13,8 @@ import {
   RaiseOfficerAttentionInputSchema,
 } from "@townops/orchestration-contract";
 import type {
+  AcceptAllocationCommand,
+  AcceptAllocationResult,
   AllocationSnapshot,
   CommitAllocationInput,
   CommitAllocationResult,
@@ -40,6 +47,7 @@ type AllocateContractorActivityDependencies = {
   metricsAtomUrl: string;
   assignmentAtomUrl: string;
   caseAtomUrl: string;
+  appointmentAtomUrl: string;
   workerServiceToken: string;
   fetchImpl?: typeof fetch;
 };
@@ -62,13 +70,16 @@ export function createAllocateContractorActivities({
   metricsAtomUrl,
   assignmentAtomUrl,
   caseAtomUrl,
+  appointmentAtomUrl,
   workerServiceToken,
   fetchImpl = fetch,
 }: AllocateContractorActivityDependencies) {
   async function isCaseTerminal(input: { caseId: string }): Promise<boolean> {
     const response = await fetchImpl(
       `${caseAtomUrl}/internal/cases/${input.caseId}`,
-      { headers: authHeaders(workerServiceToken) }
+      {
+        headers: authHeaders(workerServiceToken),
+      }
     );
     if (response.status === 404) {
       throw nonRetryable("Case does not exist", "CASE_NOT_FOUND");
@@ -102,7 +113,9 @@ export function createAllocateContractorActivities({
         }),
         fetchImpl(
           `${assignmentAtomUrl}/internal/assignments/allocation-snapshot`,
-          { headers: authHeaders(workerServiceToken) }
+          {
+            headers: authHeaders(workerServiceToken),
+          }
         ),
       ]);
 
@@ -204,6 +217,153 @@ export function createAllocateContractorActivities({
     throw new Error(`Case atom request failed with ${response.status}`);
   }
 
+  async function releaseAppointmentSlot(claimId: string, operationId: string) {
+    const response = await fetchImpl(
+      `${appointmentAtomUrl}/internal/appointment-slots/releases`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(workerServiceToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ claimId, operationId }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Appointment release request failed with ${response.status}`
+      );
+    }
+  }
+
+  async function acceptAllocation(
+    input: AcceptAllocationCommand
+  ): Promise<AcceptAllocationResult> {
+    const command = AcceptAllocationCommandSchema.parse(input);
+    const reservation = await fetchImpl(
+      `${appointmentAtomUrl}/internal/appointment-slots/reservations`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(workerServiceToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          operationId: `${command.operationId}/reserve`,
+          caseId: command.caseId,
+          assignmentId: command.assignmentId,
+          attemptId: command.attemptId,
+          contractorId: command.contractorId,
+          startTime: command.input.startTime,
+          endTime: command.input.endTime,
+        }),
+      }
+    );
+    if (reservation.status === 409) return { kind: "APPOINTMENT_CONFLICT" };
+    if (reservation.status === 400) return { kind: "APPOINTMENT_NOT_FUTURE" };
+    if (reservation.status >= 400 && reservation.status < 500) {
+      throw nonRetryable(
+        "Appointment atom rejected the requested slot",
+        "APPOINTMENT_SLOT_REJECTED"
+      );
+    }
+    if (!reservation.ok) {
+      throw new Error(
+        `Appointment reservation request failed with ${reservation.status}`
+      );
+    }
+    const { claim } = z
+      .object({ claim: AppointmentSlotClaimDtoSchema })
+      .parse(await reservation.json());
+
+    const acceptance = await fetchImpl(
+      `${assignmentAtomUrl}/internal/assignments/allocation-attempts/acceptance`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(workerServiceToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          operationId: command.operationId,
+          caseId: command.caseId,
+          assignmentId: command.assignmentId,
+          attemptId: command.attemptId,
+          contractorId: command.contractorId,
+        }),
+      }
+    );
+    if (!acceptance.ok && acceptance.status >= 500) {
+      throw new Error(
+        `Allocation acceptance request failed with ${acceptance.status}`
+      );
+    }
+    const accepted = AcceptAllocationAttemptResultSchema.parse(
+      await acceptance.json()
+    );
+    if (
+      accepted.outcome === "ASSIGNMENT_NOT_PENDING" ||
+      accepted.outcome === "ATTEMPT_NOT_PENDING" ||
+      accepted.outcome === "ATTEMPT_NOT_OWNED" ||
+      accepted.outcome === "CASE_MISMATCH"
+    ) {
+      await releaseAppointmentSlot(claim.id, `${command.operationId}/release`);
+      return { kind: accepted.outcome };
+    }
+
+    const confirmation = await fetchImpl(
+      `${appointmentAtomUrl}/internal/appointment-slots/confirmations`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(workerServiceToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          claimId: claim.id,
+          operationId: `${command.operationId}/confirm`,
+        }),
+      }
+    );
+    if (!confirmation.ok) {
+      throw new Error(
+        `Appointment confirmation request failed with ${confirmation.status}`
+      );
+    }
+    const { appointment } = z
+      .object({ appointment: AppointmentDtoSchema })
+      .parse(await confirmation.json());
+
+    const history = await fetchImpl(
+      `${caseAtomUrl}/internal/cases/${command.caseId}/allocation-acceptance`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(workerServiceToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          caseId: command.caseId,
+          operationId: command.operationId,
+          actorId: command.actorId,
+          actorRole: command.actorRole,
+        }),
+      }
+    );
+    if (!history.ok) {
+      throw new Error(`Case history request failed with ${history.status}`);
+    }
+
+    return AcceptAllocationResultSchema.parse({
+      kind: "SUCCESS",
+      data: {
+        assignment: accepted.assignment,
+        attempt: accepted.attempt,
+        appointment,
+      },
+    });
+  }
+
   async function raiseOfficerAttention(
     input: RaiseOfficerAttentionInput
   ): Promise<OfficerAttentionDto> {
@@ -241,6 +401,7 @@ export function createAllocateContractorActivities({
     isCaseTerminal,
     fetchAllocationSnapshot,
     commitAllocationAttempt,
+    acceptAllocation,
     markCaseAssigned,
     raiseOfficerAttention,
   };

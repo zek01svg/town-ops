@@ -5,6 +5,8 @@ import { app } from "../../src/index";
 const { mockDb } = vi.hoisted(() => {
   process.env.DATABASE_URL = "postgres://root:password@localhost:5432/testdb";
   process.env.PORT = "5004";
+  process.env.WORKER_SERVICE_TOKEN =
+    "test-worker-service-token-at-least-32-chars";
   process.env.JWKS_URI = "http://localhost/.well-known/jwks.json";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";

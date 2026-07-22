@@ -15,6 +15,7 @@ const config = z
     RESIDENT_ATOM_URL: z.url().default("http://localhost:5008"),
     AUTH_ATOM_URL: z.url().default("http://localhost:5001"),
     ASSIGNMENT_ATOM_URL: z.url().default("http://localhost:5004"),
+    APPOINTMENT_ATOM_URL: z.url().default("http://localhost:5003"),
   })
   .parse(process.env);
 
@@ -48,6 +49,7 @@ const app = createGatewayApp({
   residentAtomUrl: config.RESIDENT_ATOM_URL,
   authAtomUrl: config.AUTH_ATOM_URL,
   assignmentAtomUrl: config.ASSIGNMENT_ATOM_URL,
+  appointmentAtomUrl: config.APPOINTMENT_ATOM_URL,
   authenticate: jwk({ jwks_uri: config.JWKS_URI, alg: ["EdDSA"] }),
 });
 

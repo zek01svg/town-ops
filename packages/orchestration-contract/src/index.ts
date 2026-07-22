@@ -214,6 +214,7 @@ export const WORKFLOW_NAMES = {
 export const UPDATE_NAMES = {
   openCase: "openCase",
   allocateContractor: "allocateContractor",
+  acceptAllocation: "acceptAllocation",
 } as const;
 export const ORCHESTRATION_TASK_QUEUE = "townops-orchestration";
 
@@ -328,6 +329,173 @@ export const AllocationAttemptDtoSchema = z.object({
 });
 export type AllocationAttemptDto = z.infer<typeof AllocationAttemptDtoSchema>;
 
+export const AppointmentStatusSchema = z.enum(["SCHEDULED"]);
+export type AppointmentStatus = z.infer<typeof AppointmentStatusSchema>;
+
+export const AppointmentDtoSchema = z.object({
+  id: z.uuid(),
+  caseId: z.uuid(),
+  assignmentId: z.uuid(),
+  attemptId: z.uuid(),
+  contractorId: z.uuid(),
+  startTime: z.string(),
+  endTime: z.string(),
+  status: AppointmentStatusSchema,
+  operationId: z.string().min(1),
+  createdAt: z.string(),
+});
+export type AppointmentDto = z.infer<typeof AppointmentDtoSchema>;
+
+export const AcceptAllocationInputSchema = z
+  .object({
+    startTime: z
+      .string()
+      .refine((value) => Number.isFinite(Date.parse(value)), {
+        message: "startTime must be an ISO timestamp",
+      }),
+    endTime: z.string().refine((value) => Number.isFinite(Date.parse(value)), {
+      message: "endTime must be an ISO timestamp",
+    }),
+  })
+  .strict()
+  .refine((value) => Date.parse(value.endTime) > Date.parse(value.startTime), {
+    message: "endTime must be after startTime",
+    path: ["endTime"],
+  });
+export type AcceptAllocationInput = z.infer<typeof AcceptAllocationInputSchema>;
+
+export const ReserveAppointmentSlotInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    caseId: z.uuid(),
+    assignmentId: z.uuid(),
+    attemptId: z.uuid(),
+    contractorId: z.uuid(),
+    startTime: AcceptAllocationInputSchema.shape.startTime,
+    endTime: AcceptAllocationInputSchema.shape.endTime,
+  })
+  .strict()
+  .refine((value) => Date.parse(value.endTime) > Date.parse(value.startTime), {
+    message: "endTime must be after startTime",
+    path: ["endTime"],
+  });
+export type ReserveAppointmentSlotInput = z.infer<
+  typeof ReserveAppointmentSlotInputSchema
+>;
+
+export const AppointmentSlotClaimDtoSchema = z.object({
+  id: z.uuid(),
+  operationId: z.string().min(1),
+  caseId: z.uuid(),
+  assignmentId: z.uuid(),
+  attemptId: z.uuid(),
+  contractorId: z.uuid(),
+  startTime: z.string(),
+  endTime: z.string(),
+  status: z.enum(["HELD", "ACTIVE", "RELEASED"]),
+});
+export type AppointmentSlotClaimDto = z.infer<
+  typeof AppointmentSlotClaimDtoSchema
+>;
+
+export const ConfirmAppointmentSlotInputSchema = z
+  .object({ operationId: z.string().min(1), claimId: z.uuid() })
+  .strict();
+export type ConfirmAppointmentSlotInput = z.infer<
+  typeof ConfirmAppointmentSlotInputSchema
+>;
+
+export const ReleaseAppointmentSlotInputSchema =
+  ConfirmAppointmentSlotInputSchema;
+export type ReleaseAppointmentSlotInput = z.infer<
+  typeof ReleaseAppointmentSlotInputSchema
+>;
+
+export const AcceptAllocationAttemptInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    caseId: z.uuid(),
+    assignmentId: z.uuid(),
+    attemptId: z.uuid(),
+    contractorId: z.uuid(),
+  })
+  .strict();
+export type AcceptAllocationAttemptInput = z.infer<
+  typeof AcceptAllocationAttemptInputSchema
+>;
+
+export const AcceptAllocationAttemptResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({
+      outcome: z.literal("ACCEPTED"),
+      assignment: AssignmentDtoSchema,
+      attempt: AllocationAttemptDtoSchema,
+    }),
+    z.object({
+      outcome: z.literal("ALREADY_ACCEPTED"),
+      assignment: AssignmentDtoSchema,
+      attempt: AllocationAttemptDtoSchema,
+    }),
+    z.object({ outcome: z.literal("ASSIGNMENT_NOT_PENDING") }),
+    z.object({ outcome: z.literal("ATTEMPT_NOT_PENDING") }),
+    z.object({ outcome: z.literal("ATTEMPT_NOT_OWNED") }),
+    z.object({ outcome: z.literal("CASE_MISMATCH") }),
+  ]
+);
+export type AcceptAllocationAttemptResult = z.infer<
+  typeof AcceptAllocationAttemptResultSchema
+>;
+
+export const RecordAllocationAcceptanceInputSchema = z
+  .object({
+    caseId: z.uuid(),
+    operationId: z.string().min(1),
+    actorId: z.uuid(),
+    actorRole: z.literal("CONTRACTOR"),
+  })
+  .strict();
+export type RecordAllocationAcceptanceInput = z.infer<
+  typeof RecordAllocationAcceptanceInputSchema
+>;
+
+export const AcceptAllocationCommandSchema = z.object({
+  idempotencyKey: z.uuid(),
+  payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+  operationId: z.string().min(1),
+  actorId: z.uuid(),
+  actorRole: z.literal("CONTRACTOR"),
+  contractorId: z.uuid(),
+  caseId: z.uuid(),
+  assignmentId: z.uuid(),
+  attemptId: z.uuid(),
+  input: AcceptAllocationInputSchema,
+});
+export type AcceptAllocationCommand = z.infer<
+  typeof AcceptAllocationCommandSchema
+>;
+
+export const AcceptAllocationDataSchema = z.object({
+  assignment: AssignmentDtoSchema,
+  attempt: AllocationAttemptDtoSchema,
+  appointment: AppointmentDtoSchema,
+});
+export type AcceptAllocationData = z.infer<typeof AcceptAllocationDataSchema>;
+
+export const AcceptAllocationResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SUCCESS"), data: AcceptAllocationDataSchema }),
+  z.object({ kind: z.literal("IDEMPOTENCY_KEY_REUSED") }),
+  z.object({ kind: z.literal("ASSIGNMENT_NOT_PENDING") }),
+  z.object({ kind: z.literal("ATTEMPT_NOT_PENDING") }),
+  z.object({ kind: z.literal("ATTEMPT_NOT_OWNED") }),
+  z.object({ kind: z.literal("CASE_MISMATCH") }),
+  z.object({ kind: z.literal("APPOINTMENT_CONFLICT") }),
+  z.object({ kind: z.literal("APPOINTMENT_NOT_FUTURE") }),
+]);
+export type AcceptAllocationResult = z.infer<
+  typeof AcceptAllocationResultSchema
+>;
+
 export const CommitAllocationResultSchema = z.discriminatedUnion("outcome", [
   z.object({
     outcome: z.literal("COMMITTED"),
@@ -399,6 +567,19 @@ export function canonicalManualAllocationPayload(
     contractorId: input.contractorId,
     replaceAttemptId: input.replaceAttemptId ?? null,
     reason: input.reason ?? null,
+  });
+}
+
+export function canonicalAcceptAllocationPayload(
+  caseId: string,
+  attemptId: string,
+  input: AcceptAllocationInput
+) {
+  return JSON.stringify({
+    caseId,
+    attemptId,
+    startTime: input.startTime,
+    endTime: input.endTime,
   });
 }
 

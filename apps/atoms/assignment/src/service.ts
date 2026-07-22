@@ -1,4 +1,7 @@
-import type { CommitAllocationInput } from "@townops/orchestration-contract";
+import type {
+  AcceptAllocationAttemptInput,
+  CommitAllocationInput,
+} from "@townops/orchestration-contract";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import db from "./database/db";
@@ -158,13 +161,89 @@ export async function getAssignmentWithCurrentAttempt(caseId: string) {
     .where(
       and(
         eq(allocationAttempts.assignmentId, assignment.id),
-        eq(allocationAttempts.status, "PENDING_ACCEPTANCE")
+        inArray(allocationAttempts.status, ["PENDING_ACCEPTANCE", "ACCEPTED"])
       )
     )
     .orderBy(desc(allocationAttempts.createdAt))
     .limit(1);
 
   return { assignment, currentAttempt: currentAttempt ?? null };
+}
+
+/**
+ * Accept exactly the pending Attempt named by a Contractor. Locking both rows
+ * makes a concurrent second acceptance observe the committed state instead of
+ * accepting a stale offer.
+ */
+export async function acceptAllocationAttempt(
+  input: AcceptAllocationAttemptInput
+) {
+  return db.transaction(async (tx) => {
+    const [attempt] = await tx
+      .select()
+      .from(allocationAttempts)
+      .where(eq(allocationAttempts.id, input.attemptId))
+      .for("update");
+    if (!attempt) return { outcome: "CASE_MISMATCH" as const };
+
+    const [assignment] = await tx
+      .select()
+      .from(assignments)
+      .where(eq(assignments.id, attempt.assignmentId))
+      .for("update");
+    if (
+      !assignment ||
+      assignment.caseId !== input.caseId ||
+      attempt.assignmentId !== input.assignmentId
+    ) {
+      return { outcome: "CASE_MISMATCH" as const };
+    }
+
+    if (
+      attempt.status === "ACCEPTED" &&
+      attempt.acceptanceOperationId === input.operationId
+    ) {
+      return { outcome: "ALREADY_ACCEPTED" as const, assignment, attempt };
+    }
+    if (assignment.status !== "PENDING_ACCEPTANCE") {
+      return { outcome: "ASSIGNMENT_NOT_PENDING" as const };
+    }
+    if (attempt.status !== "PENDING_ACCEPTANCE") {
+      return { outcome: "ATTEMPT_NOT_PENDING" as const };
+    }
+    if (attempt.contractorId !== input.contractorId) {
+      return { outcome: "ATTEMPT_NOT_OWNED" as const };
+    }
+
+    const now = new Date().toISOString();
+    const [acceptedAttempt] = await tx
+      .update(allocationAttempts)
+      .set({ status: "ACCEPTED", acceptanceOperationId: input.operationId })
+      .where(eq(allocationAttempts.id, attempt.id))
+      .returning();
+    const [acceptedAssignment] = await tx
+      .update(assignments)
+      .set({ status: "ACCEPTED", acceptedAt: now, updatedAt: now })
+      .where(eq(assignments.id, assignment.id))
+      .returning();
+    if (!acceptedAttempt || !acceptedAssignment) {
+      throw new Error("Allocation acceptance update did not return a row");
+    }
+
+    await tx.insert(assignmentStatusHistory).values({
+      assignmentId: assignment.id,
+      fromStatus: assignment.status,
+      toStatus: "ACCEPTED",
+      changedBy: input.contractorId,
+      reason: "ALLOCATION_ATTEMPT_ACCEPTED",
+    });
+
+    return {
+      outcome: "ACCEPTED" as const,
+      assignment: acceptedAssignment,
+      attempt: acceptedAttempt,
+    };
+  });
 }
 
 /**

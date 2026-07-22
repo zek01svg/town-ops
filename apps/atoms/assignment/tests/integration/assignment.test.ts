@@ -7,6 +7,7 @@ vi.mock("hono/jwk", () => ({
 describe("Assignment Atom Integration Tests", () => {
   let db: any;
   let assignments: any;
+  let allocationAttempts: any;
   let assignmentStatusHistory: any;
   let app: any;
   let eq: any;
@@ -19,6 +20,7 @@ describe("Assignment Atom Integration Tests", () => {
 
     db = dbModule.default;
     assignments = schemaModule.assignments;
+    allocationAttempts = schemaModule.allocationAttempts;
     assignmentStatusHistory = schemaModule.assignmentStatusHistory;
     app = appModule.app;
     eq = drizzleModule.eq;
@@ -26,6 +28,7 @@ describe("Assignment Atom Integration Tests", () => {
 
   beforeEach(async () => {
     // Clean up tables before each test
+    await db.delete(allocationAttempts);
     await db.delete(assignmentStatusHistory);
     await db.delete(assignments);
   });
@@ -137,5 +140,130 @@ describe("Assignment Atom Integration Tests", () => {
     });
 
     expect(res.status).toBe(404);
+  });
+
+  it("accepts only the pending Contractor attempt and replays its operation", async () => {
+    const caseId = crypto.randomUUID();
+    const contractorId = crypto.randomUUID();
+    const [assignment] = await db
+      .insert(assignments)
+      .values({ caseId })
+      .returning();
+    const [attempt] = await db
+      .insert(allocationAttempts)
+      .values({
+        assignmentId: assignment.id,
+        contractorId,
+        source: "AUTO_ASSIGN",
+        acceptanceSlaMs: 60_000,
+        deadlineAt: new Date(Date.now() + 60_000).toISOString(),
+        actorId: crypto.randomUUID(),
+        actorRole: "SYSTEM",
+        operationId: `allocate/${crypto.randomUUID()}`,
+      })
+      .returning();
+    const input = {
+      operationId: `accept/${crypto.randomUUID()}`,
+      caseId,
+      assignmentId: assignment.id,
+      attemptId: attempt.id,
+      contractorId,
+    };
+
+    expect(
+      (
+        await app.request(
+          "/internal/assignments/allocation-attempts/acceptance",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${"a".repeat(32)}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ...input,
+              contractorId: crypto.randomUUID(),
+            }),
+          }
+        )
+      ).status
+    ).toBe(409);
+
+    const request = () =>
+      app.request("/internal/assignments/allocation-attempts/acceptance", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${"a".repeat(32)}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(input),
+      });
+    const [accepted, replay] = await Promise.all([request(), request()]);
+    expect(
+      [accepted.status, replay.status].toSorted((left, right) => left - right)
+    ).toEqual([200, 201]);
+    expect(
+      [(await accepted.json()).outcome, (await replay.json()).outcome].toSorted(
+        (left, right) => left.localeCompare(right)
+      )
+    ).toEqual(["ACCEPTED", "ALREADY_ACCEPTED"]);
+
+    const history = await db
+      .select()
+      .from(assignmentStatusHistory)
+      .where(eq(assignmentStatusHistory.assignmentId, assignment.id));
+    expect(history).toHaveLength(1);
+    expect(history[0].reason).toBe("ALLOCATION_ATTEMPT_ACCEPTED");
+  });
+
+  it("rejects a pending Attempt when its Assignment is no longer pending", async () => {
+    const caseId = crypto.randomUUID();
+    const contractorId = crypto.randomUUID();
+    const [assignment] = await db
+      .insert(assignments)
+      .values({ caseId, status: "BREACHED" })
+      .returning();
+    const [attempt] = await db
+      .insert(allocationAttempts)
+      .values({
+        assignmentId: assignment.id,
+        contractorId,
+        source: "AUTO_ASSIGN",
+        acceptanceSlaMs: 60_000,
+        deadlineAt: new Date(Date.now() + 60_000).toISOString(),
+        actorId: crypto.randomUUID(),
+        actorRole: "SYSTEM",
+        operationId: `allocate/${crypto.randomUUID()}`,
+      })
+      .returning();
+
+    const response = await app.request(
+      "/internal/assignments/allocation-attempts/acceptance",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${"a".repeat(32)}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          operationId: `accept/${crypto.randomUUID()}`,
+          caseId,
+          assignmentId: assignment.id,
+          attemptId: attempt.id,
+          contractorId,
+        }),
+      }
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      outcome: "ASSIGNMENT_NOT_PENDING",
+    });
+    expect(
+      await db
+        .select()
+        .from(assignmentStatusHistory)
+        .where(eq(assignmentStatusHistory.assignmentId, assignment.id))
+    ).toHaveLength(0);
   });
 });

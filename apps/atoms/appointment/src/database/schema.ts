@@ -1,5 +1,13 @@
 import { sql } from "drizzle-orm";
-import { pgTable, uuid, timestamp, index, pgEnum } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  timestamp,
+  index,
+  pgEnum,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 
 export const appointmentStatus = pgEnum("appointment_status", [
@@ -10,6 +18,11 @@ export const appointmentStatus = pgEnum("appointment_status", [
   "completed",
 ]);
 
+export const appointmentSlotClaimStatus = pgEnum(
+  "appointment_slot_claim_status",
+  ["HELD", "ACTIVE", "RELEASED"]
+);
+
 export const appointments = pgTable(
   "appointments",
   {
@@ -19,6 +32,12 @@ export const appointments = pgTable(
       .notNull(),
     caseId: uuid("case_id").notNull(),
     assignmentId: uuid("assignment_id").notNull(),
+    // These are nullable for the legacy public create route. Internal slot
+    // confirmation always supplies them before publishing a scheduled slot.
+    attemptId: uuid("attempt_id"),
+    contractorId: uuid("contractor_id"),
+    operationId: text("operation_id"),
+    slotClaimId: uuid("slot_claim_id"),
     startTime: timestamp("start_time", {
       withTimezone: true,
       mode: "string",
@@ -41,6 +60,37 @@ export const appointments = pgTable(
     index("idx_appointments_case").using(
       "btree",
       table.caseId.asc().nullsLast().op("uuid_ops")
+    ),
+    uniqueIndex("appointments_operation_id_idx").on(table.operationId),
+    uniqueIndex("appointments_slot_claim_id_idx").on(table.slotClaimId),
+  ]
+);
+
+export const appointmentSlotClaims = pgTable(
+  "appointment_slot_claims",
+  {
+    id: uuid()
+      .default(sql`uuid_generate_v4()`)
+      .primaryKey()
+      .notNull(),
+    operationId: text("operation_id").notNull(),
+    caseId: uuid("case_id").notNull(),
+    assignmentId: uuid("assignment_id").notNull(),
+    attemptId: uuid("attempt_id").notNull(),
+    contractorId: uuid("contractor_id").notNull(),
+    startTime: timestamp("start_time", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    endTime: timestamp("end_time", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    status: appointmentSlotClaimStatus().default("HELD").notNull(),
+  },
+  (table) => [
+    uniqueIndex("appointment_slot_claims_operation_id_idx").on(
+      table.operationId
     ),
   ]
 );

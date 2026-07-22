@@ -1,5 +1,8 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { CreateCaseActivityInputSchema } from "@townops/orchestration-contract";
+import {
+  CreateCaseActivityInputSchema,
+  RecordAllocationAcceptanceInputSchema,
+} from "@townops/orchestration-contract";
 import {
   logger,
   honoLogger,
@@ -232,6 +235,18 @@ const internalCasesRouter = new Hono()
       });
 
       return c.json(result, 200);
+    }
+  )
+  .post(
+    "/:id/allocation-acceptance",
+    validator("param", z.object({ id: z.uuid() })),
+    validator("json", RecordAllocationAcceptanceInputSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      if (body.caseId !== id) return c.json({ error: "Case ID mismatch" }, 400);
+      const history = await caseService.recordAllocationAcceptance(body);
+      return c.json({ history }, 201);
     }
   );
 

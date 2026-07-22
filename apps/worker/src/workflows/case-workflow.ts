@@ -6,6 +6,7 @@ import {
   setHandler,
 } from "@temporalio/workflow";
 import {
+  AcceptAllocationCommandSchema,
   DEFAULT_ACCEPTANCE_SLA_MS,
   ManualAllocationCommandSchema,
   OpenCaseCommandSchema,
@@ -13,6 +14,8 @@ import {
   UPDATE_NAMES,
 } from "@townops/orchestration-contract";
 import type {
+  AcceptAllocationCommand,
+  AcceptAllocationResult,
   AllocationCandidate,
   AllocationSnapshot,
   CaseDto,
@@ -33,6 +36,10 @@ export const allocateContractor = defineUpdate<
   ManualAllocationResult,
   [ManualAllocationCommand]
 >(UPDATE_NAMES.allocateContractor);
+export const acceptAllocation = defineUpdate<
+  AcceptAllocationResult,
+  [AcceptAllocationCommand]
+>(UPDATE_NAMES.acceptAllocation);
 
 const activities = proxyActivities<{
   isCaseTerminal(input: { caseId: string }): Promise<boolean>;
@@ -44,6 +51,9 @@ const activities = proxyActivities<{
   commitAllocationAttempt(
     input: CommitAllocationInput
   ): Promise<CommitAllocationResult>;
+  acceptAllocation(
+    input: AcceptAllocationCommand
+  ): Promise<AcceptAllocationResult>;
   markCaseAssigned(input: {
     caseId: string;
     operationId: string;
@@ -81,6 +91,11 @@ type ManualOperation = {
   payloadHash: string;
   result?: ManualAllocationResult;
   pending?: Promise<ManualAllocationResult>;
+};
+type AcceptanceOperation = {
+  payloadHash: string;
+  result?: AcceptAllocationResult;
+  pending?: Promise<AcceptAllocationResult>;
 };
 
 /**
@@ -320,6 +335,7 @@ async function raiseAllocationAttention(
 export async function CaseWorkflow({ caseId }: { caseId: string }) {
   const operations = new Map<string, Operation>();
   const manualOperations = new Map<string, ManualOperation>();
+  const acceptanceOperations = new Map<string, AcceptanceOperation>();
   // In-Workflow only — never exposed as a Query/read model. Tracks which
   // Contractors this Workflow already committed or attempted, across
   // allocation passes for this Case's whole lifetime.
@@ -419,6 +435,34 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     operation.result = await operation.pending;
     delete operation.pending;
     return operation.result;
+  });
+
+  setHandler(acceptAllocation, async (unparsedCommand) => {
+    const command = AcceptAllocationCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    const existing = acceptanceOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error("Acceptance operation has no result or pending activity");
+    }
+
+    const operation: AcceptanceOperation = { payloadHash: command.payloadHash };
+    acceptanceOperations.set(command.idempotencyKey, operation);
+    operation.pending = activities.acceptAllocation(command);
+    try {
+      operation.result = await operation.pending;
+      return operation.result;
+    } catch (error) {
+      acceptanceOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
   });
 
   // Allocation runs here, never inside an Update handler. PRS-141 extends this
