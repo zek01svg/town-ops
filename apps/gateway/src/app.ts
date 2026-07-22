@@ -6,6 +6,8 @@ import {
 } from "@temporalio/client";
 import {
   AccountRoleSchema,
+  AllocationAttemptDtoSchema,
+  AssignmentDtoSchema,
   CaseDtoSchema,
   canonicalOpenCasePayload,
   caseWorkflowId,
@@ -21,7 +23,9 @@ import {
 } from "@townops/orchestration-contract";
 import type {
   AccountRole,
+  AllocationAttemptDto,
   ApiError,
+  AssignmentDto,
   CaseDto,
   OpenCaseInput,
   OpenCaseResult,
@@ -36,6 +40,10 @@ const idempotencyKeySchema = z.uuid();
 const caseAtomResponseSchema = z.object({ cases: z.array(z.unknown()) });
 const residentAtomResponseSchema = z.object({
   residents: z.array(z.unknown()),
+});
+const assignmentAtomResponseSchema = z.object({
+  assignment: z.unknown().nullable(),
+  attempt: z.unknown().nullable(),
 });
 const authResponseSchema = z.object({
   user: z.object({
@@ -61,6 +69,7 @@ type GatewayDependencies = {
   caseAtomUrl: string;
   residentAtomUrl: string;
   authAtomUrl: string;
+  assignmentAtomUrl?: string;
   authenticate?: MiddlewareHandler;
   fetchImpl?: typeof fetch;
   updateTimeoutMs?: number;
@@ -148,6 +157,49 @@ function toCaseDto(record: unknown): CaseDto {
     createdAt: source.createdAt ?? null,
     updatedAt: source.updatedAt ?? null,
   });
+}
+
+type CaseAssignment = {
+  assignment: AssignmentDto;
+  currentAttempt: AllocationAttemptDto | null;
+};
+
+/**
+ * Looks up a Case's stable Assignment and current pending Attempt from the
+ * assignment atom (AC7). A secondary source — an unreachable atom, an
+ * unexpected response shape, or no Assignment yet — resolves to null rather
+ * than failing the Case lookup closed.
+ */
+async function lookupCaseAssignment(
+  assignmentAtomUrl: string,
+  fetchImpl: typeof fetch,
+  caseId: string
+): Promise<CaseAssignment | null> {
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      `${assignmentAtomUrl}/api/assignments/by-case/${caseId}`
+    );
+  } catch {
+    return null;
+  }
+  if (!response.ok) return null;
+
+  const parsed = assignmentAtomResponseSchema.safeParse(
+    await response.json().catch(() => undefined)
+  );
+  if (!parsed.success || !parsed.data.assignment) return null;
+
+  const assignment = AssignmentDtoSchema.safeParse(parsed.data.assignment);
+  if (!assignment.success) return null;
+
+  let currentAttempt: AllocationAttemptDto | null = null;
+  if (parsed.data.attempt) {
+    const attempt = AllocationAttemptDtoSchema.safeParse(parsed.data.attempt);
+    if (attempt.success) currentAttempt = attempt.data;
+  }
+
+  return { assignment: assignment.data, currentAttempt };
 }
 
 /**
@@ -241,6 +293,7 @@ export function createGatewayApp({
   caseAtomUrl,
   residentAtomUrl,
   authAtomUrl,
+  assignmentAtomUrl = "http://localhost:5004",
   authenticate,
   fetchImpl = fetch,
   updateTimeoutMs = 20_000,
@@ -546,10 +599,14 @@ export function createGatewayApp({
         retryable: false,
       });
     }
-    if (actor.role !== "RESIDENT" && actor.role !== "OFFICER") {
+    if (
+      actor.role !== "RESIDENT" &&
+      actor.role !== "OFFICER" &&
+      actor.role !== "CONTRACTOR"
+    ) {
       return error(c, 403, {
         code: "FORBIDDEN",
-        message: "Resident or Officer access is required",
+        message: "Resident, Officer, or Contractor access is required",
         retryable: false,
       });
     }
@@ -599,7 +656,41 @@ export function createGatewayApp({
       });
     }
 
-    return c.json({ data: caseDto });
+    // A Resident sees their Case as before — no contractor scores or
+    // internal attention attached.
+    if (actor.role === "RESIDENT") {
+      return c.json({ data: caseDto });
+    }
+
+    const caseAssignment = await lookupCaseAssignment(
+      assignmentAtomUrl,
+      fetchImpl,
+      caseId.data
+    );
+
+    if (actor.role === "CONTRACTOR") {
+      const isNamedOnCurrentAttempt =
+        caseAssignment?.currentAttempt?.contractorId === actor.contractorId;
+      if (!actor.contractorId || !isNamedOnCurrentAttempt) {
+        return error(c, 404, {
+          code: "CASE_NOT_FOUND",
+          message: "Case was not found",
+          retryable: false,
+        });
+      }
+    }
+
+    return c.json({
+      data: {
+        ...caseDto,
+        assignment: caseAssignment
+          ? {
+              ...caseAssignment.assignment,
+              currentAttempt: caseAssignment.currentAttempt,
+            }
+          : null,
+      },
+    });
   });
 
   return app;

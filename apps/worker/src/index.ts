@@ -4,6 +4,7 @@ import { NativeConnection, Worker } from "@temporalio/worker";
 import { ORCHESTRATION_TASK_QUEUE } from "@townops/orchestration-contract";
 import { z } from "zod/v4";
 
+import { createAllocateContractorActivities } from "./activities/allocate-contractor.ts";
 import { createOpenCaseActivity } from "./activities/open-case.ts";
 import { createProvisionResidentActivity } from "./activities/provision-resident.ts";
 
@@ -13,6 +14,9 @@ const config = z
     TEMPORAL_NAMESPACE: z.string().min(1).default("default"),
     RESIDENT_ATOM_URL: z.url().default("http://localhost:5008"),
     CASE_ATOM_URL: z.url().default("http://localhost:5005"),
+    CONTRACTOR_ATOM_URL: z.url().default("http://localhost:5009"),
+    METRICS_ATOM_URL: z.url().default("http://localhost:5006"),
+    ASSIGNMENT_ATOM_URL: z.url().default("http://localhost:5004"),
     WORKER_SERVICE_TOKEN: z.string().min(32),
   })
   .parse(process.env);
@@ -35,6 +39,13 @@ const worker = await Worker.create({
     }),
     provisionResidentProfile: createProvisionResidentActivity({
       residentAtomUrl: config.RESIDENT_ATOM_URL,
+      workerServiceToken: config.WORKER_SERVICE_TOKEN,
+    }),
+    ...createAllocateContractorActivities({
+      contractorAtomUrl: config.CONTRACTOR_ATOM_URL,
+      metricsAtomUrl: config.METRICS_ATOM_URL,
+      assignmentAtomUrl: config.ASSIGNMENT_ATOM_URL,
+      caseAtomUrl: config.CASE_ATOM_URL,
       workerServiceToken: config.WORKER_SERVICE_TOKEN,
     }),
   },

@@ -498,3 +498,111 @@ describe("Auth proxy", () => {
     );
   });
 });
+
+describe("Case detail after allocation", () => {
+  const contractorId = "c1c1c1c1-1111-4111-8111-111111111111";
+  // A Contractor Account's own ID is not the Contractor ID — the linked
+  // Contractor arrives as its own claim, and authorization keys off that.
+  const contractorAuth: MiddlewareHandler = async (c, next) => {
+    c.set("jwtPayload", {
+      sub: "e5e5e5e5-5555-4555-8555-555555555555",
+      role: "contractor",
+      contractorId,
+    });
+    await next();
+  };
+  const assignedCase = {
+    ...successResult.data,
+    priority: "high",
+    // Allocation moves the Case out of PENDING. Reading it back must keep
+    // working — a Case that has progressed is the normal case, not an edge one.
+    status: "assigned",
+  };
+  const assignmentId = "aaaaaaaa-1111-4111-8111-111111111111";
+  const assignment = {
+    id: assignmentId,
+    caseId: successResult.data.id,
+    createdAt: "2026-07-22T00:00:00.000Z",
+    updatedAt: "2026-07-22T00:00:00.000Z",
+  };
+  function attemptFor(offeredTo: string) {
+    return {
+      id: "bbbbbbbb-1111-4111-8111-111111111111",
+      assignmentId,
+      contractorId: offeredTo,
+      source: "AUTO_ASSIGN",
+      status: "PENDING_ACCEPTANCE",
+      acceptanceSlaMs: 60_000,
+      deadlineAt: "2026-07-22T00:01:00.000Z",
+      actorId: "00000000-0000-0000-0000-000000000000",
+      actorRole: "SYSTEM",
+      reason: null,
+      operationId: "op/1",
+      createdAt: "2026-07-22T00:00:00.000Z",
+    };
+  }
+
+  function fetchFor(caseRecord: unknown, attempt: unknown) {
+    return vi.fn(async (url: string) =>
+      String(url).includes("/api/assignments")
+        ? Response.json({ assignment, attempt })
+        : Response.json({ cases: [caseRecord] })
+    ) as unknown as typeof fetch;
+  }
+
+  it("serves an ASSIGNED Case to the Officer with its Assignment", async () => {
+    const { app } = createApp(
+      undefined,
+      fetchFor(assignedCase, attemptFor(contractorId)),
+      {}
+    );
+
+    const response = await app.request("/api/cases/" + successResult.data.id);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data).toMatchObject({ status: "ASSIGNED" });
+  });
+
+  it("serves an ASSIGNED Case to its owning Resident", async () => {
+    const { app } = createApp(
+      undefined,
+      fetchFor(assignedCase, attemptFor(contractorId)),
+      { authenticate: residentAuth }
+    );
+
+    const response = await app.request("/api/cases/" + successResult.data.id);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { status: "ASSIGNED" },
+    });
+  });
+
+  it("serves an ASSIGNED Case to the Contractor named on the pending Attempt", async () => {
+    const { app } = createApp(
+      undefined,
+      fetchFor(assignedCase, attemptFor(contractorId)),
+      { authenticate: contractorAuth }
+    );
+
+    const response = await app.request("/api/cases/" + successResult.data.id);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("hides the Case from a Contractor it was never offered to", async () => {
+    const { app } = createApp(
+      undefined,
+      fetchFor(
+        assignedCase,
+        attemptFor("d2d2d2d2-2222-4222-8222-222222222222")
+      ),
+      { authenticate: contractorAuth }
+    );
+
+    const response = await app.request("/api/cases/" + successResult.data.id);
+
+    expect(response.status).toBe(404);
+  });
+});

@@ -101,3 +101,57 @@ export async function updateCaseStatus(id: string, status: any) {
     .returning();
   return updated;
 }
+
+/**
+ * Idempotent write for automatic Contractor allocation (PRS-139): marks a
+ * Case assigned and appends a CASE_ASSIGNED history row, once per
+ * operationId. Same idempotency pattern as createCaseForOperation — insert
+ * the operation claim first, and return the existing Case unchanged when
+ * the claim already exists.
+ */
+export async function markCaseAssignedForOperation(input: {
+  caseId: string;
+  operationId: string;
+  actorId: string;
+  actorRole: string;
+}) {
+  return db.transaction(async (tx) => {
+    const [insertedOperation] = await tx
+      .insert(caseOperations)
+      .values({ operationId: input.operationId, caseId: input.caseId })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!insertedOperation) {
+      const [existingCase] = await tx
+        .select()
+        .from(cases)
+        .where(eq(cases.id, input.caseId));
+      if (!existingCase) {
+        throw new Error(
+          "Case was not found for an existing assignment operation"
+        );
+      }
+      return existingCase;
+    }
+
+    const [updatedCase] = await tx
+      .update(cases)
+      .set({ status: "assigned", updatedAt: new Date().toISOString() })
+      .where(eq(cases.id, input.caseId))
+      .returning();
+    if (!updatedCase) {
+      throw new Error("Case was not found to mark as assigned");
+    }
+
+    await tx.insert(caseHistory).values({
+      caseId: input.caseId,
+      eventType: "CASE_ASSIGNED",
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      operationId: input.operationId,
+    });
+
+    return updatedCase;
+  });
+}

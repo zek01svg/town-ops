@@ -82,6 +82,15 @@ describe("CaseWorkflow", () => {
           calls.push(input);
           return createdCase(input);
         },
+        // Allocation runs on the Workflow's main body after a Case opens.
+        // Stubbed to "no eligible Contractor" so this test stays about
+        // Case-opening idempotency without leaving the loop calling
+        // unregistered Activities.
+        fetchAllocationSnapshot: async () => ({ epoch: 0, candidates: [] }),
+        commitAllocationAttempt: async () => {
+          throw new Error("allocation must not commit without a candidate");
+        },
+        markCaseAssigned: async () => undefined,
       },
     });
     const client = new Client({ connection: env.nativeConnection });

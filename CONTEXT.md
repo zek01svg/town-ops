@@ -34,9 +34,16 @@ separate domain entity.
 _Avoid_: Using Job when Case, Assignment, or Appointment is meant precisely
 
 **Assignment**:
-The evolving allocation of a Case to a Contractor. It retains its identity when
-the Case is reallocated to another Contractor.
-_Avoid_: Job, Appointment
+A Case's allocation identity. It is created once and retained for the Case's
+lifetime, including when the Case is reallocated. An Assignment names no
+Contractor of its own; the Contractor is named by its Allocation Attempts.
+_Avoid_: Job, Appointment, Allocation Attempt
+
+**Allocation Attempt**:
+One offer of a Case's Assignment to a specific Contractor, carrying its own
+copied Acceptance SLA deadline and its own outcome. Reallocating a Case appends
+a new Attempt rather than replacing the Assignment.
+_Avoid_: Assignment, reassignment
 
 **Appointment**:
 A planned time interval for a Contractor to attend a Case under its Assignment.

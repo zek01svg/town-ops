@@ -1,7 +1,13 @@
-import { eq } from "drizzle-orm";
+import type { CommitAllocationInput } from "@townops/orchestration-contract";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import db from "./database/db";
-import { assignments, assignmentStatusHistory } from "./database/schema";
+import {
+  allocationAttempts,
+  allocationEpoch,
+  assignments,
+  assignmentStatusHistory,
+} from "./database/schema";
 
 /**
  * Create a new assignment.
@@ -47,7 +53,7 @@ export async function updateAssignmentStatus(
   id: string,
   status: any,
   changedBy: string,
-  reason?: string,
+  reason?: string
 ) {
   return db.transaction(async (tx) => {
     // 1. Get current status for history
@@ -66,7 +72,9 @@ export async function updateAssignmentStatus(
       .set({
         status,
         updatedAt: new Date().toISOString(),
-        ...(status === "ACCEPTED" ? { acceptedAt: new Date().toISOString() } : {}),
+        ...(status === "ACCEPTED"
+          ? { acceptedAt: new Date().toISOString() }
+          : {}),
       })
       .where(eq(assignments.id, id))
       .returning();
@@ -92,7 +100,7 @@ export async function reassignAssignment(
   contractorId: string,
   responseDueAt: string,
   changedBy: string,
-  reason?: string,
+  reason?: string
 ) {
   return db.transaction(async (tx) => {
     const current = await tx.query.assignments.findFirst({
@@ -129,5 +137,178 @@ export async function reassignAssignment(
     });
 
     return updated;
+  });
+}
+
+/**
+ * Find the stable Assignment plus its current pending Attempt for a Case,
+ * for the Gateway's public read (AC7). Returns null when no Assignment
+ * exists yet for the Case (e.g. it is still PENDING).
+ */
+export async function getAssignmentWithCurrentAttempt(caseId: string) {
+  const [assignment] = await db
+    .select()
+    .from(assignments)
+    .where(eq(assignments.caseId, caseId));
+  if (!assignment) return null;
+
+  const [currentAttempt] = await db
+    .select()
+    .from(allocationAttempts)
+    .where(
+      and(
+        eq(allocationAttempts.assignmentId, assignment.id),
+        eq(allocationAttempts.status, "PENDING_ACCEPTANCE")
+      )
+    )
+    .orderBy(desc(allocationAttempts.createdAt))
+    .limit(1);
+
+  return { assignment, currentAttempt: currentAttempt ?? null };
+}
+
+/**
+ * Global allocation snapshot: the fencing epoch plus the number of active
+ * (PENDING_ACCEPTANCE or ACCEPTED) Allocation Attempts per Contractor.
+ * Ranked candidate selection happens in the Workflow, not here — this is
+ * I/O only.
+ */
+export async function getAllocationSnapshot() {
+  await db
+    .insert(allocationEpoch)
+    .values({ id: 1, epoch: 0 })
+    .onConflictDoNothing();
+  const [epoch] = await db
+    .select()
+    .from(allocationEpoch)
+    .where(eq(allocationEpoch.id, 1));
+  if (!epoch) throw new Error("Allocation epoch row could not be created");
+
+  const activeAssignmentCounts = await db
+    .select({
+      contractorId: allocationAttempts.contractorId,
+      activeCount: sql<number>`count(*)::int`,
+    })
+    .from(allocationAttempts)
+    .where(
+      inArray(allocationAttempts.status, ["PENDING_ACCEPTANCE", "ACCEPTED"])
+    )
+    .groupBy(allocationAttempts.contractorId);
+
+  return { epoch: epoch.epoch, activeAssignmentCounts };
+}
+
+/**
+ * Commits one allocation Attempt for a Case, in a single transaction:
+ * dedupe on operationId, fence on the global epoch (row-locked), upsert the
+ * Case's stable Assignment, guard against a concurrent active Attempt, then
+ * insert the Attempt and bump the epoch. Automatic and manual allocation
+ * both pass through this same guard (see ACTIVE_ATTEMPT_EXISTS below).
+ */
+export async function commitAllocationAttempt(input: CommitAllocationInput) {
+  return db.transaction(async (tx) => {
+    const [existingAttempt] = await tx
+      .select()
+      .from(allocationAttempts)
+      .where(eq(allocationAttempts.operationId, input.operationId));
+
+    if (existingAttempt) {
+      const [assignment] = await tx
+        .select()
+        .from(assignments)
+        .where(eq(assignments.id, existingAttempt.assignmentId));
+      if (!assignment) {
+        throw new Error(
+          "Assignment was not found for an existing allocation attempt"
+        );
+      }
+      return {
+        outcome: "ALREADY_COMMITTED" as const,
+        attempt: existingAttempt,
+        assignment,
+      };
+    }
+
+    await tx
+      .insert(allocationEpoch)
+      .values({ id: 1, epoch: 0 })
+      .onConflictDoNothing();
+    const [epochRow] = await tx
+      .select()
+      .from(allocationEpoch)
+      .where(eq(allocationEpoch.id, 1))
+      .for("update");
+    if (!epochRow) {
+      throw new Error("Allocation epoch row could not be created");
+    }
+
+    if (epochRow.epoch !== input.expectedEpoch) {
+      return { outcome: "STALE_EPOCH" as const, epoch: epochRow.epoch };
+    }
+
+    await tx
+      .insert(assignments)
+      .values({ caseId: input.caseId })
+      .onConflictDoNothing();
+    const [assignment] = await tx
+      .select()
+      .from(assignments)
+      .where(eq(assignments.caseId, input.caseId));
+    if (!assignment) {
+      throw new Error("Assignment could not be created for the Case");
+    }
+
+    const [activeAttempt] = await tx
+      .select()
+      .from(allocationAttempts)
+      .where(
+        and(
+          eq(allocationAttempts.assignmentId, assignment.id),
+          eq(allocationAttempts.status, "PENDING_ACCEPTANCE")
+        )
+      );
+    if (activeAttempt) {
+      return {
+        outcome: "ACTIVE_ATTEMPT_EXISTS" as const,
+        attempt: activeAttempt,
+      };
+    }
+
+    const deadlineAt = new Date(
+      Date.now() + input.acceptanceSlaMs
+    ).toISOString();
+    const [attempt] = await tx
+      .insert(allocationAttempts)
+      .values({
+        assignmentId: assignment.id,
+        contractorId: input.contractorId,
+        source: input.source,
+        acceptanceSlaMs: input.acceptanceSlaMs,
+        deadlineAt,
+        actorId: input.actorId,
+        actorRole: input.actorRole,
+        reason: input.reason,
+        operationId: input.operationId,
+      })
+      .returning();
+    if (!attempt) {
+      throw new Error("Allocation attempt insert did not return a row");
+    }
+
+    const [updatedEpoch] = await tx
+      .update(allocationEpoch)
+      .set({ epoch: epochRow.epoch + 1, updatedAt: new Date().toISOString() })
+      .where(eq(allocationEpoch.id, 1))
+      .returning();
+    if (!updatedEpoch) {
+      throw new Error("Allocation epoch row could not be updated");
+    }
+
+    return {
+      outcome: "COMMITTED" as const,
+      attempt,
+      assignment,
+      epoch: updatedEpoch.epoch,
+    };
   });
 }

@@ -32,6 +32,14 @@ vi.mock("@townops/shared-ts", () => ({
   corsOrigins: () => ["http://localhost:5173"],
   initSentry: vi.fn(),
   captureHonoException: vi.fn(),
+  // Real guard, so the internal allocation routes still reject an unauthorized
+  // caller rather than being mocked wide open.
+  workerAuth: (token: string) => async (c: any, next: any) => {
+    const authorization = c.req.header("Authorization");
+    return authorization === `Bearer ${token}`
+      ? next()
+      : c.json({ error: "Unauthorized" }, 401);
+  },
 }));
 
 vi.mock("../../src/database/db", () => ({
@@ -206,7 +214,9 @@ describe("Assignment Atom - HTTP Routes", () => {
         const tx = {
           query: {
             assignments: {
-              findFirst: vi.fn().mockResolvedValue({ status: "PENDING_ACCEPTANCE" }),
+              findFirst: vi
+                .fn()
+                .mockResolvedValue({ status: "PENDING_ACCEPTANCE" }),
             },
           },
           update: vi.fn().mockReturnValue({
@@ -216,20 +226,25 @@ describe("Assignment Atom - HTTP Routes", () => {
               }),
             }),
           }),
-          insert: vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
+          insert: vi
+            .fn()
+            .mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
         };
         return cb(tx);
       });
 
-      const res = await app.request(`/api/assignments/${VALID_ASSIGNMENT_ID}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "ACCEPTED",
-          changedBy: "contractor-xyz",
-          reason: "Accepted via app",
-        }),
-      });
+      const res = await app.request(
+        `/api/assignments/${VALID_ASSIGNMENT_ID}/status`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "ACCEPTED",
+            changedBy: "contractor-xyz",
+            reason: "Accepted via app",
+          }),
+        }
+      );
 
       expect(res.status).toBe(200);
       const data = await res.json();
@@ -249,21 +264,27 @@ describe("Assignment Atom - HTTP Routes", () => {
         return cb(tx);
       });
 
-      const res = await app.request(`/api/assignments/${VALID_ASSIGNMENT_ID}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "ACCEPTED", changedBy: "user" }),
-      });
+      const res = await app.request(
+        `/api/assignments/${VALID_ASSIGNMENT_ID}/status`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "ACCEPTED", changedBy: "user" }),
+        }
+      );
 
       expect(res.status).toBe(404);
     });
 
     it("should return 400 for invalid status value", async () => {
-      const res = await app.request(`/api/assignments/${VALID_ASSIGNMENT_ID}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "INVALID", changedBy: "user" }),
-      });
+      const res = await app.request(
+        `/api/assignments/${VALID_ASSIGNMENT_ID}/status`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "INVALID", changedBy: "user" }),
+        }
+      );
 
       expect(res.status).toBe(400);
       const data = await res.json();
@@ -322,15 +343,18 @@ describe("Assignment Atom - HTTP Routes", () => {
         return cb(tx);
       });
 
-      const res = await app.request(`/api/assignments/${VALID_ASSIGNMENT_ID}/reassign`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contractorId: NEW_CONTRACTOR_ID,
-          changedBy: "system",
-          reason: "SLA_BREACH",
-        }),
-      });
+      const res = await app.request(
+        `/api/assignments/${VALID_ASSIGNMENT_ID}/reassign`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contractorId: NEW_CONTRACTOR_ID,
+            changedBy: "system",
+            reason: "SLA_BREACH",
+          }),
+        }
+      );
 
       expect(res.status).toBe(200);
       const data = await res.json();
@@ -341,7 +365,7 @@ describe("Assignment Atom - HTTP Routes", () => {
           contractorId: NEW_CONTRACTOR_ID,
           status: "PENDING_ACCEPTANCE",
           source: "BREACH_REASSIGN",
-        }),
+        })
       );
       expect(capturedSetValues.responseDueAt).toBeDefined();
       expect(mockInsertHistory).toHaveBeenCalledOnce();

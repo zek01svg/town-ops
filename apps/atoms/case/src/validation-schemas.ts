@@ -14,3 +14,11 @@ export const updateCaseStatusSchema = z.object({
     "escalated",
   ]),
 });
+
+export const markCaseAssignedSchema = z
+  .object({
+    operationId: z.string().min(1),
+    actorId: z.uuid(),
+    actorRole: z.string().min(1),
+  })
+  .strict();

@@ -22,7 +22,11 @@ import { z } from "zod/v4";
 import { insertCaseSchema, selectCaseSchema } from "./database/schema";
 import { env } from "./env";
 import * as caseService from "./service";
-import { getCaseSchema, updateCaseStatusSchema } from "./validation-schemas";
+import {
+  getCaseSchema,
+  markCaseAssignedSchema,
+  updateCaseStatusSchema,
+} from "./validation-schemas";
 
 const app = new Hono();
 
@@ -183,7 +187,22 @@ const internalCasesRouter = new Hono()
     const newCase = await caseService.createCaseForOperation(body);
 
     return c.json({ case: newCase }, 201);
-  });
+  })
+  .post(
+    "/:id/assign",
+    validator("param", z.object({ id: z.uuid() })),
+    validator("json", markCaseAssignedSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      const updatedCase = await caseService.markCaseAssignedForOperation({
+        caseId: id,
+        ...body,
+      });
+
+      return c.json({ case: updatedCase }, 200);
+    }
+  );
 
 const caseAtomRoutes = app
   .get(

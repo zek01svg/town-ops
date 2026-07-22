@@ -6,11 +6,13 @@ export const env = createEnv({
     DATABASE_URL: z.string(),
     PORT: z.coerce.number().default(5000),
     JWKS_URI: z.string().url(),
+    WORKER_SERVICE_TOKEN: z.string().min(32),
   },
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
     PORT: Number(process.env.PORT),
     JWKS_URI: process.env.JWKS_URI,
+    WORKER_SERVICE_TOKEN: process.env.WORKER_SERVICE_TOKEN,
   },
   skipValidation: process.env.npm_lifecycle_event === "lint",
 });

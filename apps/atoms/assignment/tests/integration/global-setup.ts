@@ -17,6 +17,7 @@ export async function setup() {
   // Mock Env variables to satisfy @t3-oss/env-core validation in src/env.ts
   process.env.PORT = "5000";
   process.env.JWKS_URI = "http://localhost/.well-known/jwks.json";
+  process.env.WORKER_SERVICE_TOKEN = "a".repeat(32);
   process.env.DATABASE_URL = dbUrl;
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";

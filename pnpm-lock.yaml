@@ -444,6 +444,9 @@ importers:
       '@t3-oss/env-core':
         specifier: 'catalog:'
         version: 0.13.11(typescript@7.0.2)(zod@4.4.3)
+      '@townops/orchestration-contract':
+        specifier: workspace:*
+        version: link:../../../packages/orchestration-contract
       '@townops/shared-ts':
         specifier: workspace:*
         version: link:../../../packages/shared-ts

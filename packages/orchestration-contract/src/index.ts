@@ -63,12 +63,26 @@ export type CreateCaseActivityInput = z.infer<
   typeof CreateCaseActivityInputSchema
 >;
 
+/**
+ * The full Case lifecycle. A Case leaves PENDING as soon as allocation commits
+ * an Attempt, so this must cover every status the Case atom can hold — a
+ * narrower schema turns an ordinary read of a progressed Case into a 500.
+ */
+export const CaseStatusSchema = z.enum([
+  "PENDING",
+  "ASSIGNED",
+  "IN_PROGRESS",
+  "PENDING_RESIDENT_INPUT",
+  "COMPLETED",
+  "CANCELLED",
+]);
+
 export const CaseDtoSchema = z.object({
   id: z.uuid(),
   residentId: z.uuid(),
   category: MaintenanceCategorySchema,
   priority: CasePrioritySchema,
-  status: z.literal("PENDING"),
+  status: CaseStatusSchema,
   description: z.string(),
   addressDetails: z.string().nullable(),
   postalCode: z.string(),
@@ -160,7 +174,10 @@ export const WORKFLOW_NAMES = {
   case: "CaseWorkflow",
   residentProvisioning: "ResidentProvisioningWorkflow",
 } as const;
-export const UPDATE_NAMES = { openCase: "openCase" } as const;
+export const UPDATE_NAMES = {
+  openCase: "openCase",
+  allocateContractor: "allocateContractor",
+} as const;
 export const ORCHESTRATION_TASK_QUEUE = "townops-orchestration";
 
 export function caseWorkflowId(caseId: string) {
@@ -180,4 +197,113 @@ export function canonicalOpenCasePayload(input: OpenCaseInput) {
     addressDetails: input.addressDetails,
     postalCode: input.postalCode,
   });
+}
+
+// ─── Contractor allocation (PRS-139) ───────────────────────────────────────
+
+/** Default acceptance window for an automatic allocation Attempt. */
+export const DEFAULT_ACCEPTANCE_SLA_MS = 60_000;
+
+export const AllocationSourceSchema = z.enum([
+  "AUTO_ASSIGN",
+  "MANUAL_ASSIGN",
+  "BREACH_REASSIGN",
+]);
+export type AllocationSource = z.infer<typeof AllocationSourceSchema>;
+
+export const AllocationAttemptStatusSchema = z.enum([
+  "PENDING_ACCEPTANCE",
+  "ACCEPTED",
+  "BREACHED",
+  "WITHDRAWN",
+]);
+export type AllocationAttemptStatus = z.infer<
+  typeof AllocationAttemptStatusSchema
+>;
+
+export const AllocationCandidateSchema = z.object({
+  contractorId: z.uuid(),
+  activeAssignments: z.int().nonnegative(),
+  totalScore: z.int(),
+});
+export type AllocationCandidate = z.infer<typeof AllocationCandidateSchema>;
+
+/**
+ * The Workflow's ranking input: every eligible Contractor for a Case's
+ * category/sector, joined with their active Assignment load and performance
+ * score, plus the fencing epoch observed at fetch time.
+ */
+export const AllocationSnapshotSchema = z.object({
+  epoch: z.int().nonnegative(),
+  candidates: z.array(AllocationCandidateSchema),
+});
+export type AllocationSnapshot = z.infer<typeof AllocationSnapshotSchema>;
+
+export const CommitAllocationInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    caseId: z.uuid(),
+    contractorId: z.uuid(),
+    source: AllocationSourceSchema,
+    expectedEpoch: z.int().nonnegative(),
+    acceptanceSlaMs: z.int().positive(),
+    actorId: z.uuid(),
+    actorRole: z.string().min(1),
+    reason: z.string().optional(),
+  })
+  .strict();
+export type CommitAllocationInput = z.infer<typeof CommitAllocationInputSchema>;
+
+export const AssignmentDtoSchema = z.object({
+  id: z.uuid(),
+  caseId: z.uuid(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AssignmentDto = z.infer<typeof AssignmentDtoSchema>;
+
+export const AllocationAttemptDtoSchema = z.object({
+  id: z.uuid(),
+  assignmentId: z.uuid(),
+  contractorId: z.uuid(),
+  source: AllocationSourceSchema,
+  status: AllocationAttemptStatusSchema,
+  acceptanceSlaMs: z.int().nonnegative(),
+  deadlineAt: z.string(),
+  actorId: z.uuid(),
+  actorRole: z.string(),
+  reason: z.string().nullable(),
+  operationId: z.string(),
+  createdAt: z.string(),
+});
+export type AllocationAttemptDto = z.infer<typeof AllocationAttemptDtoSchema>;
+
+export const CommitAllocationResultSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("COMMITTED"),
+    attempt: AllocationAttemptDtoSchema,
+    assignment: AssignmentDtoSchema,
+    epoch: z.int().nonnegative(),
+  }),
+  z.object({
+    outcome: z.literal("ALREADY_COMMITTED"),
+    attempt: AllocationAttemptDtoSchema,
+    assignment: AssignmentDtoSchema,
+  }),
+  z.object({
+    outcome: z.literal("STALE_EPOCH"),
+    epoch: z.int().nonnegative(),
+  }),
+  z.object({
+    outcome: z.literal("ACTIVE_ATTEMPT_EXISTS"),
+    attempt: AllocationAttemptDtoSchema,
+  }),
+]);
+export type CommitAllocationResult = z.infer<
+  typeof CommitAllocationResultSchema
+>;
+
+/** First two characters of a 6-digit Singapore postal code — its sector. */
+export function postalSector(postalCode: string) {
+  return postalCode.slice(0, 2);
 }

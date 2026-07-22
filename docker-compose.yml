@@ -168,6 +168,7 @@ services:
     environment:
       PORT: 5004
       DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
     ports:
       - "5004:5004"
 
@@ -195,6 +196,7 @@ services:
     environment:
       PORT: 5006
       DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
     ports:
       - "5006:5006"
 
@@ -236,6 +238,7 @@ services:
     environment:
       PORT: 5009
       DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
     ports:
       - "5009:5009"
 
@@ -268,6 +271,8 @@ services:
         condition: service_started
       resident-atom:
         condition: service_started
+      assignment-atom:
+        condition: service_started
       temporal-namespace:
         condition: service_completed_successfully
     environment:
@@ -278,6 +283,7 @@ services:
       CASE_ATOM_URL: http://case-atom:5005
       RESIDENT_ATOM_URL: http://resident-atom:5008
       AUTH_ATOM_URL: http://auth-atom:5001
+      ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
     ports:
       - "6010:6010"
 
@@ -291,6 +297,12 @@ services:
         condition: service_started
       resident-atom:
         condition: service_started
+      contractor-atom:
+        condition: service_started
+      metrics-atom:
+        condition: service_started
+      assignment-atom:
+        condition: service_started
       temporal-namespace:
         condition: service_completed_successfully
     environment:
@@ -298,6 +310,9 @@ services:
       TEMPORAL_NAMESPACE: default
       RESIDENT_ATOM_URL: http://resident-atom:5008
       CASE_ATOM_URL: http://case-atom:5005
+      CONTRACTOR_ATOM_URL: http://contractor-atom:5009
+      METRICS_ATOM_URL: http://metrics-atom:5006
+      ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
 
   assign-job-composite:

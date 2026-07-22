@@ -134,6 +134,45 @@ export async function removeSector(contractorId: string, sectorCode: string) {
   return row ?? null;
 }
 
+// ─── Eligibility (PRS-139) ────────────────────────────────────────────────────
+
+/**
+ * Active Contractors eligible for automatic allocation: they carry both the
+ * Case's category and its postal sector. The unique (contractorId, code)
+ * constraints on both join tables guarantee at most one row per Contractor
+ * per join, so no JS-side dedupe is needed.
+ */
+export async function getEligibleContractors({
+  category,
+  sector,
+}: {
+  category: string;
+  sector: string;
+}) {
+  return db
+    .select({
+      id: contractors.id,
+      name: contractors.name,
+      isActive: contractors.isActive,
+    })
+    .from(contractors)
+    .innerJoin(
+      contractorCategories,
+      and(
+        eq(contractorCategories.contractorId, contractors.id),
+        eq(contractorCategories.categoryCode, category)
+      )
+    )
+    .innerJoin(
+      contractorSectors,
+      and(
+        eq(contractorSectors.contractorId, contractors.id),
+        eq(contractorSectors.sectorCode, sector)
+      )
+    )
+    .where(eq(contractors.isActive, true));
+}
+
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 export async function searchContractors(

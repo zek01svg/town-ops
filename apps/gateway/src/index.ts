@@ -14,6 +14,7 @@ const config = z
     CASE_ATOM_URL: z.url().default("http://localhost:5005"),
     RESIDENT_ATOM_URL: z.url().default("http://localhost:5008"),
     AUTH_ATOM_URL: z.url().default("http://localhost:5001"),
+    ASSIGNMENT_ATOM_URL: z.url().default("http://localhost:5004"),
   })
   .parse(process.env);
 
@@ -46,6 +47,7 @@ const app = createGatewayApp({
   caseAtomUrl: config.CASE_ATOM_URL,
   residentAtomUrl: config.RESIDENT_ATOM_URL,
   authAtomUrl: config.AUTH_ATOM_URL,
+  assignmentAtomUrl: config.ASSIGNMENT_ATOM_URL,
   authenticate: jwk({ jwks_uri: config.JWKS_URI, alg: ["EdDSA"] }),
 });
 

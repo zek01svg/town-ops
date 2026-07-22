@@ -7,6 +7,7 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
   // Set mock environment variables before running tests
   process.env.DATABASE_URL = "postgres://root:password@localhost:5432/testdb";
   process.env.PORT = "5009";
+  process.env.WORKER_SERVICE_TOKEN = "a".repeat(32);
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
 

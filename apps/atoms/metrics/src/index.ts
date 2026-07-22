@@ -5,6 +5,7 @@ import {
   corsOrigins,
   initSentry,
   captureHonoException,
+  workerAuth,
 } from "@townops/shared-ts";
 import { createInsertSchema } from "drizzle-zod";
 import type { Context } from "hono";
@@ -75,6 +76,19 @@ const metricsRoutes = app
       return c.json({ metric }, 201);
     }
   );
+
+const internalPerformanceRouter = new Hono()
+  .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
+  .get(
+    "/totals",
+    describeRoute({ description: "Total performance score per Contractor" }),
+    async (c) => {
+      const totals = await metricsService.getScoreTotals();
+      return c.json({ totals }, 200);
+    }
+  );
+
+app.route("/internal/performance", internalPerformanceRouter);
 
 app.get(
   "/openapi",
