@@ -78,6 +78,7 @@ describe("CaseWorkflow", () => {
         new URL("../src/workflows/case-workflow.ts", import.meta.url)
       ),
       activities: {
+        isCaseTerminal: async () => false,
         openCase: async (input: CreateCaseActivityInput) => {
           calls.push(input);
           return createdCase(input);
@@ -90,7 +91,8 @@ describe("CaseWorkflow", () => {
         commitAllocationAttempt: async () => {
           throw new Error("allocation must not commit without a candidate");
         },
-        markCaseAssigned: async () => undefined,
+        markCaseAssigned: async () => "ASSIGNED" as const,
+        raiseOfficerAttention: async () => undefined,
       },
     });
     const client = new Client({ connection: env.nativeConnection });

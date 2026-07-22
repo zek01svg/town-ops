@@ -87,6 +87,42 @@ describe("Allocation attempt commits", () => {
     expect(rows).toHaveLength(1);
   });
 
+  it("deduplicates concurrent replays after the allocation epoch advances", async () => {
+    const snapshot = await service.getAllocationSnapshot();
+    const command = input({ expectedEpoch: snapshot.epoch });
+    let commits: [Promise<any>, Promise<any>] | undefined;
+
+    // Hold the epoch while both transactions pass their initial operation-ID
+    // lookup, reproducing an Activity retry that races with its first attempt.
+    await db.transaction(async (tx: any) => {
+      await tx
+        .select()
+        .from(schema.allocationEpoch)
+        .where(eq(schema.allocationEpoch.id, 1))
+        .for("update");
+
+      commits = [
+        service.commitAllocationAttempt(command),
+        service.commitAllocationAttempt(command),
+      ];
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+
+    if (!commits) throw new Error("Expected concurrent commits to be started");
+    const outcomes = await Promise.all(commits);
+    expect(
+      outcomes
+        .map((result) => result.outcome)
+        .toSorted((left, right) => left.localeCompare(right))
+    ).toEqual(["ALREADY_COMMITTED", "COMMITTED"]);
+
+    const rows = await db
+      .select()
+      .from(schema.allocationAttempts)
+      .where(eq(schema.allocationAttempts.operationId, command.operationId));
+    expect(rows).toHaveLength(1);
+  });
+
   it("rejects a commit made against a stale epoch without writing an attempt", async () => {
     const snapshot = await service.getAllocationSnapshot();
     await service.commitAllocationAttempt(
@@ -119,6 +155,26 @@ describe("Allocation attempt commits", () => {
     expect(result.outcome).toBe("ACTIVE_ATTEMPT_EXISTS");
   });
 
+  it("does not create an Assignment for a replacement target that is not pending", async () => {
+    const caseId = crypto.randomUUID();
+    const snapshot = await service.getAllocationSnapshot();
+    const result = await service.commitAllocationAttempt({
+      ...input({
+        caseId,
+        source: "MANUAL_ASSIGN",
+        expectedEpoch: snapshot.epoch,
+      }),
+      replaceAttemptId: crypto.randomUUID(),
+    } as any);
+
+    expect(result.outcome).toBe("REPLACEMENT_ATTEMPT_NOT_PENDING");
+    const assignmentRows = await db
+      .select()
+      .from(schema.assignments)
+      .where(eq(schema.assignments.caseId, caseId));
+    expect(assignmentRows).toHaveLength(0);
+  });
+
   it("keeps exactly one stable Assignment for a Case across reallocation", async () => {
     const caseId = crypto.randomUUID();
     const first = await service.getAllocationSnapshot();
@@ -142,6 +198,40 @@ describe("Allocation attempt commits", () => {
     // The Assignment is the Case's stable identity: reallocation appends an
     // Attempt, it never creates a second Assignment.
     expect(replacement.assignment.id).toBe(committed.assignment.id);
+    const assignmentRows = await db
+      .select()
+      .from(schema.assignments)
+      .where(eq(schema.assignments.caseId, caseId));
+    expect(assignmentRows).toHaveLength(1);
+  });
+
+  it("replaces only the named pending Attempt and keeps its Assignment", async () => {
+    const caseId = crypto.randomUUID();
+    const firstSnapshot = await service.getAllocationSnapshot();
+    const original = await service.commitAllocationAttempt(
+      input({ caseId, expectedEpoch: firstSnapshot.epoch })
+    );
+    const replacementSnapshot = await service.getAllocationSnapshot();
+
+    const replacement = await service.commitAllocationAttempt({
+      ...input({
+        caseId,
+        source: "MANUAL_ASSIGN",
+        expectedEpoch: replacementSnapshot.epoch,
+      }),
+      replaceAttemptId: original.attempt.id,
+    } as any);
+
+    expect(replacement.outcome).toBe("COMMITTED");
+    expect(replacement.assignment.id).toBe(original.assignment.id);
+    expect(replacement.attempt.source).toBe("MANUAL_ASSIGN");
+
+    const [withdrawn] = await db
+      .select()
+      .from(schema.allocationAttempts)
+      .where(eq(schema.allocationAttempts.id, original.attempt.id));
+    expect(withdrawn?.status).toBe("WITHDRAWN");
+
     const assignmentRows = await db
       .select()
       .from(schema.assignments)

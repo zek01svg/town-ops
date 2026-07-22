@@ -45,6 +45,11 @@ export const caseStatus = pgEnum("case_status", [
   "escalated",
 ]);
 
+export const officerAttentionKind = pgEnum("officer_attention_kind", [
+  "NO_ELIGIBLE_CONTRACTOR",
+  "ALLOCATION_FAILED",
+]);
+
 export const cases = pgTable(
   "cases",
   {
@@ -139,6 +144,43 @@ export const caseHistory = pgTable(
   },
   (table) => [
     uniqueIndex("case_history_operation_id_idx").on(table.operationId),
+  ]
+);
+
+/**
+ * An unresolved operational exception that needs an Officer decision. The
+ * partial unique index lets repeated Workflow retries converge on one open
+ * record while retaining resolved history for the Case.
+ */
+export const officerAttention = pgTable(
+  "officer_attention",
+  {
+    id: uuid()
+      .default(sql`uuid_generate_v4()`)
+      .primaryKey()
+      .notNull(),
+    caseId: uuid("case_id")
+      .notNull()
+      .references(() => cases.id, { onDelete: "cascade" }),
+    kind: officerAttentionKind().notNull(),
+    detail: text().notNull(),
+    operationId: text("operation_id").notNull(),
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "string",
+    })
+      .defaultNow()
+      .notNull(),
+    resolvedAt: timestamp("resolved_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
+    resolvedByOperationId: text("resolved_by_operation_id"),
+  },
+  (table) => [
+    uniqueIndex("officer_attention_open_case_kind_idx")
+      .on(table.caseId, table.kind)
+      .where(sql`${table.resolvedAt} IS NULL`),
   ]
 );
 

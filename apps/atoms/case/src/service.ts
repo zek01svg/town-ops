@@ -1,8 +1,20 @@
 import type { CreateCaseActivityInput } from "@townops/orchestration-contract";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import db from "./database/db";
-import { caseHistory, caseOperations, cases } from "./database/schema";
+import {
+  caseHistory,
+  caseOperations,
+  cases,
+  officerAttention,
+} from "./database/schema";
+
+type OfficerAttentionKind = "NO_ELIGIBLE_CONTRACTOR" | "ALLOCATION_FAILED";
+
+const allocationAttentionKinds: OfficerAttentionKind[] = [
+  "NO_ELIGIBLE_CONTRACTOR",
+  "ALLOCATION_FAILED",
+];
 
 /**
  * Retrieve all cases.
@@ -94,12 +106,90 @@ export async function createCaseForOperation(input: CreateCaseActivityInput) {
  * Update case status.
  */
 export async function updateCaseStatus(id: string, status: any) {
-  const [updated] = await db
-    .update(cases)
-    .set({ status, updatedAt: new Date().toISOString() })
-    .where(eq(cases.id, id))
-    .returning();
-  return updated;
+  return db.transaction(async (tx) => {
+    const now = new Date().toISOString();
+    const [updated] = await tx
+      .update(cases)
+      .set({ status, updatedAt: now })
+      .where(eq(cases.id, id))
+      .returning();
+
+    if (updated && (status === "completed" || status === "cancelled")) {
+      await tx
+        .update(officerAttention)
+        .set({ resolvedAt: now })
+        .where(
+          and(
+            eq(officerAttention.caseId, id),
+            inArray(officerAttention.kind, allocationAttentionKinds),
+            isNull(officerAttention.resolvedAt)
+          )
+        );
+    }
+
+    return updated;
+  });
+}
+
+/**
+ * Stores one unresolved operational exception for a Case. Repeated Workflow
+ * retries intentionally return the first still-open record instead of
+ * creating attention noise for Officers.
+ */
+export async function raiseOfficerAttention(input: {
+  caseId: string;
+  kind: OfficerAttentionKind;
+  detail: string;
+  operationId: string;
+}) {
+  return db.transaction(async (tx) => {
+    const openAttention = () =>
+      tx
+        .select()
+        .from(officerAttention)
+        .where(
+          and(
+            eq(officerAttention.caseId, input.caseId),
+            eq(officerAttention.kind, input.kind),
+            isNull(officerAttention.resolvedAt)
+          )
+        )
+        .limit(1);
+
+    const [existing] = await openAttention();
+    if (existing) return existing;
+
+    const [created] = await tx
+      .insert(officerAttention)
+      .values(input)
+      .onConflictDoNothing()
+      .returning();
+    if (created) return created;
+
+    const [concurrent] = await openAttention();
+    if (!concurrent) {
+      throw new Error("Officer Attention was not found after an insert race");
+    }
+    return concurrent;
+  });
+}
+
+export async function listOfficerAttention(input: {
+  state: "open" | "resolved";
+  page: number;
+  pageSize: number;
+}) {
+  return db
+    .select()
+    .from(officerAttention)
+    .where(
+      input.state === "open"
+        ? isNull(officerAttention.resolvedAt)
+        : isNotNull(officerAttention.resolvedAt)
+    )
+    .orderBy(desc(officerAttention.createdAt))
+    .limit(input.pageSize)
+    .offset((input.page - 1) * input.pageSize);
 }
 
 /**
@@ -116,6 +206,21 @@ export async function markCaseAssignedForOperation(input: {
   actorRole: string;
 }) {
   return db.transaction(async (tx) => {
+    const [currentCase] = await tx
+      .select()
+      .from(cases)
+      .where(eq(cases.id, input.caseId))
+      .for("update");
+    if (!currentCase) {
+      throw new Error("Case was not found to mark as assigned");
+    }
+    if (
+      currentCase.status === "completed" ||
+      currentCase.status === "cancelled"
+    ) {
+      return { outcome: "CASE_TERMINAL" as const };
+    }
+
     const [insertedOperation] = await tx
       .insert(caseOperations)
       .values({ operationId: input.operationId, caseId: input.caseId })
@@ -123,16 +228,7 @@ export async function markCaseAssignedForOperation(input: {
       .returning();
 
     if (!insertedOperation) {
-      const [existingCase] = await tx
-        .select()
-        .from(cases)
-        .where(eq(cases.id, input.caseId));
-      if (!existingCase) {
-        throw new Error(
-          "Case was not found for an existing assignment operation"
-        );
-      }
-      return existingCase;
+      return { outcome: "ASSIGNED" as const };
     }
 
     const [updatedCase] = await tx
@@ -152,6 +248,20 @@ export async function markCaseAssignedForOperation(input: {
       operationId: input.operationId,
     });
 
-    return updatedCase;
+    await tx
+      .update(officerAttention)
+      .set({
+        resolvedAt: new Date().toISOString(),
+        resolvedByOperationId: input.operationId,
+      })
+      .where(
+        and(
+          eq(officerAttention.caseId, input.caseId),
+          inArray(officerAttention.kind, allocationAttentionKinds),
+          isNull(officerAttention.resolvedAt)
+        )
+      );
+
+    return { outcome: "ASSIGNED" as const };
   });
 }

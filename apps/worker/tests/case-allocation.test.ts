@@ -83,6 +83,10 @@ type Collected = {
 type Harness = {
   snapshots: AllocationSnapshot[];
   commit?: (input: CommitAllocationInput) => Promise<CommitAllocationResult>;
+  isCaseTerminal?: (input: { caseId: string }) => Promise<boolean>;
+  markCaseAssigned?: (input: {
+    caseId: string;
+  }) => Promise<"ASSIGNED" | "CASE_TERMINAL">;
   /**
    * What this test is waiting for. Allocation runs after the Update returns,
    * so each test must name its own settling condition rather than share a
@@ -97,7 +101,7 @@ type Harness = {
  */
 async function openCaseAndAllocate(
   env: TestWorkflowEnvironment,
-  { snapshots, commit, until }: Harness
+  { snapshots, commit, isCaseTerminal, markCaseAssigned, until }: Harness
 ) {
   const commits: CommitAllocationInput[] = [];
   const assigned: string[] = [];
@@ -113,6 +117,8 @@ async function openCaseAndAllocate(
     ),
     activities: {
       openCase: async (input: CreateCaseActivityInput) => createdCase(input),
+      isCaseTerminal: async (input: { caseId: string }) =>
+        (await isCaseTerminal?.(input)) ?? false,
       fetchAllocationSnapshot: async (): Promise<AllocationSnapshot> => {
         const snapshot =
           snapshots[Math.min(snapshotIndex, snapshots.length - 1)];
@@ -135,8 +141,12 @@ async function openCaseAndAllocate(
         } as CommitAllocationResult;
       },
       markCaseAssigned: async (input: { caseId: string }) => {
-        assigned.push(input.caseId);
+        const outcome =
+          (await markCaseAssigned?.(input)) ?? ("ASSIGNED" as const);
+        if (outcome === "ASSIGNED") assigned.push(input.caseId);
+        return outcome;
       },
+      raiseOfficerAttention: async () => undefined,
     },
   });
 
@@ -289,6 +299,27 @@ describe("Automatic allocation outcomes", () => {
     expect(assigned).toEqual([caseId]);
   }, 30_000);
 
+  it("stops automatic allocation when the Case atom reports a terminal Case", async () => {
+    const contractorId = "11111111-1111-4111-8111-111111111111";
+    let terminalPreflightObserved = false;
+
+    const { assigned, commits, snapshotsFetched } = await openCaseAndAllocate(
+      env,
+      {
+        snapshots: [{ epoch: 0, candidates: [candidate(contractorId, 0, 0)] }],
+        isCaseTerminal: async () => {
+          terminalPreflightObserved = true;
+          return true;
+        },
+        until: () => terminalPreflightObserved,
+      }
+    );
+
+    expect(commits).toHaveLength(0);
+    expect(assigned).toHaveLength(0);
+    expect(snapshotsFetched).toBe(0);
+  }, 30_000);
+
   it("refetches and reranks against a fresh snapshot after a stale epoch", async () => {
     const first = "11111111-1111-4111-8111-111111111111";
     const second = "22222222-2222-4222-8222-222222222222";
@@ -344,6 +375,7 @@ describe("Automatic allocation outcomes", () => {
         new URL("../src/workflows/case-workflow.ts", import.meta.url)
       ),
       activities: {
+        isCaseTerminal: async () => false,
         openCase: async (input: CreateCaseActivityInput) => createdCase(input),
         fetchAllocationSnapshot: async (): Promise<AllocationSnapshot> => ({
           epoch: 0,
@@ -355,7 +387,8 @@ describe("Automatic allocation outcomes", () => {
             "ALLOCATION_REJECTED"
           );
         },
-        markCaseAssigned: async () => undefined,
+        markCaseAssigned: async () => "ASSIGNED" as const,
+        raiseOfficerAttention: async () => undefined,
       },
     });
     const client = new Client({ connection: env.nativeConnection });

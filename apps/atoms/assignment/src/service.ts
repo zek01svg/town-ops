@@ -207,6 +207,22 @@ export async function getAllocationSnapshot() {
  */
 export async function commitAllocationAttempt(input: CommitAllocationInput) {
   return db.transaction(async (tx) => {
+    await tx
+      .insert(allocationEpoch)
+      .values({ id: 1, epoch: 0 })
+      .onConflictDoNothing();
+    const [epochRow] = await tx
+      .select()
+      .from(allocationEpoch)
+      .where(eq(allocationEpoch.id, 1))
+      .for("update");
+    if (!epochRow) {
+      throw new Error("Allocation epoch row could not be created");
+    }
+
+    // Check the operation claim after taking the epoch lock. A concurrent
+    // retry now observes the committed Attempt instead of losing the epoch
+    // race and reporting STALE_EPOCH.
     const [existingAttempt] = await tx
       .select()
       .from(allocationAttempts)
@@ -229,49 +245,66 @@ export async function commitAllocationAttempt(input: CommitAllocationInput) {
       };
     }
 
-    await tx
-      .insert(allocationEpoch)
-      .values({ id: 1, epoch: 0 })
-      .onConflictDoNothing();
-    const [epochRow] = await tx
-      .select()
-      .from(allocationEpoch)
-      .where(eq(allocationEpoch.id, 1))
-      .for("update");
-    if (!epochRow) {
-      throw new Error("Allocation epoch row could not be created");
-    }
-
     if (epochRow.epoch !== input.expectedEpoch) {
       return { outcome: "STALE_EPOCH" as const, epoch: epochRow.epoch };
     }
 
-    await tx
-      .insert(assignments)
-      .values({ caseId: input.caseId })
-      .onConflictDoNothing();
-    const [assignment] = await tx
+    let [assignment] = await tx
       .select()
       .from(assignments)
       .where(eq(assignments.caseId, input.caseId));
-    if (!assignment) {
-      throw new Error("Assignment could not be created for the Case");
-    }
 
-    const [activeAttempt] = await tx
-      .select()
-      .from(allocationAttempts)
-      .where(
-        and(
-          eq(allocationAttempts.assignmentId, assignment.id),
-          eq(allocationAttempts.status, "PENDING_ACCEPTANCE")
-        )
-      );
-    if (activeAttempt) {
-      return {
-        outcome: "ACTIVE_ATTEMPT_EXISTS" as const,
-        attempt: activeAttempt,
-      };
+    if (input.replaceAttemptId) {
+      if (!assignment) {
+        return { outcome: "REPLACEMENT_ATTEMPT_NOT_PENDING" as const };
+      }
+
+      const [pendingAttempt] = await tx
+        .select()
+        .from(allocationAttempts)
+        .where(
+          and(
+            eq(allocationAttempts.id, input.replaceAttemptId),
+            eq(allocationAttempts.assignmentId, assignment.id),
+            eq(allocationAttempts.status, "PENDING_ACCEPTANCE")
+          )
+        );
+      if (!pendingAttempt) {
+        return { outcome: "REPLACEMENT_ATTEMPT_NOT_PENDING" as const };
+      }
+
+      await tx
+        .update(allocationAttempts)
+        .set({ status: "WITHDRAWN" })
+        .where(eq(allocationAttempts.id, pendingAttempt.id));
+    } else {
+      await tx
+        .insert(assignments)
+        .values({ caseId: input.caseId })
+        .onConflictDoNothing();
+      [assignment] = await tx
+        .select()
+        .from(assignments)
+        .where(eq(assignments.caseId, input.caseId));
+      if (!assignment) {
+        throw new Error("Assignment could not be created for the Case");
+      }
+
+      const [activeAttempt] = await tx
+        .select()
+        .from(allocationAttempts)
+        .where(
+          and(
+            eq(allocationAttempts.assignmentId, assignment.id),
+            eq(allocationAttempts.status, "PENDING_ACCEPTANCE")
+          )
+        );
+      if (activeAttempt) {
+        return {
+          outcome: "ACTIVE_ATTEMPT_EXISTS" as const,
+          attempt: activeAttempt,
+        };
+      }
     }
 
     const deadlineAt = new Date(

@@ -9,9 +9,13 @@ import {
   AllocationAttemptDtoSchema,
   AssignmentDtoSchema,
   CaseDtoSchema,
+  canonicalManualAllocationPayload,
   canonicalOpenCasePayload,
   caseWorkflowId,
   MeDtoSchema,
+  ManualAllocationInputSchema,
+  ManualAllocationResultSchema,
+  OfficerAttentionDtoSchema,
   OpenCaseInputSchema,
   OpenCaseResultSchema,
   OperationSchema,
@@ -27,6 +31,7 @@ import type {
   ApiError,
   AssignmentDto,
   CaseDto,
+  ManualAllocationResult,
   OpenCaseInput,
   OpenCaseResult,
   Operation,
@@ -44,6 +49,9 @@ const residentAtomResponseSchema = z.object({
 const assignmentAtomResponseSchema = z.object({
   assignment: z.unknown().nullable(),
   attempt: z.unknown().nullable(),
+});
+const officerAttentionAtomResponseSchema = z.object({
+  attentions: z.array(OfficerAttentionDtoSchema),
 });
 const authResponseSchema = z.object({
   user: z.object({
@@ -112,10 +120,21 @@ function operationFor(
   idempotencyKey: string,
   canonicalPayload: string
 ): Operation {
+  return operationForCase(
+    deterministicUuid(idempotencyKey),
+    idempotencyKey,
+    canonicalPayload
+  );
+}
+
+function operationForCase(
+  caseId: string,
+  idempotencyKey: string,
+  canonicalPayload: string
+): Operation {
   const payloadHash = createHash("sha256")
     .update(canonicalPayload)
     .digest("hex");
-  const caseId = deterministicUuid(idempotencyKey);
   return OperationSchema.parse({
     caseId,
     workflowId: caseWorkflowId(caseId),
@@ -588,6 +607,281 @@ export function createGatewayApp({
     }
 
     return c.json({ data: result.data, operation }, 201);
+  });
+
+  app.post("/api/cases/:caseId/allocation-attempts", async (c) => {
+    const actor = resolveActor(c.get("jwtPayload"));
+    if (!actor) {
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
+        retryable: false,
+      });
+    }
+    if (actor.role !== "OFFICER") {
+      return error(c, 403, {
+        code: "FORBIDDEN",
+        message: "Officer access is required",
+        retryable: false,
+      });
+    }
+
+    const caseId = z.uuid().safeParse(c.req.param("caseId"));
+    if (!caseId.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Case ID must be a UUID",
+        retryable: false,
+      });
+    }
+    const idempotencyKey = idempotencyKeySchema.safeParse(
+      c.req.header("Idempotency-Key")
+    );
+    if (!idempotencyKey.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Idempotency-Key must be a UUID",
+        retryable: false,
+      });
+    }
+    const body = ManualAllocationInputSchema.safeParse(
+      await c.req.json().catch(() => undefined)
+    );
+    if (!body.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Manual allocation input is invalid",
+        retryable: false,
+        details: body.error.flatten(),
+      });
+    }
+
+    let caseResponse: Response;
+    try {
+      caseResponse = await fetchImpl(`${caseAtomUrl}/api/cases/${caseId.data}`);
+    } catch {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    if (!caseResponse.ok) {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    const parsedCase = caseAtomResponseSchema.safeParse(
+      await caseResponse.json().catch(() => undefined)
+    );
+    if (!parsedCase.success || parsedCase.data.cases.length === 0) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+      });
+    }
+    const caseDto = toCaseDto(parsedCase.data.cases[0]);
+    if (caseDto.status !== "PENDING" && caseDto.status !== "ASSIGNED") {
+      return error(c, 409, {
+        code: "CASE_NOT_ALLOCATABLE",
+        message:
+          "Case cannot receive an Allocation Attempt in its current state",
+        retryable: false,
+      });
+    }
+
+    const operation = operationForCase(
+      caseId.data,
+      idempotencyKey.data,
+      canonicalManualAllocationPayload(caseId.data, body.data)
+    );
+    const startWorkflowOperation = new WithStartWorkflowOperation(
+      WORKFLOW_NAMES.case,
+      {
+        workflowId: operation.workflowId,
+        taskQueue: ORCHESTRATION_TASK_QUEUE,
+        args: [{ caseId: caseId.data }],
+        workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+      }
+    );
+    const update = workflowClient.executeUpdateWithStart(
+      UPDATE_NAMES.allocateContractor,
+      {
+        args: [
+          {
+            idempotencyKey: operation.idempotencyKey,
+            payloadHash: operation.updateId.slice(
+              operation.idempotencyKey.length + 1
+            ),
+            operationId: operation.updateId,
+            actorId: actor.accountId,
+            actorRole: "OFFICER",
+            caseId: caseId.data,
+            category: caseDto.category,
+            postalCode: caseDto.postalCode,
+            input: body.data,
+          },
+        ],
+        updateId: operation.updateId,
+        startWorkflowOperation,
+      }
+    );
+    void update.catch(() => undefined);
+
+    let result: ManualAllocationResult;
+    try {
+      result = ManualAllocationResultSchema.parse(
+        await withTimeout(update, updateTimeoutMs)
+      );
+    } catch (caught) {
+      if (
+        caught instanceof Error &&
+        caught.message === "workflow update timed out"
+      ) {
+        c.header("Retry-After", "2");
+        return error(c, 504, {
+          code: "WORKFLOW_UPDATE_PENDING",
+          message: "Manual allocation is still being processed",
+          retryable: true,
+          operation,
+        });
+      }
+      if (isTemporalUnavailable(caught)) {
+        return error(c, 503, {
+          code: "TEMPORAL_UNAVAILABLE",
+          message: "Case workflow service is unavailable",
+          retryable: true,
+          operation,
+        });
+      }
+      return error(c, 500, {
+        code: "WORKFLOW_UPDATE_FAILED",
+        message: "Manual allocation could not be completed",
+        retryable: false,
+        operation,
+      });
+    }
+
+    if (result.kind === "SUCCESS") {
+      return c.json({ data: result.data, operation }, 201);
+    }
+    if (result.kind === "IDEMPOTENCY_KEY_REUSED") {
+      return error(c, 409, {
+        code: "IDEMPOTENCY_KEY_REUSED",
+        message: "Idempotency-Key was already used with a different request",
+        retryable: false,
+        operation,
+      });
+    }
+    if (result.kind === "CONTRACTOR_NOT_ELIGIBLE") {
+      return error(c, 409, {
+        code: "CONTRACTOR_NOT_ELIGIBLE",
+        message: "Contractor is not eligible for this Case",
+        retryable: false,
+        operation,
+      });
+    }
+    if (result.kind === "ACTIVE_ATTEMPT_EXISTS") {
+      return error(c, 409, {
+        code: "ACTIVE_ALLOCATION_ATTEMPT_EXISTS",
+        message: "Another Allocation Attempt already won this race",
+        retryable: false,
+        operation,
+      });
+    }
+    if (result.kind === "REPLACEMENT_ATTEMPT_NOT_PENDING") {
+      return error(c, 409, {
+        code: "REPLACEMENT_ATTEMPT_NOT_PENDING",
+        message: "The named Allocation Attempt is not pending",
+        retryable: false,
+        operation,
+      });
+    }
+    if (result.kind === "CASE_TERMINAL") {
+      return error(c, 409, {
+        code: "CASE_TERMINAL",
+        message: "The Case is already completed or cancelled",
+        retryable: false,
+        operation,
+      });
+    }
+    return error(c, 500, {
+      code: "ALLOCATION_FAILED",
+      message: result.reason,
+      retryable: false,
+      operation,
+    });
+  });
+
+  app.get("/api/officer-attention", async (c) => {
+    const actor = resolveActor(c.get("jwtPayload"));
+    if (!actor) {
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
+        retryable: false,
+      });
+    }
+    if (actor.role !== "OFFICER") {
+      return error(c, 403, {
+        code: "FORBIDDEN",
+        message: "Officer access is required",
+        retryable: false,
+      });
+    }
+    const query = z
+      .object({
+        state: z.enum(["open", "resolved"]).default("open"),
+        page: z.coerce.number().int().positive().default(1),
+        pageSize: z.coerce.number().int().positive().max(100).default(25),
+      })
+      .safeParse(c.req.query());
+    if (!query.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Officer Attention pagination is invalid",
+        retryable: false,
+        details: query.error.flatten(),
+      });
+    }
+
+    let response: Response;
+    try {
+      response = await fetchImpl(
+        `${caseAtomUrl}/api/cases/officer-attention?${new URLSearchParams({
+          state: query.data.state,
+          page: String(query.data.page),
+          pageSize: String(query.data.pageSize),
+        })}`
+      );
+    } catch {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    if (!response.ok) {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    const parsed = officerAttentionAtomResponseSchema.safeParse(
+      await response.json().catch(() => undefined)
+    );
+    if (!parsed.success) {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service returned an invalid Officer Attention response",
+        retryable: true,
+      });
+    }
+    return c.json({ data: { items: parsed.data.attentions, ...query.data } });
   });
 
   app.get("/api/cases/:caseId", async (c) => {

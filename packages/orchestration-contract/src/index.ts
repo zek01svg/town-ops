@@ -92,6 +92,13 @@ export const CaseDtoSchema = z.object({
 
 export type CaseDto = z.infer<typeof CaseDtoSchema>;
 
+export const MarkCaseAssignedResultSchema = z.object({
+  outcome: z.enum(["ASSIGNED", "CASE_TERMINAL"]),
+});
+export type MarkCaseAssignedResult = z.infer<
+  typeof MarkCaseAssignedResultSchema
+>;
+
 export const OpenCaseCommandSchema = z.object({
   idempotencyKey: z.uuid(),
   payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
@@ -132,6 +139,36 @@ export const ApiErrorSchema = z.object({
 });
 
 export type ApiError = z.infer<typeof ApiErrorSchema>;
+
+export const OfficerAttentionKindSchema = z.enum([
+  "NO_ELIGIBLE_CONTRACTOR",
+  "ALLOCATION_FAILED",
+]);
+export type OfficerAttentionKind = z.infer<typeof OfficerAttentionKindSchema>;
+
+export const RaiseOfficerAttentionInputSchema = z
+  .object({
+    caseId: z.uuid(),
+    kind: OfficerAttentionKindSchema,
+    detail: z.string().trim().min(1).max(10_000),
+    operationId: z.string().min(1),
+  })
+  .strict();
+export type RaiseOfficerAttentionInput = z.infer<
+  typeof RaiseOfficerAttentionInputSchema
+>;
+
+export const OfficerAttentionDtoSchema = z.object({
+  id: z.uuid(),
+  caseId: z.uuid(),
+  kind: OfficerAttentionKindSchema,
+  detail: z.string(),
+  operationId: z.string(),
+  createdAt: z.string(),
+  resolvedAt: z.string().nullable(),
+  resolvedByOperationId: z.string().nullable(),
+});
+export type OfficerAttentionDto = z.infer<typeof OfficerAttentionDtoSchema>;
 
 export const ProvisionResidentInputSchema = z
   .object({
@@ -228,6 +265,15 @@ export const AllocationCandidateSchema = z.object({
 });
 export type AllocationCandidate = z.infer<typeof AllocationCandidateSchema>;
 
+export const ManualAllocationInputSchema = z
+  .object({
+    contractorId: z.uuid(),
+    replaceAttemptId: z.uuid().optional(),
+    reason: z.string().trim().min(1).max(1_000).optional(),
+  })
+  .strict();
+export type ManualAllocationInput = z.infer<typeof ManualAllocationInputSchema>;
+
 /**
  * The Workflow's ranking input: every eligible Contractor for a Case's
  * category/sector, joined with their active Assignment load and performance
@@ -250,6 +296,10 @@ export const CommitAllocationInputSchema = z
     actorId: z.uuid(),
     actorRole: z.string().min(1),
     reason: z.string().optional(),
+    // A manual reallocation names the exact pending Attempt it is permitted
+    // to withdraw. This prevents a stale Officer command from replacing a
+    // newer offer that won the allocation race.
+    replaceAttemptId: z.uuid().optional(),
   })
   .strict();
 export type CommitAllocationInput = z.infer<typeof CommitAllocationInputSchema>;
@@ -298,10 +348,59 @@ export const CommitAllocationResultSchema = z.discriminatedUnion("outcome", [
     outcome: z.literal("ACTIVE_ATTEMPT_EXISTS"),
     attempt: AllocationAttemptDtoSchema,
   }),
+  z.object({
+    outcome: z.literal("REPLACEMENT_ATTEMPT_NOT_PENDING"),
+  }),
 ]);
 export type CommitAllocationResult = z.infer<
   typeof CommitAllocationResultSchema
 >;
+
+export const ManualAllocationCommandSchema = z.object({
+  idempotencyKey: z.uuid(),
+  payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+  operationId: z.string().min(1),
+  actorId: z.uuid(),
+  actorRole: z.literal("OFFICER"),
+  caseId: z.uuid(),
+  category: MaintenanceCategorySchema,
+  postalCode: z.string().regex(/^\d{6}$/),
+  input: ManualAllocationInputSchema,
+});
+export type ManualAllocationCommand = z.infer<
+  typeof ManualAllocationCommandSchema
+>;
+
+export const ManualAllocationDataSchema = z.object({
+  assignment: AssignmentDtoSchema,
+  attempt: AllocationAttemptDtoSchema,
+});
+export type ManualAllocationData = z.infer<typeof ManualAllocationDataSchema>;
+
+export const ManualAllocationResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SUCCESS"), data: ManualAllocationDataSchema }),
+  z.object({ kind: z.literal("IDEMPOTENCY_KEY_REUSED") }),
+  z.object({ kind: z.literal("CONTRACTOR_NOT_ELIGIBLE") }),
+  z.object({ kind: z.literal("ACTIVE_ATTEMPT_EXISTS") }),
+  z.object({ kind: z.literal("REPLACEMENT_ATTEMPT_NOT_PENDING") }),
+  z.object({ kind: z.literal("CASE_TERMINAL") }),
+  z.object({ kind: z.literal("ALLOCATION_FAILED"), reason: z.string() }),
+]);
+export type ManualAllocationResult = z.infer<
+  typeof ManualAllocationResultSchema
+>;
+
+export function canonicalManualAllocationPayload(
+  caseId: string,
+  input: ManualAllocationInput
+) {
+  return JSON.stringify({
+    caseId,
+    contractorId: input.contractorId,
+    replaceAttemptId: input.replaceAttemptId ?? null,
+    reason: input.reason ?? null,
+  });
+}
 
 /** First two characters of a 6-digit Singapore postal code — its sector. */
 export function postalSector(postalCode: string) {

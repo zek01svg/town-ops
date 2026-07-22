@@ -25,6 +25,8 @@ import * as caseService from "./service";
 import {
   getCaseSchema,
   markCaseAssignedSchema,
+  officerAttentionListSchema,
+  raiseOfficerAttentionSchema,
   updateCaseStatusSchema,
 } from "./validation-schemas";
 
@@ -82,6 +84,16 @@ const casesRouter = new Hono()
         "Retrieved all cases"
       );
       return c.json({ cases: caseRows }, 200);
+    }
+  )
+  .get(
+    "/officer-attention",
+    describeRoute({ description: "List Officer Attention records" }),
+    validator("query", officerAttentionListSchema),
+    async (c) => {
+      const query = c.req.valid("query");
+      const attentions = await caseService.listOfficerAttention(query);
+      return c.json({ attentions }, 200);
     }
   )
   .get(
@@ -182,6 +194,12 @@ const casesRouter = new Hono()
 
 const internalCasesRouter = new Hono()
   .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
+  .get("/:id", validator("param", z.object({ id: z.uuid() })), async (c) => {
+    const { id } = c.req.valid("param");
+    const [caseRecord] = await caseService.getCaseById(id);
+    if (!caseRecord) return c.json({ error: "Case not found" }, 404);
+    return c.json({ case: caseRecord }, 200);
+  })
   .post("/", validator("json", CreateCaseActivityInputSchema), async (c) => {
     const body = c.req.valid("json");
     const newCase = await caseService.createCaseForOperation(body);
@@ -189,18 +207,31 @@ const internalCasesRouter = new Hono()
     return c.json({ case: newCase }, 201);
   })
   .post(
+    "/:id/officer-attention",
+    validator("param", z.object({ id: z.uuid() })),
+    validator("json", raiseOfficerAttentionSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const attention = await caseService.raiseOfficerAttention({
+        caseId: id,
+        ...c.req.valid("json"),
+      });
+      return c.json({ attention }, 201);
+    }
+  )
+  .post(
     "/:id/assign",
     validator("param", z.object({ id: z.uuid() })),
     validator("json", markCaseAssignedSchema),
     async (c) => {
       const { id } = c.req.valid("param");
       const body = c.req.valid("json");
-      const updatedCase = await caseService.markCaseAssignedForOperation({
+      const result = await caseService.markCaseAssignedForOperation({
         caseId: id,
         ...body,
       });
 
-      return c.json({ case: updatedCase }, 200);
+      return c.json(result, 200);
     }
   );
 

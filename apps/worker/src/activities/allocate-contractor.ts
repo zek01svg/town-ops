@@ -3,11 +3,17 @@ import {
   AllocationSnapshotSchema,
   CommitAllocationInputSchema,
   CommitAllocationResultSchema,
+  MarkCaseAssignedResultSchema,
+  OfficerAttentionDtoSchema,
+  RaiseOfficerAttentionInputSchema,
 } from "@townops/orchestration-contract";
 import type {
   AllocationSnapshot,
   CommitAllocationInput,
   CommitAllocationResult,
+  MarkCaseAssignedResult,
+  OfficerAttentionDto,
+  RaiseOfficerAttentionInput,
 } from "@townops/orchestration-contract";
 import { z } from "zod/v4";
 
@@ -24,6 +30,9 @@ const allocationSnapshotResponseSchema = z.object({
   activeAssignmentCounts: z.array(
     z.object({ contractorId: z.uuid(), activeCount: z.int().nonnegative() })
   ),
+});
+const caseStatusResponseSchema = z.object({
+  case: z.object({ status: z.string() }),
 });
 
 type AllocateContractorActivityDependencies = {
@@ -56,6 +65,26 @@ export function createAllocateContractorActivities({
   workerServiceToken,
   fetchImpl = fetch,
 }: AllocateContractorActivityDependencies) {
+  async function isCaseTerminal(input: { caseId: string }): Promise<boolean> {
+    const response = await fetchImpl(
+      `${caseAtomUrl}/internal/cases/${input.caseId}`,
+      { headers: authHeaders(workerServiceToken) }
+    );
+    if (response.status === 404) {
+      throw nonRetryable("Case does not exist", "CASE_NOT_FOUND");
+    }
+    if (!response.ok) {
+      throw new Error(`Case atom request failed with ${response.status}`);
+    }
+
+    const { case: caseRecord } = caseStatusResponseSchema.parse(
+      await response.json()
+    );
+    return (
+      caseRecord.status === "completed" || caseRecord.status === "cancelled"
+    );
+  }
+
   async function fetchAllocationSnapshot(input: {
     category: string;
     postalSector: string;
@@ -146,7 +175,7 @@ export function createAllocateContractorActivities({
     operationId: string;
     actorId: string;
     actorRole: string;
-  }): Promise<void> {
+  }): Promise<MarkCaseAssignedResult["outcome"]> {
     const response = await fetchImpl(
       `${caseAtomUrl}/internal/cases/${input.caseId}/assign`,
       {
@@ -163,7 +192,9 @@ export function createAllocateContractorActivities({
       }
     );
 
-    if (response.ok) return;
+    if (response.ok) {
+      return MarkCaseAssignedResultSchema.parse(await response.json()).outcome;
+    }
     if (response.status >= 400 && response.status < 500) {
       throw nonRetryable(
         "Case atom rejected the assignment operation",
@@ -173,9 +204,44 @@ export function createAllocateContractorActivities({
     throw new Error(`Case atom request failed with ${response.status}`);
   }
 
+  async function raiseOfficerAttention(
+    input: RaiseOfficerAttentionInput
+  ): Promise<OfficerAttentionDto> {
+    const command = RaiseOfficerAttentionInputSchema.parse(input);
+    const response = await fetchImpl(
+      `${caseAtomUrl}/internal/cases/${command.caseId}/officer-attention`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(workerServiceToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          kind: command.kind,
+          detail: command.detail,
+          operationId: command.operationId,
+        }),
+      }
+    );
+
+    if (response.ok) {
+      const body = await response.json();
+      return OfficerAttentionDtoSchema.parse(body.attention);
+    }
+    if (response.status >= 400 && response.status < 500) {
+      throw nonRetryable(
+        "Case atom rejected Officer Attention",
+        "OFFICER_ATTENTION_REJECTED"
+      );
+    }
+    throw new Error(`Case atom request failed with ${response.status}`);
+  }
+
   return {
+    isCaseTerminal,
     fetchAllocationSnapshot,
     commitAllocationAttempt,
     markCaseAssigned,
+    raiseOfficerAttention,
   };
 }
