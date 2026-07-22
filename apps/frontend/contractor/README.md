@@ -1,6 +1,9 @@
 # TownOps Contractor Frontend
 
-The operational dashboard for contractors. Contractors can view assigned jobs, acknowledge new assignments within the SLA window, submit before/after proof photos, close jobs, and report no-access.
+The operational dashboard for Contractors. Contractors can view assigned work
+and accept their current Allocation Attempt with a future Appointment through
+the Gateway. Existing proof, closure, and No Access screens retain their
+current service integrations.
 
 Runs at `http://localhost:3002` (docker-compose) or `http://localhost:5173` (dev server).
 
@@ -30,6 +33,7 @@ Create a `.env` file in this directory:
 ```env
 VITE_APP_URL=http://localhost:3002
 VITE_AUTH_URL=http://localhost:5001
+VITE_GATEWAY_URL=http://localhost:6010
 VITE_CASE_ATOM_URL=http://localhost:5005
 VITE_ASSIGNMENT_ATOM_URL=http://localhost:5004
 VITE_APPOINTMENT_ATOM_URL=http://localhost:5003

@@ -45,6 +45,7 @@ Create a `.env` file in this directory with the following variables:
 ```env
 DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
 PORT=5003
+WORKER_SERVICE_TOKEN=replace-with-the-shared-worker-secret
 ```
 
 ### 2. Run Locally
@@ -53,6 +54,16 @@ PORT=5003
 bun install
 bun run dev
 ```
+
+Apply the schema and Appointment slot-claim exclusion constraint before using
+the service locally:
+
+```bash
+pnpm --filter @townops/appointment-atom db:apply
+```
+
+The Worker uses the shared token on `/internal/appointment-slots`; do not
+attach browser JWT middleware to that internal route.
 
 ### 3. Run in Docker 🐳
 

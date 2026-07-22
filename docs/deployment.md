@@ -1,72 +1,78 @@
-# 🚀 Deployment & Local Setup
+# Deployment and local setup
+
+The checked-in `docker-compose.yml` is the source of truth for local service
+ports and container environment variables.
 
 ## Prerequisites
 
-- [Bun](https://bun.sh/) >= 1.3
-- [pnpm](https://pnpm.io/) >= 10
-- PostgreSQL (via Supabase or local)
-- RabbitMQ (via CloudAMQP or local)
+- Bun >= 1.3
+- pnpm >= 11
+- Docker Compose for the complete local stack and integration tests
 
-## 1. Install Dependencies
+## Install dependencies
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
-## 2. ⚙️ Environment Variables
+## Environment variables
 
-Each service has its own `.env` file. Copy from `.env.example` if present, or create from scratch.
+Copy a service's `.env.example` when it has one. Never commit `.env` files.
 
 ### Atoms
 
-| Variable       | Description                                     |
-| :------------- | :---------------------------------------------- |
-| `PORT`         | Port to listen on (see service map)             |
-| `DATABASE_URL` | PostgreSQL connection string                    |
-| `RABBITMQ_URL` | AMQP URL (e.g. `amqps://...@cloudamqp.com/...`) |
-| `JWKS_URI`     | `http://localhost:5008/api/auth/jwks`           |
+All atoms need `PORT` and `DATABASE_URL`. The Worker-authenticated atoms also
+need the same `WORKER_SERVICE_TOKEN` value as the Worker.
 
-Alert atom additionally requires:
+| Service     | Port | Additional required configuration       |
+| :---------- | ---: | :-------------------------------------- |
+| Auth        | 5001 | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` |
+| Alert       | 5002 | `RABBITMQ_URL`, `RESEND_API_KEY`        |
+| Appointment | 5003 | `WORKER_SERVICE_TOKEN`                  |
+| Assignment  | 5004 | `JWKS_URI`, `WORKER_SERVICE_TOKEN`      |
+| Case        | 5005 | `WORKER_SERVICE_TOKEN`                  |
+| Metrics     | 5006 | `WORKER_SERVICE_TOKEN`                  |
+| Proof       | 5007 | `SUPABASE_URL`, `SUPABASE_KEY`          |
+| Resident    | 5008 | `WORKER_SERVICE_TOKEN`                  |
+| Contractor  | 5009 | `WORKER_SERVICE_TOKEN`                  |
 
-- `RESEND_API_KEY` — API key for email sending
+### Temporal orchestration
 
-Auth atom additionally requires:
+| Service     | Port | Required configuration                                                                                                                               |
+| :---------- | ---: | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gateway     | 6010 | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `JWKS_URI`, and the Case, Resident, Auth, Assignment, and Appointment atom URLs                            |
+| Worker      |    — | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `WORKER_SERVICE_TOKEN`, and the Resident, Case, Contractor, Metrics, Assignment, and Appointment atom URLs |
+| Temporal    | 7233 | Managed by Compose                                                                                                                                   |
+| Temporal UI | 8080 | Managed by Compose                                                                                                                                   |
 
-- `BETTER_AUTH_SECRET` — secret for signing sessions
-- `BETTER_AUTH_URL` — base URL of the auth service
-
-### Composites
-
-| Variable               | Description                                                                  |
-| :--------------------- | :--------------------------------------------------------------------------- |
-| `PORT`                 | Port to listen on                                                            |
-| `RABBITMQ_URL`         | AMQP URL                                                                     |
-| `CASE_ATOM_URL`        | `http://localhost:5001`                                                      |
-| `ASSIGNMENT_ATOM_URL`  | `http://localhost:5003`                                                      |
-| `APPOINTMENT_ATOM_URL` | `http://localhost:5004`                                                      |
-| `PROOF_ATOM_URL`       | `http://localhost:5005`                                                      |
-| `METRICS_ATOM_URL`     | `http://localhost:5007`                                                      |
-| `RESIDENT_ATOM_URL`    | `http://localhost:5002`                                                      |
-| `CONTRACTOR_API_URL`   | OutSystems Contractor API base URL                                           |
-| `JWKS_URI`             | `http://localhost:5008/api/auth/jwks` _(only for browser-facing composites)_ |
+For Compose, the Gateway uses `http://auth-atom:5001/api/auth/jwks`,
+`http://case-atom:5005`, `http://resident-atom:5008`,
+`http://assignment-atom:5004`, and `http://appointment-atom:5003`.
 
 ### Frontends
 
-| Variable                    | Description             |
+Existing screens still read several atom and composite URLs directly; the
+Contractor's allocation-acceptance request uses the Gateway.
+
+| Variable                    | Local value             |
 | :-------------------------- | :---------------------- |
-| `VITE_AUTH_URL`             | `http://localhost:5008` |
-| `VITE_CASE_ATOM_URL`        | `http://localhost:5001` |
-| `VITE_ASSIGNMENT_ATOM_URL`  | `http://localhost:5003` |
-| `VITE_APPOINTMENT_ATOM_URL` | `http://localhost:5004` |
-| `VITE_PROOF_ATOM_URL`       | `http://localhost:5005` |
+| `VITE_AUTH_URL`             | `http://localhost:5001` |
+| `VITE_GATEWAY_URL`          | `http://localhost:6010` |
+| `VITE_CASE_ATOM_URL`        | `http://localhost:5005` |
+| `VITE_ASSIGNMENT_ATOM_URL`  | `http://localhost:5004` |
+| `VITE_APPOINTMENT_ATOM_URL` | `http://localhost:5003` |
+| `VITE_ALERT_ATOM_URL`       | `http://localhost:5002` |
+| `VITE_PROOF_ATOM_URL`       | `http://localhost:5007` |
 | `VITE_ACCEPT_JOB_URL`       | `http://localhost:6003` |
 | `VITE_CLOSE_CASE_URL`       | `http://localhost:6004` |
 | `VITE_RESCHEDULE_JOB_URL`   | `http://localhost:6006` |
-| `VITE_GOOGLE_MAPS_API_KEY`  | Google Maps API key     |
+| `VITE_HANDLE_NO_ACCESS_URL` | `http://localhost:6007` |
 
-## 3. 🗄️ Database Setup
+## Database setup
 
-Run schema changes for each atom (use `--force` to reset if needed):
+Apply each atom's schema before running locally. Appointment uses `db:apply`
+because its slot-claim exclusion constraint is applied outside Drizzle's normal
+schema push.
 
 ```bash
 pnpm --filter @townops/case-atom db:push
@@ -77,47 +83,20 @@ pnpm --filter @townops/proof-atom db:push
 pnpm --filter @townops/alert-atom db:push
 pnpm --filter @townops/metrics-atom db:push
 pnpm --filter @townops/auth-atom db:push
-```
-
-Auth atom schema also requires pushing the better-auth schema:
-
-```bash
 pnpm --filter @townops/auth-atom auth:push
 ```
 
-## 4. 🌱 Seed Users
-
-Use the PowerShell scripts in `misc/` to create test accounts:
-
-```powershell
-# Create all 18 contractor accounts
-powershell -File misc/signup-all-contractors.ps1
-
-# Create officer account
-powershell -File misc/signup-officer.ps1
-```
-
-Default credentials:
-
-- Contractors: `<slug>@townops.dev` / `Contractor@123`
-- Officer: `amk@townops.dev` / `Officer@123`
-
-## 5. Start Services
+## Start and verify
 
 ```bash
-# Start all services in development mode concurrently
-pnpm run dev
-
-# Or start individually
-pnpm --filter @townops/case-atom dev
-pnpm --filter @townops/open-case-composite dev
+pnpm dev
+# or start the complete local stack
+docker compose up --build
 ```
 
-## 6. ✅ Verify
-
-- Auth JWKS: `GET http://localhost:5008/api/auth/jwks` → `{ keys: [...] }`
-- Service health: `GET http://localhost:<port>/health` → `{ status: "healthy" }`
-- API explorer: `http://localhost:<port>/scalar`
+- Gateway health: `GET http://localhost:6010/health`
+- Temporal UI: `http://localhost:8080`
+- Service health: `GET http://localhost:<port>/health`
 
 ## CI/CD
 

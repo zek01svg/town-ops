@@ -46,6 +46,7 @@ Create a `.env` file in this directory with the following variables:
 DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
 PORT=5004
 JWKS_URI=http://localhost:5001/api/auth/jwks
+WORKER_SERVICE_TOKEN=replace-with-the-shared-worker-secret
 ```
 
 ### 2. Run Locally
@@ -54,6 +55,9 @@ JWKS_URI=http://localhost:5001/api/auth/jwks
 bun install
 bun run dev
 ```
+
+The Worker uses the shared token for internal allocation routes. Do not attach
+browser JWT middleware to those routes.
 
 ### 3. Run in Docker 🐳
 

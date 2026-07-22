@@ -1,78 +1,35 @@
-# 📨 Event Flow & Messaging
+# Event flow and messaging
 
-TownOps uses RabbitMQ (via CloudAMQP) for eventual consistency and asynchronous business triggers.
+## Current Temporal Case orchestration
 
-## Exchange & Routing
+Case opening, Contractor allocation, and Contractor acceptance run through
+Temporal rather than the AMQP chain below.
 
-- **Exchange**: `townops.events` (topic)
-- **Routing key format**: `<entity>.<action>` — e.g., `case.opened`, `job.assigned`
+1. A browser sends a request to the Gateway with a user JWT and idempotency
+   key.
+2. The Gateway starts or updates the Case Workflow in Temporal.
+3. The Worker performs atom activities with `WORKER_SERVICE_TOKEN` on internal
+   routes.
+4. For allocation acceptance, the Worker reserves an Appointment slot, accepts
+   the current Allocation Attempt, and confirms the Appointment.
+5. A permanent rejection after reservation releases the held slot; transient
+   activity failures retry forward.
 
-## Event Catalogue
+An overlap or invalid future interval creates no public Appointment and leaves
+the Allocation Attempt pending.
 
-### 1. Case Lifecycle
+## Existing AMQP flows
 
-**`case.opened`**
+RabbitMQ (`townops.events`) remains for existing composite, notification, and
+metrics flows. Its topic keys use `<entity>.<action>`.
 
-- Publisher: Open Case composite (after successful case creation)
-- Consumer: Assign Job composite (`assign-job-queue`)
-- Payload: `{ caseId, residentId, category, priority, postalCode, addressDetails, description }`
-- Effect: Triggers contractor search and assignment creation
+| Event            | Publisher               | Consumer                | Effect                               |
+| :--------------- | :---------------------- | :---------------------- | :----------------------------------- |
+| `case.opened`    | Open Case composite     | Assign Job composite    | Existing allocation flow             |
+| `job.assigned`   | Assign Job composite    | Alert atom              | Contractor notification              |
+| `job.done`       | Close Case composite    | Metrics and Alert atoms | Performance and closure notification |
+| `sla.breached`   | Existing SLA timer      | Handle Breach composite | Existing reassignment handling       |
+| `case.escalated` | Handle Breach composite | Alert atom              | Officer notification                 |
 
-**`job.assigned`**
-
-- Publisher: Assign Job composite (after assignment created)
-- Consumer: Alert atom
-- Payload: `{ assignmentId, caseId, contractorId, contractorName, contractorEmail, contractorContact, status, email }`
-- Effect: Sends notification email to the contractor company
-
-**`job.done`**
-
-- Publisher: Close Case composite (after case closed)
-- Consumers: Metrics atom, Alert atom
-- Payload: `{ caseId, uploaderId }`
-- Effect: Records SLA compliance score; sends closure notification
-
-### 2. ⚠️ SLA Breach
-
-**`sla.breached`**
-
-- Publisher: SLA timer queue (DLX — dead-lettered after TTL expires with no acknowledgement)
-- Consumer: Handle Breach composite (`handle-breach-queue`)
-- Payload: `{ assignment_id, case_id, contractor_id }`
-- Effect: Escalates case, reassigns to backup contractor, records penalty in Metrics
-
-**`case.escalated`**
-
-- Publisher: Handle Breach composite (after successful re-assignment)
-- Consumer: Alert atom
-- Payload: `{ caseId, assignmentId, newWorkerId, message }`
-- Effect: Notifies officers of SLA escalation
-
-### 3. No Access / Rescheduling
-
-**`case.no_access`** _(planned — Scenario 3)_
-
-- Publisher: Handle No Access composite
-- Consumer: Alert atom
-- Payload: `{ caseId, contractorId }`
-- Effect: Alerts resident to reschedule
-
-## ⏱️ SLA Timer (DLX) Pattern
-
-When a job is assigned, the Assign Job composite publishes a TTL message to `sla-timers-queue`. If the contractor does not acknowledge within the SLA window (15 seconds in demo, 5 minutes in production), RabbitMQ dead-letters the message to `handle-breach-queue`, automatically triggering the Handle Breach composite.
-
-```
-assign-job-queue consumer
-  → createAssignment()
-  → publish to sla-timers-queue (TTL = 15s)
-                    ↓ (on expiry, no acknowledgement)
-           dead-letter → handle-breach-queue
-                    ↓
-        handleSlaBreach() consumer
-```
-
-## Reliability
-
-- **Non-fatal events**: `job.done` publish failures in Close Case are caught and logged — they do not fail the HTTP response.
-- **Consumer error handling**: AMQP message parse failures are logged and skipped (no requeue to avoid infinite loops).
-- **Service-to-service calls inside consumers**: No Authorization header is passed — JWK middleware must not be applied to atom/composite routes called by AMQP consumers.
+AMQP consumers and other internal service routes must not require a user JWT.
+They use their trusted internal integration instead.
