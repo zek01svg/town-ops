@@ -1,5 +1,6 @@
 import type {
   AcceptAllocationAttemptInput,
+  BreachAllocationAttemptInput,
   CommitAllocationInput,
 } from "@townops/orchestration-contract";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -12,10 +13,14 @@ import {
   assignmentStatusHistory,
 } from "./database/schema";
 
+type AssignmentStatus = (typeof assignments.$inferSelect)["status"];
+
 /**
  * Create a new assignment.
  */
-export async function createAssignment(values: any) {
+export async function createAssignment(
+  values: typeof assignments.$inferInsert
+) {
   const [assignment] = await db.insert(assignments).values(values).returning();
   if (!assignment) throw new Error("Assignment insert did not return a row");
   return assignment;
@@ -54,7 +59,7 @@ export async function getStatusHistoryByAssignmentId(assignmentId: string) {
  */
 export async function updateAssignmentStatus(
   id: string,
-  status: any,
+  status: AssignmentStatus,
   changedBy: string,
   reason?: string
 ) {
@@ -85,7 +90,7 @@ export async function updateAssignmentStatus(
     // 3. Record status history
     await tx.insert(assignmentStatusHistory).values({
       assignmentId: id,
-      fromStatus: current.status as any,
+      fromStatus: current.status,
       toStatus: status,
       changedBy,
       reason,
@@ -133,7 +138,7 @@ export async function reassignAssignment(
 
     await tx.insert(assignmentStatusHistory).values({
       assignmentId: id,
-      fromStatus: current.status as any,
+      fromStatus: current.status,
       toStatus: "PENDING_ACCEPTANCE",
       changedBy,
       reason,
@@ -247,6 +252,68 @@ export async function acceptAllocationAttempt(
 }
 
 /**
+ * Breach one Attempt (PRS-144). Idempotent by the Attempt's own status, not
+ * by operationId — `BREACHED` and `ALREADY_BREACHED` are both "the caller
+ * must still apply the -10 penalty and the replacement", so a replay or a
+ * duplicate timer delivery is safe to call this again. Only `ACCEPTED` and
+ * `WITHDRAWN` mean the offer is no longer live and the caller must abort.
+ *
+ * The Assignment is only reset to BREACHED here if it is still
+ * PENDING_ACCEPTANCE — a concurrent manual override could already have moved
+ * it elsewhere, and this must not clobber that.
+ */
+export async function breachAllocationAttempt(
+  input: BreachAllocationAttemptInput
+) {
+  return db.transaction(async (tx) => {
+    const [attempt] = await tx
+      .select()
+      .from(allocationAttempts)
+      .where(eq(allocationAttempts.id, input.attemptId))
+      .for("update");
+    if (!attempt || attempt.assignmentId !== input.assignmentId) {
+      throw new Error("Allocation attempt was not found to breach");
+    }
+
+    if (attempt.status === "ACCEPTED") {
+      return { outcome: "ACCEPTED" as const };
+    }
+    if (attempt.status === "WITHDRAWN") {
+      return { outcome: "WITHDRAWN" as const };
+    }
+    if (attempt.status === "BREACHED") {
+      return { outcome: "ALREADY_BREACHED" as const };
+    }
+
+    await tx
+      .update(allocationAttempts)
+      .set({ status: "BREACHED" })
+      .where(eq(allocationAttempts.id, attempt.id));
+
+    const [assignment] = await tx
+      .select()
+      .from(assignments)
+      .where(eq(assignments.id, attempt.assignmentId))
+      .for("update");
+    if (assignment && assignment.status === "PENDING_ACCEPTANCE") {
+      await tx
+        .update(assignments)
+        .set({ status: "BREACHED", updatedAt: new Date().toISOString() })
+        .where(eq(assignments.id, assignment.id));
+      await tx.insert(assignmentStatusHistory).values({
+        assignmentId: assignment.id,
+        fromStatus: assignment.status,
+        toStatus: "BREACHED",
+        changedBy: input.actorId,
+        reason: "ACCEPTANCE_SLA_BREACH",
+      });
+    }
+
+    return { outcome: "BREACHED" as const };
+  });
+}
+
+/**
  * Global allocation snapshot: the fencing epoch plus the number of active
  * (PENDING_ACCEPTANCE or ACCEPTED) Allocation Attempts per Contractor.
  * Ranked candidate selection happens in the Workflow, not here — this is
@@ -333,6 +400,27 @@ export async function commitAllocationAttempt(input: CommitAllocationInput) {
       .from(assignments)
       .where(eq(assignments.caseId, input.caseId));
 
+    // AC6: an Officer reassigning to a Contractor who already breached on
+    // this same Assignment must say why — in either the replace or the
+    // non-replace path, since a manual command can reuse a breached
+    // Contractor either way.
+    if (input.source === "MANUAL_ASSIGN" && !input.reason && assignment) {
+      const [priorBreach] = await tx
+        .select()
+        .from(allocationAttempts)
+        .where(
+          and(
+            eq(allocationAttempts.assignmentId, assignment.id),
+            eq(allocationAttempts.contractorId, input.contractorId),
+            eq(allocationAttempts.status, "BREACHED")
+          )
+        )
+        .limit(1);
+      if (priorBreach) {
+        return { outcome: "OVERRIDE_REASON_REQUIRED" as const };
+      }
+    }
+
     if (input.replaceAttemptId) {
       if (!assignment) {
         return { outcome: "REPLACEMENT_ATTEMPT_NOT_PENDING" as const };
@@ -383,6 +471,33 @@ export async function commitAllocationAttempt(input: CommitAllocationInput) {
           outcome: "ACTIVE_ATTEMPT_EXISTS" as const,
           attempt: activeAttempt,
         };
+      }
+
+      // A replacement Attempt after a breach (PRS-144) reuses this same
+      // stable Assignment. Reopen it here as part of committing the new
+      // Attempt, or the replacement's own acceptance would hit
+      // ASSIGNMENT_NOT_PENDING. Guarded to BREACHED only — never clobber
+      // ACCEPTED/COMPLETED/CANCELLED.
+      if (assignment.status === "BREACHED") {
+        const [reopened] = await tx
+          .update(assignments)
+          .set({
+            status: "PENDING_ACCEPTANCE",
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(assignments.id, assignment.id))
+          .returning();
+        if (!reopened) {
+          throw new Error("Assignment could not be reopened after a breach");
+        }
+        assignment = reopened;
+        await tx.insert(assignmentStatusHistory).values({
+          assignmentId: assignment.id,
+          fromStatus: "BREACHED",
+          toStatus: "PENDING_ACCEPTANCE",
+          changedBy: input.actorId,
+          reason: "ACCEPTANCE_SLA_BREACH_REASSIGN",
+        });
       }
     }
 

@@ -71,8 +71,21 @@ const manualAllocationResult = {
 };
 
 type StartMock = ReturnType<
-  typeof vi.fn<(workflowType: string, options: any) => Promise<unknown>>
+  typeof vi.fn<
+    (
+      workflowType: string,
+      options: { args?: readonly unknown[] }
+    ) => Promise<unknown>
+  >
 >;
+
+/** A `fetch` stub resolving to one prepared Response, with no type assertion. */
+function fetchResolving(response: Response): typeof fetch {
+  return vi.fn(async () => response);
+}
+
+const residentAbsentFetch = () =>
+  fetchResolving(Response.json({ residents: [] }));
 
 function createApp(
   executeUpdateWithStart = vi.fn().mockResolvedValue(successResult),
@@ -302,6 +315,35 @@ describe("Gateway manual allocation and Officer Attention", () => {
     );
   });
 
+  it("maps OVERRIDE_REASON_REQUIRED to 400 when an Officer reuses a breached Contractor without a reason (PRS-144 AC6)", async () => {
+    const executeUpdateWithStart = vi
+      .fn()
+      .mockResolvedValue({ kind: "OVERRIDE_REASON_REQUIRED" });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(Response.json({ cases: [successResult.data] }));
+    const { app } = createApp(executeUpdateWithStart, fetchImpl);
+
+    const response = await app.request(
+      `/api/cases/${successResult.data.id}/allocation-attempts`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": randomUUID(),
+        },
+        body: JSON.stringify({
+          contractorId: manualAllocationResult.data.attempt.contractorId,
+        }),
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: "OVERRIDE_REASON_REQUIRED", retryable: false },
+    });
+  });
+
   it("returns the Case-owned open Officer Attention list only to Officers", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       Response.json({
@@ -353,8 +395,6 @@ describe("Gateway Resident ownership and privilege boundaries", () => {
     vi
       .fn()
       .mockResolvedValue(Response.json({ residents: [{ id: residentId }] }));
-  const residentAbsentFetch = () =>
-    vi.fn().mockResolvedValue(Response.json({ residents: [] }));
 
   it("rejects a Resident-supplied residentId as a privilege-field injection", async () => {
     const { app, executeUpdateWithStart } = createApp(
@@ -565,7 +605,9 @@ describe("Auth proxy", () => {
         ],
       })
     );
-    const startedArgs = start.mock.calls[0][1].args[0];
+    const startedArgs = start.mock.calls[0]?.[1]?.args?.[0];
+    // Guards the two negative assertions below from passing vacuously.
+    expect(startedArgs).toBeDefined();
     expect(startedArgs).not.toHaveProperty("password");
     expect(startedArgs).not.toHaveProperty("token");
   });
@@ -657,12 +699,13 @@ describe("Case detail after allocation", () => {
     };
   }
 
-  function fetchFor(caseRecord: unknown, attempt: unknown) {
-    return vi.fn(async (url: string) =>
-      String(url).includes("/api/assignments")
+  function fetchFor(caseRecord: unknown, attempt: unknown): typeof fetch {
+    return vi.fn(async (url: RequestInfo | URL) => {
+      const href = url instanceof Request ? url.url : String(url);
+      return href.includes("/api/assignments")
         ? Response.json({ assignment, attempt })
-        : Response.json({ cases: [caseRecord] })
-    ) as unknown as typeof fetch;
+        : Response.json({ cases: [caseRecord] });
+    });
   }
 
   it("serves an ASSIGNED Case to the Officer with its Assignment", async () => {
@@ -775,11 +818,9 @@ describe("Gateway Contractor acceptance", () => {
       },
     },
   };
-  const assignmentFetch = vi
-    .fn()
-    .mockResolvedValue(
-      Response.json({ assignment, attempt })
-    ) as unknown as typeof fetch;
+  const assignmentFetch = fetchResolving(
+    Response.json({ assignment, attempt })
+  );
 
   it("allows a PUT preflight for the acceptance route", async () => {
     const { app } = createApp(undefined, assignmentFetch, {
@@ -803,11 +844,7 @@ describe("Gateway Contractor acceptance", () => {
 
   it("accepts only the Contractor named on the current Attempt through Temporal", async () => {
     const executeUpdateWithStart = vi.fn().mockResolvedValue(accepted);
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(
-        Response.json({ assignment, attempt })
-      ) as unknown as typeof fetch;
+    const fetchImpl = fetchResolving(Response.json({ assignment, attempt }));
     const { app } = createApp(executeUpdateWithStart, fetchImpl, {
       authenticate: contractorAuth,
     });
@@ -853,11 +890,7 @@ describe("Gateway Contractor acceptance", () => {
     const executeUpdateWithStart = vi
       .fn()
       .mockResolvedValue({ kind: "APPOINTMENT_NOT_FUTURE" });
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(
-        Response.json({ assignment, attempt })
-      ) as unknown as typeof fetch;
+    const fetchImpl = fetchResolving(Response.json({ assignment, attempt }));
     const { app } = createApp(executeUpdateWithStart, fetchImpl, {
       authenticate: contractorAuth,
     });
@@ -886,11 +919,7 @@ describe("Gateway Contractor acceptance", () => {
 
   it("allows a timed-out acceptance retry to reattach after its interval starts", async () => {
     const executeUpdateWithStart = vi.fn().mockResolvedValue(accepted);
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(
-        Response.json({ assignment, attempt })
-      ) as unknown as typeof fetch;
+    const fetchImpl = fetchResolving(Response.json({ assignment, attempt }));
     const { app } = createApp(executeUpdateWithStart, fetchImpl, {
       authenticate: contractorAuth,
     });
@@ -918,12 +947,12 @@ describe("Gateway Contractor acceptance", () => {
 
   it("does not reveal or submit another Contractor's Attempt", async () => {
     const executeUpdateWithStart = vi.fn();
-    const fetchImpl = vi.fn().mockResolvedValue(
+    const fetchImpl = fetchResolving(
       Response.json({
         assignment,
         attempt: { ...attempt, contractorId: randomUUID() },
       })
-    ) as unknown as typeof fetch;
+    );
     const { app } = createApp(executeUpdateWithStart, fetchImpl, {
       authenticate: contractorAuth,
     });

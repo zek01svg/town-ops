@@ -2,8 +2,8 @@
 
 ## Current Temporal Case orchestration
 
-Case opening, Contractor allocation, and Contractor acceptance run through
-Temporal rather than the AMQP chain below.
+Case opening, Contractor allocation, Contractor acceptance, and Acceptance SLA
+enforcement run through Temporal rather than the AMQP chain below.
 
 1. A browser sends a request to the Gateway with a user JWT and idempotency
    key.
@@ -17,6 +17,12 @@ Temporal rather than the AMQP chain below.
 
 An overlap or invalid future interval creates no public Appointment and leaves
 the Allocation Attempt pending.
+
+Breach is timer-driven rather than browser-driven: an Allocation Attempt not
+accepted before its own deadline breaches on the Case Workflow's timer, which
+penalises the Contractor once, returns the Case to `PENDING`, raises Officer
+Attention, and appends a replacement Attempt on the same Assignment. No AMQP
+message is involved.
 
 ## Existing AMQP flows
 

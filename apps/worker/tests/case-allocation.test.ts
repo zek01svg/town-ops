@@ -33,6 +33,40 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const postalCode = "123456";
 
+/**
+ * A complete COMMITTED result. Spelled out in full rather than asserted from a
+ * partial literal — the Workflow reads `assignmentId` and `deadlineAt` off the
+ * committed Attempt, so a fake that omits fields hides real type drift.
+ */
+function committedResult(input: CommitAllocationInput): CommitAllocationResult {
+  const now = new Date().toISOString();
+  const assignmentId = randomUUID();
+  return {
+    outcome: "COMMITTED",
+    attempt: {
+      id: randomUUID(),
+      assignmentId,
+      contractorId: input.contractorId,
+      source: input.source,
+      status: "PENDING_ACCEPTANCE",
+      acceptanceSlaMs: input.acceptanceSlaMs,
+      deadlineAt: new Date(Date.now() + 60_000).toISOString(),
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      reason: null,
+      operationId: input.operationId,
+      createdAt: now,
+    },
+    assignment: {
+      id: assignmentId,
+      caseId: input.caseId,
+      createdAt: now,
+      updatedAt: now,
+    },
+    epoch: input.expectedEpoch + 1,
+  };
+}
+
 function candidate(
   contractorId: string,
   activeAssignments: number,
@@ -130,15 +164,7 @@ async function openCaseAndAllocate(
       ): Promise<CommitAllocationResult> => {
         commits.push(input);
         if (commit) return commit(input);
-        return {
-          outcome: "COMMITTED",
-          attempt: {
-            id: randomUUID(),
-            contractorId: input.contractorId,
-            status: "PENDING_ACCEPTANCE",
-          },
-          epoch: input.expectedEpoch + 1,
-        } as CommitAllocationResult;
+        return committedResult(input);
       },
       markCaseAssigned: async (input: { caseId: string }) => {
         const outcome =
@@ -216,7 +242,7 @@ describe("Automatic allocation ranking", () => {
           candidates: [candidate(busy, 5, 0), candidate(free, 1, 0)],
         },
       ],
-      until: ({ assigned }) => assigned.length > 0,
+      until: (state) => state.assigned.length > 0,
     });
 
     expect(commits).toHaveLength(1);
@@ -235,7 +261,7 @@ describe("Automatic allocation ranking", () => {
           candidates: [candidate(lowScore, 2, 10), candidate(highScore, 2, 40)],
         },
       ],
-      until: ({ assigned }) => assigned.length > 0,
+      until: (state) => state.assigned.length > 0,
     });
 
     expect(commits[0]?.contractorId).toBe(highScore);
@@ -253,7 +279,7 @@ describe("Automatic allocation ranking", () => {
           candidates: [candidate(higher, 2, 10), candidate(lower, 2, 10)],
         },
       ],
-      until: ({ assigned }) => assigned.length > 0,
+      until: (state) => state.assigned.length > 0,
     });
 
     expect(commits[0]?.contractorId).toBe(lower);
@@ -276,7 +302,7 @@ describe("Automatic allocation outcomes", () => {
       await openCaseAndAllocate(env, {
         snapshots: [{ epoch: 0, candidates: [] }],
         // Nothing will ever be committed, so settle on the pass having run.
-        until: ({ snapshotsFetched }) => snapshotsFetched > 0,
+        until: (state) => state.snapshotsFetched > 0,
       });
 
     // Prove allocation actually ran before asserting it committed nothing,
@@ -291,7 +317,7 @@ describe("Automatic allocation outcomes", () => {
     const contractorId = "11111111-1111-4111-8111-111111111111";
     const { commits, assigned, caseId } = await openCaseAndAllocate(env, {
       snapshots: [{ epoch: 0, candidates: [candidate(contractorId, 0, 0)] }],
-      until: ({ assigned }) => assigned.length > 0,
+      until: (state) => state.assigned.length > 0,
     });
 
     expect(commits[0]?.contractorId).toBe(contractorId);
@@ -335,19 +361,11 @@ describe("Automatic allocation outcomes", () => {
           candidates: [candidate(first, 9, 0), candidate(second, 0, 0)],
         },
       ],
-      until: ({ assigned }) => assigned.length > 0,
+      until: (state) => state.assigned.length > 0,
       commit: async (input) => {
         calls += 1;
         if (calls === 1) return { outcome: "STALE_EPOCH", epoch: 7 };
-        return {
-          outcome: "COMMITTED",
-          attempt: {
-            id: randomUUID(),
-            contractorId: input.contractorId,
-            status: "PENDING_ACCEPTANCE",
-          },
-          epoch: input.expectedEpoch + 1,
-        } as CommitAllocationResult;
+        return committedResult(input);
       },
     });
 

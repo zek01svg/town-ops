@@ -1,4 +1,5 @@
 import { Scalar } from "@scalar/hono-api-reference";
+import { RecordPerformanceEntryInputSchema } from "@townops/orchestration-contract";
 import {
   logger,
   honoLogger,
@@ -85,6 +86,18 @@ const internalPerformanceRouter = new Hono()
     async (c) => {
       const totals = await metricsService.getScoreTotals();
       return c.json({ totals }, 200);
+    }
+  )
+  .post(
+    "/entries",
+    describeRoute({
+      description: "Record one Contractor performance entry, once per effect",
+    }),
+    validator("json", RecordPerformanceEntryInputSchema),
+    async (c) => {
+      const body = c.req.valid("json");
+      const entry = await metricsService.recordPerformanceEntry(body);
+      return c.json({ entry }, 201);
     }
   );
 

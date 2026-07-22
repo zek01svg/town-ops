@@ -1,3 +1,4 @@
+import type { RecordPerformanceEntryInput } from "@townops/orchestration-contract";
 import { eq, sql } from "drizzle-orm";
 
 import db from "./database/db";
@@ -16,7 +17,9 @@ export async function getMetricsByContractorId(contractorId: string) {
 /**
  * Create a new contractor metric record.
  */
-export async function createMetric(values: any) {
+export async function createMetric(
+  values: typeof contractorMetrics.$inferInsert
+) {
   const [metric] = await db
     .insert(contractorMetrics)
     .values(values)
@@ -37,4 +40,39 @@ export async function getScoreTotals() {
     })
     .from(contractorMetrics)
     .groupBy(contractorMetrics.contractorId);
+}
+
+/**
+ * Records one performance entry exactly once per durable Workflow effect
+ * (PRS-144, e.g. the -10 acceptance SLA breach penalty). `effectId` is the
+ * whole idempotency mechanism here — a duplicate insert conflicts on the
+ * unique index and this re-selects the row already written by the first
+ * attempt, so a replay or a duplicate timer delivery always gets back the
+ * one entry that exists.
+ */
+export async function recordPerformanceEntry(
+  input: RecordPerformanceEntryInput
+) {
+  const [inserted] = await db
+    .insert(contractorMetrics)
+    .values({
+      contractorId: input.contractorId,
+      scoreDelta: input.scoreDelta,
+      reason: input.reason,
+      effectId: input.effectId,
+    })
+    .onConflictDoNothing({ target: contractorMetrics.effectId })
+    .returning();
+  if (inserted) return inserted;
+
+  const [existing] = await db
+    .select()
+    .from(contractorMetrics)
+    .where(eq(contractorMetrics.effectId, input.effectId));
+  if (!existing) {
+    throw new Error(
+      "Contractor metric was not found after an effect-id conflict"
+    );
+  }
+  return existing;
 }

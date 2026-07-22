@@ -1,6 +1,7 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import {
   CreateCaseActivityInputSchema,
+  MarkCaseBreachedInputSchema,
   RecordAllocationAcceptanceInputSchema,
 } from "@townops/orchestration-contract";
 import {
@@ -247,6 +248,18 @@ const internalCasesRouter = new Hono()
       if (body.caseId !== id) return c.json({ error: "Case ID mismatch" }, 400);
       const history = await caseService.recordAllocationAcceptance(body);
       return c.json({ history }, 201);
+    }
+  )
+  .post(
+    "/:id/allocation-breach",
+    validator("param", z.object({ id: z.uuid() })),
+    validator("json", MarkCaseBreachedInputSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      if (body.caseId !== id) return c.json({ error: "Case ID mismatch" }, 400);
+      const result = await caseService.markCaseBreachedForOperation(body);
+      return c.json(result, 200);
     }
   );
 

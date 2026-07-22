@@ -48,6 +48,7 @@ export const caseStatus = pgEnum("case_status", [
 export const officerAttentionKind = pgEnum("officer_attention_kind", [
   "NO_ELIGIBLE_CONTRACTOR",
   "ALLOCATION_FAILED",
+  "ACCEPTANCE_SLA_BREACH",
 ]);
 
 export const cases = pgTable(

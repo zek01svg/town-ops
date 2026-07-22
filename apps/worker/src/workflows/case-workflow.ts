@@ -6,6 +6,7 @@ import {
   setHandler,
 } from "@temporalio/workflow";
 import {
+  ACCEPTANCE_SLA_BREACH_SCORE_DELTA,
   AcceptAllocationCommandSchema,
   DEFAULT_ACCEPTANCE_SLA_MS,
   ManualAllocationCommandSchema,
@@ -16,8 +17,11 @@ import {
 import type {
   AcceptAllocationCommand,
   AcceptAllocationResult,
+  AllocationAttemptDto,
   AllocationCandidate,
   AllocationSnapshot,
+  BreachAllocationAttemptInput,
+  BreachAllocationAttemptResult,
   CaseDto,
   CommitAllocationInput,
   CommitAllocationResult,
@@ -25,8 +29,12 @@ import type {
   ManualAllocationCommand,
   ManualAllocationResult,
   MarkCaseAssignedResult,
+  MarkCaseBreachedInput,
+  MarkCaseBreachedResult,
   OpenCaseCommand,
   OpenCaseResult,
+  PerformanceEntryDto,
+  RecordPerformanceEntryInput,
 } from "@townops/orchestration-contract";
 
 export const openCase = defineUpdate<OpenCaseResult, [OpenCaseCommand]>(
@@ -66,6 +74,15 @@ const activities = proxyActivities<{
     detail: string;
     operationId: string;
   }): Promise<unknown>;
+  breachAllocationAttempt(
+    input: BreachAllocationAttemptInput
+  ): Promise<BreachAllocationAttemptResult>;
+  recordPerformanceEntry(
+    input: RecordPerformanceEntryInput
+  ): Promise<PerformanceEntryDto>;
+  markCaseBreached(
+    input: MarkCaseBreachedInput
+  ): Promise<MarkCaseBreachedResult["outcome"]>;
 }>({ startToCloseTimeout: "10 seconds" });
 
 type Operation = {
@@ -74,8 +91,24 @@ type Operation = {
   pending?: Promise<OpenCaseResult>;
 };
 
+/**
+ * A committed Attempt the Workflow is currently tracking, with its deadline
+ * pre-resolved to epoch ms so the main loop can arm a timer on it without
+ * re-parsing a string every iteration.
+ */
+type CommittedAttempt = {
+  attemptId: string;
+  assignmentId: string;
+  contractorId: string;
+  deadlineAt: number;
+};
+
 type AutomaticAllocationRequest = {
   kind: "AUTOMATIC";
+  // AUTO_ASSIGN for a Case's first allocation pass, BREACH_REASSIGN for a
+  // replacement after PRS-144's acceptance SLA breach — carried through to
+  // commitAllocationAttempt purely for the Attempt's audit trail.
+  source: "AUTO_ASSIGN" | "BREACH_REASSIGN";
   category: string;
   postalCode: string;
 };
@@ -99,6 +132,17 @@ type AcceptanceOperation = {
 };
 
 /**
+ * The public ManualAllocationResult carries no Attempt payload on every
+ * outcome (ACTIVE_ATTEMPT_EXISTS in particular). This internal wrapper
+ * carries the committed Attempt alongside it, purely so the caller can arm
+ * the breach timer, without widening the contract type callers depend on.
+ */
+type ManualAllocationOutcome = {
+  result: ManualAllocationResult;
+  attempt?: CommittedAttempt;
+};
+
+/**
  * Outcome of the last allocation pass. `NO_CANDIDATE` and `FAILED` both leave
  * the Case PENDING but for different reasons, and PRS-141 acts on each
  * differently — so they must stay distinguishable rather than collapsing into
@@ -106,7 +150,7 @@ type AcceptanceOperation = {
  */
 type AllocationState =
   | { status: "IDLE" }
-  | { status: "ALLOCATED"; contractorId: string }
+  | { status: "ALLOCATED"; attempt: CommittedAttempt }
   | { status: "TERMINAL" }
   | { status: "NO_CANDIDATE" }
   | { status: "FAILED"; reason: string };
@@ -146,16 +190,28 @@ function rankCandidates(
     });
 }
 
+/** Resolves an Attempt DTO's ISO deadline to epoch ms once, at commit time. */
+function toCommittedAttempt(attempt: AllocationAttemptDto): CommittedAttempt {
+  return {
+    attemptId: attempt.id,
+    assignmentId: attempt.assignmentId,
+    contractorId: attempt.contractorId,
+    deadlineAt: Date.parse(attempt.deadlineAt),
+  };
+}
+
 /**
- * Automatic Contractor allocation for a just-opened Case (PRS-139). Ranking
- * happens here, in the Workflow, so it stays deterministic and replayable —
- * the Activities above do I/O only.
+ * Automatic Contractor allocation for a just-opened Case (PRS-139), or for a
+ * breach replacement (PRS-144, source "BREACH_REASSIGN"). Ranking happens
+ * here, in the Workflow, so it stays deterministic and replayable — the
+ * Activities above do I/O only.
  *
  * Returns the outcome rather than throwing it away, so a Case that could not
  * be allocated is distinguishable from one that never tried.
  */
 async function runAllocation(
   caseId: string,
+  source: "AUTO_ASSIGN" | "BREACH_REASSIGN",
   category: string,
   postalCode: string,
   attemptedContractorIds: Set<string>
@@ -186,7 +242,7 @@ async function runAllocation(
       operationId,
       caseId,
       contractorId: candidate.contractorId,
-      source: "AUTO_ASSIGN",
+      source,
       expectedEpoch: snapshot.epoch,
       acceptanceSlaMs: DEFAULT_ACCEPTANCE_SLA_MS,
       actorId: SYSTEM_ACTOR_ID,
@@ -207,18 +263,25 @@ async function runAllocation(
       if (assignmentOutcome === "CASE_TERMINAL") {
         return { status: "TERMINAL" };
       }
-      return { status: "ALLOCATED", contractorId: candidate.contractorId };
+      return {
+        status: "ALLOCATED",
+        attempt: toCommittedAttempt(result.attempt),
+      };
     }
 
     if (result.outcome === "ACTIVE_ATTEMPT_EXISTS") {
-      // Another allocation already won the race for this Case.
+      // Another allocation already won the race for this Case. Arm on its
+      // Attempt regardless — it is this same Workflow's own outstanding
+      // offer, and the breach timer must track whichever Attempt is live.
       return {
         status: "ALLOCATED",
-        contractorId: result.attempt.contractorId,
+        attempt: toCommittedAttempt(result.attempt),
       };
     }
 
     // STALE_EPOCH — the epoch moved under us; refetch and rerank.
+    // (OVERRIDE_REASON_REQUIRED cannot occur here: automatic allocation
+    // never sends source "MANUAL_ASSIGN".)
     snapshot = await activities.fetchAllocationSnapshot({
       category,
       postalSector: sector,
@@ -236,9 +299,9 @@ async function runAllocation(
 async function runManualAllocation(
   command: ManualAllocationCommand,
   attemptedContractorIds: Set<string>
-): Promise<ManualAllocationResult> {
+): Promise<ManualAllocationOutcome> {
   if (await activities.isCaseTerminal({ caseId: command.caseId })) {
-    return { kind: "CASE_TERMINAL" };
+    return { result: { kind: "CASE_TERMINAL" } };
   }
 
   const sector = postalSector(command.postalCode);
@@ -251,7 +314,7 @@ async function runManualAllocation(
     const candidate = snapshot.candidates.find(
       ({ contractorId }) => contractorId === command.input.contractorId
     );
-    if (!candidate) return { kind: "CONTRACTOR_NOT_ELIGIBLE" };
+    if (!candidate) return { result: { kind: "CONTRACTOR_NOT_ELIGIBLE" } };
 
     const result = await activities.commitAllocationAttempt({
       operationId: command.operationId,
@@ -278,19 +341,28 @@ async function runManualAllocation(
         actorRole: command.actorRole,
       });
       if (assignmentOutcome === "CASE_TERMINAL") {
-        return { kind: "CASE_TERMINAL" };
+        return { result: { kind: "CASE_TERMINAL" } };
       }
       return {
-        kind: "SUCCESS",
-        data: { assignment: result.assignment, attempt: result.attempt },
+        result: {
+          kind: "SUCCESS",
+          data: { assignment: result.assignment, attempt: result.attempt },
+        },
+        attempt: toCommittedAttempt(result.attempt),
       };
     }
 
     if (result.outcome === "ACTIVE_ATTEMPT_EXISTS") {
-      return { kind: "ACTIVE_ATTEMPT_EXISTS" };
+      return { result: { kind: "ACTIVE_ATTEMPT_EXISTS" } };
     }
     if (result.outcome === "REPLACEMENT_ATTEMPT_NOT_PENDING") {
-      return { kind: "REPLACEMENT_ATTEMPT_NOT_PENDING" };
+      return { result: { kind: "REPLACEMENT_ATTEMPT_NOT_PENDING" } };
+    }
+    if (result.outcome === "OVERRIDE_REASON_REQUIRED") {
+      // AC6: reusing a Contractor who already breached on this Assignment,
+      // without a reason. A manual allocation is the only source that can
+      // hit this — automatic allocation never sends a reason-less override.
+      return { result: { kind: "OVERRIDE_REASON_REQUIRED" } };
     }
 
     snapshot = await activities.fetchAllocationSnapshot({
@@ -300,8 +372,10 @@ async function runManualAllocation(
   }
 
   return {
-    kind: "ALLOCATION_FAILED",
-    reason: `manual allocation lost the epoch race ${MAX_ALLOCATION_ROUNDS} times`,
+    result: {
+      kind: "ALLOCATION_FAILED",
+      reason: `manual allocation lost the epoch race ${MAX_ALLOCATION_ROUNDS} times`,
+    },
   };
 }
 
@@ -326,6 +400,59 @@ async function raiseAllocationAttention(
   });
 }
 
+type BreachOutcome =
+  | { status: "REPLACED" }
+  | { status: "CASE_TERMINAL" }
+  | { status: "ATTEMPT_NO_LONGER_LIVE" };
+
+/**
+ * The acceptance SLA breach sequence (PRS-144): breach the Attempt, apply
+ * the -10 penalty, return the Case to PENDING, and report what happened so
+ * the caller can re-arm Workflow state and requeue a replacement. Kept as a
+ * pure request/response function, like runAllocation above, rather than
+ * closing over the Workflow's mutable state directly.
+ *
+ * Both `BREACHED` and `ALREADY_BREACHED` from the Activity proceed to the
+ * penalty — a replay or a duplicate timer delivery must not silently drop
+ * it. Only `ACCEPTED`/`WITHDRAWN` mean the offer is no longer live.
+ */
+async function runBreach(
+  caseId: string,
+  attempt: CommittedAttempt
+): Promise<BreachOutcome> {
+  const breach = await activities.breachAllocationAttempt({
+    operationId: `${caseId}/breach/${attempt.attemptId}`,
+    attemptId: attempt.attemptId,
+    assignmentId: attempt.assignmentId,
+    actorId: SYSTEM_ACTOR_ID,
+    actorRole: SYSTEM_ACTOR_ROLE,
+  });
+
+  if (breach.outcome === "ACCEPTED" || breach.outcome === "WITHDRAWN") {
+    return { status: "ATTEMPT_NO_LONGER_LIVE" };
+  }
+
+  await activities.recordPerformanceEntry({
+    effectId: `${attempt.attemptId}/acceptance-sla-breach`,
+    contractorId: attempt.contractorId,
+    scoreDelta: ACCEPTANCE_SLA_BREACH_SCORE_DELTA,
+    reason: "ACCEPTANCE_SLA_BREACH",
+  });
+
+  const caseOutcome = await activities.markCaseBreached({
+    caseId,
+    operationId: `${caseId}/breach/${attempt.attemptId}/pending`,
+    attemptId: attempt.attemptId,
+    actorId: SYSTEM_ACTOR_ID,
+    actorRole: SYSTEM_ACTOR_ROLE,
+    detail: `Contractor ${attempt.contractorId} did not accept before the acceptance SLA deadline.`,
+  });
+
+  return caseOutcome === "CASE_TERMINAL"
+    ? { status: "CASE_TERMINAL" }
+    : { status: "REPLACED" };
+}
+
 /**
  * Durable owner of the opening operation for one Case.
  *
@@ -345,7 +472,18 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   let automaticRetryAt: number | undefined;
   let automaticRetryDelayMs = INITIAL_ALLOCATION_RETRY_MS;
   let automaticAllocationActive = false;
+  let automaticAllocationSource: "AUTO_ASSIGN" | "BREACH_REASSIGN" =
+    "AUTO_ASSIGN";
   let allocationContext: AllocationContext | undefined;
+  // The Attempt currently awaiting acceptance, if any (PRS-144). Armed by
+  // every path that commits or discovers a PENDING_ACCEPTANCE Attempt;
+  // cleared on acceptance and on breach.
+  let currentAttempt: CommittedAttempt | undefined;
+  let accepted = false;
+  // Counts acceptAllocation handlers currently running the real Activity.
+  // Armed synchronously before the first await so the main loop's breach
+  // check can never race a handler that started before the deadline.
+  let acceptanceGuard = 0;
 
   setHandler(openCase, async (unparsedCommand) => {
     const command = OpenCaseCommandSchema.parse(unparsedCommand);
@@ -395,7 +533,11 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
         category: result.data.category,
         postalCode: result.data.postalCode,
       };
-      allocationQueue.push({ kind: "AUTOMATIC", ...allocationContext });
+      allocationQueue.push({
+        kind: "AUTOMATIC",
+        source: "AUTO_ASSIGN",
+        ...allocationContext,
+      });
     }
 
     return result;
@@ -441,6 +583,10 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     const command = AcceptAllocationCommandSchema.parse(unparsedCommand);
     if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
 
+    // The idempotency cache lookup must stay before the deadline check
+    // below (PRS-144 AC2): a legitimate before-deadline acceptance whose
+    // retry lands after the deadline must still return its cached result,
+    // not get wrongly rejected as late.
     const existing = acceptanceOperations.get(command.idempotencyKey);
     if (existing) {
       if (existing.payloadHash !== command.payloadHash) {
@@ -451,36 +597,112 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       throw new Error("Acceptance operation has no result or pending activity");
     }
 
+    // A new, unseen acceptance that lands after this Attempt's own deadline
+    // is rejected outright, without calling the atom — this closes the
+    // late-acceptance race (AC3) rather than leaving it to the atom's row
+    // lock as the only defence.
+    if (
+      currentAttempt &&
+      command.attemptId === currentAttempt.attemptId &&
+      Date.now() >= currentAttempt.deadlineAt
+    ) {
+      return { kind: "ATTEMPT_NOT_PENDING" };
+    }
+
     const operation: AcceptanceOperation = { payloadHash: command.payloadHash };
     acceptanceOperations.set(command.idempotencyKey, operation);
-    operation.pending = activities.acceptAllocation(command);
     try {
+      // Armed synchronously, as the first statement in the try and before
+      // the first await, so a synchronous throw from acceptAllocation still
+      // hits `finally` — the main loop's deadline wait can always observe
+      // an in-flight acceptance that started before the deadline, which is
+      // what makes the accept Activity and the breach Activity mutually
+      // exclusive.
+      acceptanceGuard++;
+      operation.pending = activities.acceptAllocation(command);
       operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        accepted = true;
+        currentAttempt = undefined;
+      }
+      // A semantic conflict (e.g. APPOINTMENT_CONFLICT) leaves `accepted`
+      // and `currentAttempt` untouched, so the Attempt still breaches.
       return operation.result;
     } catch (error) {
       acceptanceOperations.delete(command.idempotencyKey);
       throw error;
     } finally {
       delete operation.pending;
+      acceptanceGuard--;
     }
   });
 
   // Allocation runs here, never inside an Update handler. PRS-141 extends this
   // loop with a lossless intent queue. A timed automatic poll never blocks an
   // Officer Update: `condition` wakes as soon as the queue receives a manual
-  // request, while the absolute retry deadline remains intact.
+  // request, while the absolute retry deadline remains intact. PRS-144 adds a
+  // second timer on the same wait — the current Attempt's acceptance
+  // deadline — so an unaccepted offer breaches without a manual poll.
   while (true) {
     if (allocationQueue.length === 0) {
-      if (automaticRetryAt !== undefined && !automaticAllocationActive) {
+      const deadlines: number[] = [];
+      if (currentAttempt) deadlines.push(currentAttempt.deadlineAt);
+      if (!automaticAllocationActive && automaticRetryAt !== undefined) {
+        deadlines.push(automaticRetryAt);
+      }
+
+      if (deadlines.length > 0) {
         const wokeForRequest = await condition(
           () => allocationQueue.length > 0,
-          Math.max(0, automaticRetryAt - Date.now())
+          Math.max(0, Math.min(...deadlines) - Date.now())
         );
-        if (!wokeForRequest && allocationContext) {
-          allocationQueue.push({
-            kind: "AUTOMATIC",
-            ...allocationContext,
-          });
+
+        if (!wokeForRequest) {
+          // A handler armed before the deadline must finish before this
+          // check runs, or a before-deadline acceptance could lose the race
+          // to the breach it should have prevented.
+          if (acceptanceGuard > 0) {
+            await condition(() => acceptanceGuard === 0);
+          }
+
+          if (
+            currentAttempt &&
+            !accepted &&
+            Date.now() >= currentAttempt.deadlineAt
+          ) {
+            const breached = currentAttempt;
+            const outcome = await runBreach(caseId, breached);
+            currentAttempt = undefined;
+            if (outcome.status === "REPLACED") {
+              automaticAllocationActive = false;
+              automaticRetryAt = undefined;
+              automaticAllocationSource = "BREACH_REASSIGN";
+              if (allocationContext) {
+                allocationQueue.push({
+                  kind: "AUTOMATIC",
+                  source: "BREACH_REASSIGN",
+                  ...allocationContext,
+                });
+              }
+            } else if (outcome.status === "CASE_TERMINAL") {
+              automaticAllocationActive = true;
+              automaticRetryAt = undefined;
+            }
+            // ATTEMPT_NO_LONGER_LIVE: the offer already resolved elsewhere
+            // (accepted or manually withdrawn) — nothing left to do here.
+          } else if (
+            !currentAttempt &&
+            !automaticAllocationActive &&
+            automaticRetryAt !== undefined &&
+            Date.now() >= automaticRetryAt &&
+            allocationContext
+          ) {
+            allocationQueue.push({
+              kind: "AUTOMATIC",
+              source: automaticAllocationSource,
+              ...allocationContext,
+            });
+          }
         }
       } else {
         await condition(() => allocationQueue.length > 0);
@@ -491,27 +713,31 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     if (!request) continue;
 
     if (request.kind === "MANUAL") {
-      let result: ManualAllocationResult;
+      let outcome: ManualAllocationOutcome;
       try {
-        result = await runManualAllocation(
+        outcome = await runManualAllocation(
           request.command,
           attemptedContractorIds
         );
       } catch (error) {
-        result = {
-          kind: "ALLOCATION_FAILED",
-          reason: error instanceof Error ? error.message : String(error),
+        outcome = {
+          result: {
+            kind: "ALLOCATION_FAILED",
+            reason: error instanceof Error ? error.message : String(error),
+          },
         };
       }
+      const result = outcome.result;
 
       if (result.kind === "SUCCESS") {
         automaticAllocationActive = true;
         automaticRetryAt = undefined;
         automaticRetryDelayMs = INITIAL_ALLOCATION_RETRY_MS;
-        allocation = {
-          status: "ALLOCATED",
-          contractorId: result.data.attempt.contractorId,
-        };
+        if (outcome.attempt) {
+          allocation = { status: "ALLOCATED", attempt: outcome.attempt };
+          currentAttempt = outcome.attempt;
+          accepted = false;
+        }
       } else if (result.kind === "ACTIVE_ATTEMPT_EXISTS") {
         automaticAllocationActive = true;
         automaticRetryAt = undefined;
@@ -536,9 +762,11 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
 
     if (automaticAllocationActive) continue;
 
+    automaticAllocationSource = request.source;
     try {
       allocation = await runAllocation(
         caseId,
+        request.source,
         request.category,
         request.postalCode,
         attemptedContractorIds
@@ -557,6 +785,8 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       automaticAllocationActive = true;
       automaticRetryAt = undefined;
       automaticRetryDelayMs = INITIAL_ALLOCATION_RETRY_MS;
+      currentAttempt = allocation.attempt;
+      accepted = false;
       continue;
     }
     if (allocation.status === "TERMINAL") {

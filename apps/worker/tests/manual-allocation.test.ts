@@ -25,6 +25,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const postalCode = "123456";
 
+/** Polls a closure-mutated counter; a bare `while` loop reads as a dead loop. */
+async function waitUntil(predicate: () => boolean, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return predicate();
+}
+
 function openCommand(): OpenCaseCommand {
   const idempotencyKey = randomUUID();
   return {
@@ -118,7 +127,7 @@ describe("Manual allocation", () => {
               source: input.source,
               status: "PENDING_ACCEPTANCE",
               acceptanceSlaMs: input.acceptanceSlaMs,
-              deadlineAt: "2026-07-22T00:01:00.000Z",
+              deadlineAt: new Date(Date.now() + 60_000).toISOString(),
               actorId: input.actorId,
               actorRole: input.actorRole,
               reason: input.reason ?? null,
@@ -149,10 +158,7 @@ describe("Manual allocation", () => {
         ),
       });
 
-      const deadline = Date.now() + 10_000;
-      while (snapshots === 0 && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
+      await waitUntil(() => snapshots > 0);
       expect(snapshots).toBeGreaterThan(0);
 
       terminal = true;

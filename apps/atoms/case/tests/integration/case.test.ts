@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 
-let db: any;
-let cases: any;
-let caseHistory: any;
-let app: any;
+let db: typeof import("../../src/database/db").default;
+let cases: typeof import("../../src/database/schema").cases;
+let caseHistory: typeof import("../../src/database/schema").caseHistory;
+let app: typeof import("../../src/index").app;
 
 vi.mock("hono/jwk", () => ({
-  jwk: () => (c: any, next: any) => next(),
+  jwk: () => (_c: unknown, next: () => unknown) => next(),
 }));
 
 describe("Case Atom Integration Tests", () => {
@@ -27,11 +27,14 @@ describe("Case Atom Integration Tests", () => {
     app = appModule.app;
   });
 
-  beforeEach(async () => {
-    // Clean up between tests to guarantee isolation
-    await db.delete(cases);
-  });
-
+  // No blanket beforeEach delete here: every test below inserts its own
+  // randomUUID()-keyed Case and filters assertions by that exact ID, so
+  // isolation never depended on the table being empty. A blanket
+  // `db.delete(cases)` was previously here, but officer-attention.test.ts
+  // runs against the same shared Testcontainer DB concurrently (integration
+  // files have no per-file isolation) and keeps one fixed-ID Case alive
+  // across its whole suite — that blanket delete intermittently raced it
+  // out from under it.
   const VALID_UUID_2 = "123e4567-e89b-12d3-a456-426614174001";
 
   describe("GET /health", () => {

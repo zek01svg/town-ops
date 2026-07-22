@@ -1,6 +1,7 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import {
   AcceptAllocationAttemptInputSchema,
+  BreachAllocationAttemptInputSchema,
   CommitAllocationInputSchema,
 } from "@townops/orchestration-contract";
 import {
@@ -63,7 +64,7 @@ app.onError((err, c) => {
     {
       error: err.message,
       stack: err.stack,
-      cause: (err as any).cause?.message ?? (err as any).cause,
+      cause: err.cause instanceof Error ? err.cause.message : err.cause,
       route: c.req.path,
     },
     "[assignment atom] internal server error"
@@ -72,7 +73,7 @@ app.onError((err, c) => {
 });
 
 // custom logging middleware
-app.use("*", honoLogger() as any);
+app.use("*", honoLogger());
 
 const assignmentsRouter = new Hono()
   .post(
@@ -402,7 +403,8 @@ const internalAssignmentsRouter = new Hono()
 
       if (
         result.outcome === "STALE_EPOCH" ||
-        result.outcome === "ACTIVE_ATTEMPT_EXISTS"
+        result.outcome === "ACTIVE_ATTEMPT_EXISTS" ||
+        result.outcome === "OVERRIDE_REASON_REQUIRED"
       ) {
         return c.json(result, 409);
       }
@@ -410,6 +412,19 @@ const internalAssignmentsRouter = new Hono()
         return c.json(result, 200);
       }
       return c.json(result, 201);
+    }
+  )
+  .post(
+    "/allocation-attempts/breach",
+    describeRoute({
+      description: "Breach one Allocation Attempt (PRS-144)",
+    }),
+    validator("json", BreachAllocationAttemptInputSchema),
+    async (c) => {
+      const result = await assignmentService.breachAllocationAttempt(
+        c.req.valid("json")
+      );
+      return c.json(result, result.outcome === "BREACHED" ? 201 : 200);
     }
   )
   .post(

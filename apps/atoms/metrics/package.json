@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@t3-oss/env-core": "catalog:",
+    "@townops/orchestration-contract": "workspace:*",
     "@townops/shared-ts": "workspace:*",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "catalog:",

@@ -6,21 +6,33 @@ import {
   AllocationSnapshotSchema,
   AppointmentDtoSchema,
   AppointmentSlotClaimDtoSchema,
+  BreachAllocationAttemptInputSchema,
+  BreachAllocationAttemptResultSchema,
   CommitAllocationInputSchema,
   CommitAllocationResultSchema,
   MarkCaseAssignedResultSchema,
+  MarkCaseBreachedInputSchema,
+  MarkCaseBreachedResultSchema,
   OfficerAttentionDtoSchema,
+  PerformanceEntryDtoSchema,
   RaiseOfficerAttentionInputSchema,
+  RecordPerformanceEntryInputSchema,
 } from "@townops/orchestration-contract";
 import type {
   AcceptAllocationCommand,
   AcceptAllocationResult,
   AllocationSnapshot,
+  BreachAllocationAttemptInput,
+  BreachAllocationAttemptResult,
   CommitAllocationInput,
   CommitAllocationResult,
   MarkCaseAssignedResult,
+  MarkCaseBreachedInput,
+  MarkCaseBreachedResult,
   OfficerAttentionDto,
+  PerformanceEntryDto,
   RaiseOfficerAttentionInput,
+  RecordPerformanceEntryInput,
 } from "@townops/orchestration-contract";
 import { z } from "zod/v4";
 
@@ -364,6 +376,103 @@ export function createAllocateContractorActivities({
     });
   }
 
+  /**
+   * Breach one Attempt (PRS-144). The Workflow owns the acceptance-SLA
+   * timer and only ever calls this after its own deadline has passed —
+   * ponytail: no server-side "is the deadline actually past?" recheck here,
+   * a DB/Workflow clock-skew check would only produce spurious NOT_DUE
+   * retries; upgrade if a non-Workflow caller of this route ever appears.
+   */
+  async function breachAllocationAttempt(
+    input: BreachAllocationAttemptInput
+  ): Promise<BreachAllocationAttemptResult> {
+    const command = BreachAllocationAttemptInputSchema.parse(input);
+    const response = await fetchImpl(
+      `${assignmentAtomUrl}/internal/assignments/allocation-attempts/breach`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(workerServiceToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(command),
+      }
+    );
+
+    if (response.ok) {
+      return BreachAllocationAttemptResultSchema.parse(await response.json());
+    }
+    if (response.status >= 400 && response.status < 500) {
+      throw nonRetryable(
+        "Assignment atom rejected the breach",
+        "BREACH_REJECTED"
+      );
+    }
+    throw new Error(`Assignment atom request failed with ${response.status}`);
+  }
+
+  /**
+   * Record one Contractor performance entry, exactly once per effect ID
+   * (PRS-144's -10 acceptance SLA breach penalty).
+   */
+  async function recordPerformanceEntry(
+    input: RecordPerformanceEntryInput
+  ): Promise<PerformanceEntryDto> {
+    const command = RecordPerformanceEntryInputSchema.parse(input);
+    const response = await fetchImpl(
+      `${metricsAtomUrl}/internal/performance/entries`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(workerServiceToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(command),
+      }
+    );
+
+    if (response.ok) {
+      const body = await response.json();
+      return PerformanceEntryDtoSchema.parse(body.entry);
+    }
+    if (response.status >= 400 && response.status < 500) {
+      throw nonRetryable(
+        "Metrics atom rejected the performance entry",
+        "PERFORMANCE_ENTRY_REJECTED"
+      );
+    }
+    throw new Error(`Metrics atom request failed with ${response.status}`);
+  }
+
+  /** Return a Case to PENDING and raise its acceptance SLA breach attention. */
+  async function markCaseBreached(
+    input: MarkCaseBreachedInput
+  ): Promise<MarkCaseBreachedResult["outcome"]> {
+    const command = MarkCaseBreachedInputSchema.parse(input);
+    const response = await fetchImpl(
+      `${caseAtomUrl}/internal/cases/${command.caseId}/allocation-breach`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(workerServiceToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(command),
+      }
+    );
+
+    if (response.ok) {
+      return MarkCaseBreachedResultSchema.parse(await response.json()).outcome;
+    }
+    if (response.status >= 400 && response.status < 500) {
+      throw nonRetryable(
+        "Case atom rejected the breach operation",
+        "CASE_BREACH_REJECTED"
+      );
+    }
+    throw new Error(`Case atom request failed with ${response.status}`);
+  }
+
   async function raiseOfficerAttention(
     input: RaiseOfficerAttentionInput
   ): Promise<OfficerAttentionDto> {
@@ -404,5 +513,8 @@ export function createAllocateContractorActivities({
     acceptAllocation,
     markCaseAssigned,
     raiseOfficerAttention,
+    breachAllocationAttempt,
+    recordPerformanceEntry,
+    markCaseBreached,
   };
 }

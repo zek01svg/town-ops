@@ -1,5 +1,6 @@
 import type {
   CreateCaseActivityInput,
+  MarkCaseBreachedInput,
   RecordAllocationAcceptanceInput,
 } from "@townops/orchestration-contract";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
@@ -12,11 +13,39 @@ import {
   officerAttention,
 } from "./database/schema";
 
-type OfficerAttentionKind = "NO_ELIGIBLE_CONTRACTOR" | "ALLOCATION_FAILED";
+type CaseStatus = (typeof cases.$inferSelect)["status"];
+
+// The contract carries the priority uppercase; the column stores it lowercase.
+// A lookup keeps the mapping total and checked, rather than asserting the
+// result of toLowerCase() back into the column's union.
+const casePriorityByLevel = {
+  LOW: "low",
+  MEDIUM: "medium",
+  HIGH: "high",
+  EMERGENCY: "emergency",
+} as const satisfies Record<
+  CreateCaseActivityInput["input"]["priority"],
+  (typeof cases.$inferSelect)["priority"]
+>;
+
+type OfficerAttentionKind =
+  | "NO_ELIGIBLE_CONTRACTOR"
+  | "ALLOCATION_FAILED"
+  | "ACCEPTANCE_SLA_BREACH";
 
 const allocationAttentionKinds: OfficerAttentionKind[] = [
   "NO_ELIGIBLE_CONTRACTOR",
   "ALLOCATION_FAILED",
+];
+
+// A Case going terminal (completed/cancelled) resolves every kind of
+// operational attention, including a still-open acceptance SLA breach —
+// unlike allocationAttentionKinds above, which markCaseAssignedForOperation
+// resolves and which must NOT include ACCEPTANCE_SLA_BREACH (a replacement
+// merely being assigned is not the replacement being accepted, AC8).
+const terminalResolvedAttentionKinds: OfficerAttentionKind[] = [
+  ...allocationAttentionKinds,
+  "ACCEPTANCE_SLA_BREACH",
 ];
 
 /**
@@ -36,7 +65,7 @@ export async function getCaseById(id: string) {
 /**
  * Create a new case.
  */
-export async function createCase(values: any) {
+export async function createCase(values: typeof cases.$inferInsert) {
   const [newCase] = await db.insert(cases).values(values).returning();
   if (!newCase) throw new Error("Case insert did not return a row");
   return newCase;
@@ -80,11 +109,7 @@ export async function createCaseForOperation(input: CreateCaseActivityInput) {
         id: input.caseId,
         residentId: input.input.residentId,
         category: input.input.category,
-        priority: input.input.priority.toLowerCase() as
-          | "low"
-          | "medium"
-          | "high"
-          | "emergency",
+        priority: casePriorityByLevel[input.input.priority],
         description: input.input.description,
         addressDetails: input.input.addressDetails,
         postalCode: input.input.postalCode,
@@ -108,7 +133,7 @@ export async function createCaseForOperation(input: CreateCaseActivityInput) {
 /**
  * Update case status.
  */
-export async function updateCaseStatus(id: string, status: any) {
+export async function updateCaseStatus(id: string, status: CaseStatus) {
   return db.transaction(async (tx) => {
     const now = new Date().toISOString();
     const [updated] = await tx
@@ -124,7 +149,7 @@ export async function updateCaseStatus(id: string, status: any) {
         .where(
           and(
             eq(officerAttention.caseId, id),
-            inArray(officerAttention.kind, allocationAttentionKinds),
+            inArray(officerAttention.kind, terminalResolvedAttentionKinds),
             isNull(officerAttention.resolvedAt)
           )
         );
@@ -269,7 +294,12 @@ export async function markCaseAssignedForOperation(input: {
   });
 }
 
-/** Append the acceptance audit event once without changing the Case status. */
+/**
+ * Append the acceptance audit event once without changing the Case status,
+ * and resolve any open acceptance SLA breach attention (AC8) — a replacement
+ * Attempt getting accepted is what actually closes out a breach, not it
+ * merely being assigned (see terminalResolvedAttentionKinds above).
+ */
 export async function recordAllocationAcceptance(
   input: RecordAllocationAcceptanceInput
 ) {
@@ -286,7 +316,22 @@ export async function recordAllocationAcceptance(
       .values({ ...input, eventType: "ALLOCATION_ATTEMPT_ACCEPTED" })
       .onConflictDoNothing()
       .returning();
-    if (created) return created;
+    if (created) {
+      await tx
+        .update(officerAttention)
+        .set({
+          resolvedAt: new Date().toISOString(),
+          resolvedByOperationId: input.operationId,
+        })
+        .where(
+          and(
+            eq(officerAttention.caseId, input.caseId),
+            eq(officerAttention.kind, "ACCEPTANCE_SLA_BREACH"),
+            isNull(officerAttention.resolvedAt)
+          )
+        );
+      return created;
+    }
 
     const [existing] = await tx
       .select()
@@ -296,5 +341,73 @@ export async function recordAllocationAcceptance(
       throw new Error("Case acceptance history was not found after a conflict");
     }
     return existing;
+  });
+}
+
+/**
+ * Idempotent write for the Acceptance SLA breach sequence (PRS-144): returns
+ * the Case to PENDING and raises the ACCEPTANCE_SLA_BREACH Officer Attention,
+ * once per operationId. Same claim-then-write shape as
+ * markCaseAssignedForOperation — the operationId already embeds the breached
+ * attemptId (`${caseId}/breach/${attemptId}/pending`), so a replay or a
+ * duplicate breach timer converges on this single write.
+ */
+export async function markCaseBreachedForOperation(
+  input: MarkCaseBreachedInput
+) {
+  return db.transaction(async (tx) => {
+    const [currentCase] = await tx
+      .select()
+      .from(cases)
+      .where(eq(cases.id, input.caseId))
+      .for("update");
+    if (!currentCase) {
+      throw new Error("Case was not found to mark as breached");
+    }
+    if (
+      currentCase.status === "completed" ||
+      currentCase.status === "cancelled"
+    ) {
+      return { outcome: "CASE_TERMINAL" as const };
+    }
+
+    const [insertedOperation] = await tx
+      .insert(caseOperations)
+      .values({ operationId: input.operationId, caseId: input.caseId })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!insertedOperation) {
+      return { outcome: "PENDING" as const };
+    }
+
+    const [updatedCase] = await tx
+      .update(cases)
+      .set({ status: "pending", updatedAt: new Date().toISOString() })
+      .where(eq(cases.id, input.caseId))
+      .returning();
+    if (!updatedCase) {
+      throw new Error("Case was not found to mark as breached");
+    }
+
+    await tx.insert(caseHistory).values({
+      caseId: input.caseId,
+      eventType: "CASE_ALLOCATION_BREACHED",
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      operationId: input.operationId,
+    });
+
+    await tx
+      .insert(officerAttention)
+      .values({
+        caseId: input.caseId,
+        kind: "ACCEPTANCE_SLA_BREACH",
+        detail: input.detail,
+        operationId: input.operationId,
+      })
+      .onConflictDoNothing();
+
+    return { outcome: "PENDING" as const };
   });
 }

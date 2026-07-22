@@ -1,6 +1,6 @@
 # Case lifecycle
 
-This document describes the implemented Temporal Case path through PRS-142.
+This document describes the implemented Temporal Case path through PRS-144.
 Future lifecycle work remains specified in the Temporal orchestration plan.
 
 ## Implemented path
@@ -10,17 +10,24 @@ stateDiagram-v2
     [*] --> PENDING : Case opened
     PENDING --> ASSIGNED : Allocation Attempt committed
     ASSIGNED --> ASSIGNED : Current Attempt accepted and Appointment scheduled
+    ASSIGNED --> PENDING : Acceptance SLA breach
 ```
 
 Case status remains `ASSIGNED` after an Allocation Attempt is accepted. Work
 start, No Access, rescheduling, and completion are separate follow-up
 behaviours; acceptance does not start work.
 
+An Attempt that is not accepted before its Acceptance SLA deadline breaches:
+the Case returns to `PENDING`, one unresolved Officer Attention item is raised,
+and a replacement Attempt is appended to the same Assignment. That attention
+resolves when the replacement Attempt is accepted, or when the Case goes
+terminal.
+
 ## Case statuses
 
 | Status                   | Meaning on the Temporal path                                                   |
 | :----------------------- | :----------------------------------------------------------------------------- |
-| `PENDING`                | Case exists with no committed Allocation Attempt                               |
+| `PENDING`                | Case exists with no pending or accepted Allocation Attempt                     |
 | `ASSIGNED`               | A Contractor is allocated; it remains this status after appointment scheduling |
 | `IN_PROGRESS`            | Reserved for explicit work start                                               |
 | `PENDING_RESIDENT_INPUT` | Reserved for recovery such as No Access                                        |

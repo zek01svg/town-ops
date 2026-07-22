@@ -143,6 +143,7 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 export const OfficerAttentionKindSchema = z.enum([
   "NO_ELIGIBLE_CONTRACTOR",
   "ALLOCATION_FAILED",
+  "ACCEPTANCE_SLA_BREACH",
 ]);
 export type OfficerAttentionKind = z.infer<typeof OfficerAttentionKindSchema>;
 
@@ -519,6 +520,9 @@ export const CommitAllocationResultSchema = z.discriminatedUnion("outcome", [
   z.object({
     outcome: z.literal("REPLACEMENT_ATTEMPT_NOT_PENDING"),
   }),
+  z.object({
+    outcome: z.literal("OVERRIDE_REASON_REQUIRED"),
+  }),
 ]);
 export type CommitAllocationResult = z.infer<
   typeof CommitAllocationResultSchema
@@ -553,6 +557,7 @@ export const ManualAllocationResultSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("REPLACEMENT_ATTEMPT_NOT_PENDING") }),
   z.object({ kind: z.literal("CASE_TERMINAL") }),
   z.object({ kind: z.literal("ALLOCATION_FAILED"), reason: z.string() }),
+  z.object({ kind: z.literal("OVERRIDE_REASON_REQUIRED") }),
 ]);
 export type ManualAllocationResult = z.infer<
   typeof ManualAllocationResultSchema
@@ -587,3 +592,81 @@ export function canonicalAcceptAllocationPayload(
 export function postalSector(postalCode: string) {
   return postalCode.slice(0, 2);
 }
+
+// ─── Acceptance SLA breach and replacement (PRS-144) ───────────────────────
+
+/** The -10 penalty applied exactly once per breached Attempt. */
+export const ACCEPTANCE_SLA_BREACH_SCORE_DELTA = -10;
+
+export const BreachAllocationAttemptInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    attemptId: z.uuid(),
+    assignmentId: z.uuid(),
+    actorId: z.uuid(),
+    actorRole: z.string().min(1),
+  })
+  .strict();
+export type BreachAllocationAttemptInput = z.infer<
+  typeof BreachAllocationAttemptInputSchema
+>;
+
+/**
+ * Idempotent by the Attempt's own status, not by operationId — see the
+ * outcome table in the PRS-144 design. `BREACHED` and `ALREADY_BREACHED`
+ * both mean "the caller must still apply the penalty and replacement";
+ * `ACCEPTED`/`WITHDRAWN` mean "abort, this offer is no longer live".
+ */
+export const BreachAllocationAttemptResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({ outcome: z.literal("BREACHED") }),
+    z.object({ outcome: z.literal("ALREADY_BREACHED") }),
+    z.object({ outcome: z.literal("ACCEPTED") }),
+    z.object({ outcome: z.literal("WITHDRAWN") }),
+  ]
+);
+export type BreachAllocationAttemptResult = z.infer<
+  typeof BreachAllocationAttemptResultSchema
+>;
+
+export const RecordPerformanceEntryInputSchema = z
+  .object({
+    effectId: z.string().min(1),
+    contractorId: z.uuid(),
+    scoreDelta: z.int(),
+    reason: z.string().trim().min(1).max(1_000),
+  })
+  .strict();
+export type RecordPerformanceEntryInput = z.infer<
+  typeof RecordPerformanceEntryInputSchema
+>;
+
+export const PerformanceEntryDtoSchema = z.object({
+  id: z.uuid(),
+  contractorId: z.uuid(),
+  scoreDelta: z.int(),
+  reason: z.string(),
+  effectId: z.string().nullable(),
+  createdAt: z.string().nullable(),
+});
+export type PerformanceEntryDto = z.infer<typeof PerformanceEntryDtoSchema>;
+
+export const MarkCaseBreachedInputSchema = z
+  .object({
+    caseId: z.uuid(),
+    operationId: z.string().min(1),
+    attemptId: z.uuid(),
+    actorId: z.uuid(),
+    actorRole: z.string().min(1),
+    detail: z.string().trim().min(1).max(10_000),
+  })
+  .strict();
+export type MarkCaseBreachedInput = z.infer<typeof MarkCaseBreachedInputSchema>;
+
+export const MarkCaseBreachedResultSchema = z.object({
+  outcome: z.enum(["PENDING", "CASE_TERMINAL"]),
+});
+export type MarkCaseBreachedResult = z.infer<
+  typeof MarkCaseBreachedResultSchema
+>;

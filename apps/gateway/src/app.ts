@@ -4,6 +4,7 @@ import {
   WithStartWorkflowOperation,
   WorkflowIdConflictPolicy,
 } from "@temporalio/client";
+import type { WorkflowClient } from "@temporalio/client";
 import {
   AccountRoleSchema,
   AcceptAllocationInputSchema,
@@ -70,6 +71,10 @@ const authResponseSchema = z.object({
     role: z.string(),
   }),
 });
+// Atom responses arrive as `unknown`; this narrows them to an indexable shape
+// at runtime so the per-field reads below need no type assertion.
+const AtomRecordSchema = z.record(z.string(), z.unknown());
+
 const browserOrigins = new Set([
   "http://localhost:3001",
   "http://localhost:3002",
@@ -77,8 +82,14 @@ const browserOrigins = new Set([
 ]);
 
 type GatewayWorkflowClient = {
-  executeUpdateWithStart(updateName: string, options: any): Promise<unknown>;
-  start(workflowType: string, options: any): Promise<unknown>;
+  executeUpdateWithStart(
+    updateName: string,
+    options: Parameters<WorkflowClient["executeUpdateWithStart"]>[1]
+  ): Promise<unknown>;
+  start(
+    workflowType: string,
+    options: Parameters<WorkflowClient["start"]>[1]
+  ): Promise<unknown>;
 };
 
 type GatewayDependencies = {
@@ -153,12 +164,13 @@ function operationForCase(
   });
 }
 
-function isTemporalUnavailable(error: unknown) {
-  const candidate = error as { code?: unknown; message?: unknown };
+function isTemporalUnavailable(cause: unknown) {
+  if (typeof cause !== "object" || cause === null) return false;
+  const code = "code" in cause ? cause.code : undefined;
+  const message = "message" in cause ? cause.message : undefined;
   return (
-    candidate?.code === 14 ||
-    (typeof candidate?.message === "string" &&
-      /unavailable|econnrefused/i.test(candidate.message))
+    code === 14 ||
+    (typeof message === "string" && /unavailable|econnrefused/i.test(message))
   );
 }
 
@@ -176,7 +188,7 @@ function withTimeout<T>(promise: Promise<T>, milliseconds: number) {
 }
 
 function toCaseDto(record: unknown): CaseDto {
-  const source = record as Record<string, unknown>;
+  const source = AtomRecordSchema.parse(record);
   return CaseDtoSchema.parse({
     ...source,
     category: String(source.category).toUpperCase(),
@@ -194,7 +206,9 @@ type CaseAssignment = {
 };
 
 function toAppointmentDto(record: unknown): AppointmentDto | null {
-  const source = record as Record<string, unknown>;
+  const parsed = AtomRecordSchema.safeParse(record);
+  if (!parsed.success) return null;
+  const source = parsed.data;
   const appointment = AppointmentDtoSchema.safeParse({
     ...source,
     status: String(source.status).toUpperCase(),
@@ -1031,6 +1045,15 @@ export function createGatewayApp({
       return error(c, 409, {
         code: "REPLACEMENT_ATTEMPT_NOT_PENDING",
         message: "The named Allocation Attempt is not pending",
+        retryable: false,
+        operation,
+      });
+    }
+    if (result.kind === "OVERRIDE_REASON_REQUIRED") {
+      return error(c, 400, {
+        code: "OVERRIDE_REASON_REQUIRED",
+        message:
+          "A reason is required to reassign a Contractor who already breached on this Case",
         retryable: false,
         operation,
       });
