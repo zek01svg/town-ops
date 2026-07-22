@@ -12,7 +12,7 @@ export default defineConfig({
   // 3. Rule Categories
   categories: {
     correctness: "error",
-    suspicious: "warn",
+    suspicious: "error",
     perf: "warn",
   },
 
@@ -37,8 +37,8 @@ export default defineConfig({
     "no-debugger": "error",
 
     // Type-aware rules (Enabled via options.typeAware)
-    "typescript/no-floating-promises": "warn",
-    "typescript/no-misused-promises": "warn",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
 
     // Unicorn has great best practices but can be overly opinionated out of the box.
     "unicorn/no-null": "off",
@@ -57,7 +57,7 @@ export default defineConfig({
       { allowConstantLoopConditions: true },
     ],
     "typescript/no-non-null-assertion": "error",
-    "typescript/no-explicit-any": "warn",
+    "typescript/no-explicit-any": "error",
 
     // Import rules
     "import/no-duplicates": "error",
