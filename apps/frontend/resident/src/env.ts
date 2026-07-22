@@ -12,6 +12,10 @@ export const env: Env = {
     window.__env?.VITE_AUTH_URL ??
     import.meta.env.VITE_AUTH_URL ??
     "http://localhost:5008",
+  VITE_GATEWAY_URL:
+    window.__env?.VITE_GATEWAY_URL ??
+    import.meta.env.VITE_GATEWAY_URL ??
+    "http://localhost:6010",
   VITE_RESCHEDULE_JOB_URL:
     window.__env?.VITE_RESCHEDULE_JOB_URL ??
     import.meta.env.VITE_RESCHEDULE_JOB_URL ??

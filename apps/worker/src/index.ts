@@ -1,10 +1,11 @@
 import { fileURLToPath } from "node:url";
 
 import { NativeConnection, Worker } from "@temporalio/worker";
-import { CASE_TASK_QUEUE } from "@townops/orchestration-contract";
+import { ORCHESTRATION_TASK_QUEUE } from "@townops/orchestration-contract";
 import { z } from "zod/v4";
 
 import { createOpenCaseActivity } from "./activities/open-case.ts";
+import { createProvisionResidentActivity } from "./activities/provision-resident.ts";
 
 const config = z
   .object({
@@ -22,14 +23,18 @@ const connection = await NativeConnection.connect({
 const worker = await Worker.create({
   connection,
   namespace: config.TEMPORAL_NAMESPACE,
-  taskQueue: CASE_TASK_QUEUE,
+  taskQueue: ORCHESTRATION_TASK_QUEUE,
   workflowsPath: fileURLToPath(
-    new URL("./workflows/case-workflow.ts", import.meta.url)
+    new URL("./workflows/index.ts", import.meta.url)
   ),
   activities: {
     openCase: createOpenCaseActivity({
       residentAtomUrl: config.RESIDENT_ATOM_URL,
       caseAtomUrl: config.CASE_ATOM_URL,
+      workerServiceToken: config.WORKER_SERVICE_TOKEN,
+    }),
+    provisionResidentProfile: createProvisionResidentActivity({
+      residentAtomUrl: config.RESIDENT_ATOM_URL,
       workerServiceToken: config.WORKER_SERVICE_TOKEN,
     }),
   },

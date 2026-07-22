@@ -221,6 +221,7 @@ services:
     environment:
       PORT: 5008
       DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
     ports:
@@ -265,6 +266,8 @@ services:
         condition: service_started
       case-atom:
         condition: service_started
+      resident-atom:
+        condition: service_started
       temporal-namespace:
         condition: service_completed_successfully
     environment:
@@ -273,6 +276,8 @@ services:
       TEMPORAL_NAMESPACE: default
       JWKS_URI: http://auth-atom:5001/api/auth/jwks
       CASE_ATOM_URL: http://case-atom:5005
+      RESIDENT_ATOM_URL: http://resident-atom:5008
+      AUTH_ATOM_URL: http://auth-atom:5001
     ports:
       - "6010:6010"
 
@@ -412,6 +417,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
+      VITE_GATEWAY_URL: http://localhost:6010
     ports:
       - "3003:3000"
 

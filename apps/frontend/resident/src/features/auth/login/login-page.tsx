@@ -23,24 +23,37 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
   const [error, setError] = useState<string | null>(null);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const form = useForm({
     defaultValues: {
+      name: "",
       email: "",
       password: "",
     },
     onSubmit: async ({ value }) => {
       try {
         setError(null);
-        const signInRes = await auth.signIn.email({
-          email: value.email,
-          password: value.password,
-        });
-        if (signInRes.error) {
-          setError(signInRes.error.message ?? "Login failed.");
+        // Signup never sends a role: the Gateway and auth atom always create a
+        // Resident Account, and starting provisioning is the Gateway's job.
+        const authRes = isSignUp
+          ? await auth.signUp.email({
+              name: value.name,
+              email: value.email,
+              password: value.password,
+            })
+          : await auth.signIn.email({
+              email: value.email,
+              password: value.password,
+            });
+        if (authRes.error) {
+          setError(
+            authRes.error.message ??
+              (isSignUp ? "Sign up failed." : "Login failed.")
+          );
           return;
         }
-        const tokenRes = await fetch(`${env.VITE_AUTH_URL}/api/auth/token`, {
+        const tokenRes = await fetch(`${env.VITE_GATEWAY_URL}/api/auth/token`, {
           method: "GET",
           credentials: "include",
         });
@@ -89,12 +102,40 @@ export function LoginForm({
               Welcome to TownOps
             </h1>
             <FieldDescription className="text-muted-foreground">
-              Enter your credentials to access your dashboard workspace.
+              {isSignUp
+                ? "Create your Resident account to report maintenance work."
+                : "Enter your credentials to access your dashboard workspace."}
             </FieldDescription>
           </div>
 
           {error && (
             <p className="text-destructive text-sm text-center">{error}</p>
+          )}
+
+          {isSignUp && (
+            <form.Field
+              name="name"
+              children={(field) => (
+                <Field orientation="vertical">
+                  <FieldLabel htmlFor={field.name} className="text-foreground">
+                    Full name
+                  </FieldLabel>
+                  <FieldContent>
+                    <Input
+                      id={field.name}
+                      name={field.name}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      type="text"
+                      placeholder="Jane Tan"
+                      className="bg-background border-border focus-visible:ring-indigo-500"
+                      required
+                    />
+                  </FieldContent>
+                </Field>
+              )}
+            />
           )}
 
           <form.Field
@@ -149,8 +190,22 @@ export function LoginForm({
               type="submit"
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
             >
-              Login
+              {isSignUp ? "Create account" : "Login"}
             </Button>
+            <FieldDescription className="text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setIsSignUp((current) => !current);
+                }}
+                className="text-indigo-400 hover:underline"
+              >
+                {isSignUp
+                  ? "Already have an account? Sign in"
+                  : "New here? Create a Resident account"}
+              </button>
+            </FieldDescription>
           </Field>
         </FieldGroup>
       </form>

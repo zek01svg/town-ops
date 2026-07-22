@@ -9,7 +9,7 @@ import {
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import {
-  CASE_TASK_QUEUE,
+  ORCHESTRATION_TASK_QUEUE,
   WORKFLOW_NAMES,
 } from "@townops/orchestration-contract";
 import type {
@@ -70,7 +70,7 @@ describe("CaseWorkflow", () => {
     const calls: CreateCaseActivityInput[] = [];
     const caseId = randomUUID();
     const workflowId = `case/${caseId}`;
-    const taskQueue = `${CASE_TASK_QUEUE}-${randomUUID()}`;
+    const taskQueue = `${ORCHESTRATION_TASK_QUEUE}-${randomUUID()}`;
     const worker = await Worker.create({
       connection: env.nativeConnection,
       taskQueue,

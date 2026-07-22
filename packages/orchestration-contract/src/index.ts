@@ -37,7 +37,19 @@ export const OpenCaseInputSchema = z
 
 export type OpenCaseInput = z.infer<typeof OpenCaseInputSchema>;
 
-export const ActorRoleSchema = z.literal("OFFICER");
+export const ResidentOpenCaseInputSchema = OpenCaseInputSchema.omit({
+  residentId: true,
+}).strict();
+
+export type ResidentOpenCaseInput = z.infer<typeof ResidentOpenCaseInputSchema>;
+
+export const AccountRoleSchema = z.enum(["RESIDENT", "OFFICER", "CONTRACTOR"]);
+
+export type AccountRole = z.infer<typeof AccountRoleSchema>;
+
+export const ActorRoleSchema = z.enum(["RESIDENT", "OFFICER"]);
+
+export type ActorRole = z.infer<typeof ActorRoleSchema>;
 
 export const CreateCaseActivityInputSchema = z.object({
   caseId: z.uuid(),
@@ -107,12 +119,56 @@ export const ApiErrorSchema = z.object({
 
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 
-export const WORKFLOW_NAMES = { case: "CaseWorkflow" } as const;
+export const ProvisionResidentInputSchema = z
+  .object({
+    accountId: z.uuid(),
+    fullName: z.string().trim().min(1).max(200),
+    email: z.email(),
+  })
+  .strict();
+
+export type ProvisionResidentInput = z.infer<
+  typeof ProvisionResidentInputSchema
+>;
+
+export const ResidentProfileDtoSchema = z.object({
+  id: z.uuid(),
+  fullName: z.string(),
+  email: z.string(),
+});
+
+export type ResidentProfileDto = z.infer<typeof ResidentProfileDtoSchema>;
+
+export const ProvisioningStateSchema = z.enum([
+  "PROVISIONED",
+  "PROVISIONING",
+  "NOT_APPLICABLE",
+]);
+
+export const MeDtoSchema = z.object({
+  accountId: z.uuid(),
+  role: AccountRoleSchema,
+  residentId: z.uuid().nullable(),
+  contractorId: z.string().nullable(),
+  provisioningState: ProvisioningStateSchema,
+  canOpenCases: z.boolean(),
+});
+
+export type MeDto = z.infer<typeof MeDtoSchema>;
+
+export const WORKFLOW_NAMES = {
+  case: "CaseWorkflow",
+  residentProvisioning: "ResidentProvisioningWorkflow",
+} as const;
 export const UPDATE_NAMES = { openCase: "openCase" } as const;
-export const CASE_TASK_QUEUE = "townops-case";
+export const ORCHESTRATION_TASK_QUEUE = "townops-orchestration";
 
 export function caseWorkflowId(caseId: string) {
   return `case/${caseId}`;
+}
+
+export function residentProvisioningWorkflowId(accountId: string) {
+  return `resident-provisioning/${accountId}`;
 }
 
 export function canonicalOpenCasePayload(input: OpenCaseInput) {

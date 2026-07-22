@@ -1,10 +1,12 @@
 import { Scalar } from "@scalar/hono-api-reference";
+import { ProvisionResidentInputSchema } from "@townops/orchestration-contract";
 import {
   logger,
   honoLogger,
   corsOrigins,
   initSentry,
   captureHonoException,
+  workerAuth,
 } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -189,6 +191,22 @@ const residentRouter = new Hono()
     }
   );
 
+const internalResidentsRouter = new Hono()
+  .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
+  .post("/", validator("json", ProvisionResidentInputSchema), async (c) => {
+    const body = c.req.valid("json");
+    const resident = await residentService.ensureResidentProfile(body);
+
+    if (!resident) {
+      return c.json(
+        { error: "Resident email is already linked to another Account" },
+        409
+      );
+    }
+
+    return c.json({ resident }, 201);
+  });
+
 const residentApiRoutes = app
   .get(
     "/health",
@@ -211,6 +229,7 @@ const residentApiRoutes = app
     }
   )
   .route("/api/residents", residentRouter)
+  .route("/internal/residents", internalResidentsRouter)
   .get(
     "/openapi",
     openAPIRouteHandler(app, {

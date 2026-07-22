@@ -1,3 +1,4 @@
+import type { ProvisionResidentInput } from "@townops/orchestration-contract";
 import { eq } from "drizzle-orm";
 
 import db from "./database/db";
@@ -36,4 +37,32 @@ export async function updateResident(id: string, values: any) {
     .where(eq(profiles.id, id))
     .returning();
   return updated;
+}
+
+/**
+ * Idempotent write for the Resident Provisioning workflow. The profile ID
+ * always equals the Account ID, so a retried Activity converges on the same
+ * row instead of creating a duplicate. The email unique constraint is also
+ * absorbed by the conflict-do-nothing — if the insert is silently skipped
+ * and no row owns the Account ID either, the email already belongs to a
+ * different Account, and this returns null.
+ */
+export async function ensureResidentProfile(input: ProvisionResidentInput) {
+  const [inserted] = await db
+    .insert(profiles)
+    .values({
+      id: input.accountId,
+      fullName: input.fullName,
+      email: input.email,
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  if (inserted) return inserted;
+
+  const [existing] = await db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.id, input.accountId));
+  return existing ?? null;
 }

@@ -5,19 +5,25 @@ import {
   WorkflowIdConflictPolicy,
 } from "@temporalio/client";
 import {
-  CASE_TASK_QUEUE,
+  AccountRoleSchema,
   CaseDtoSchema,
   canonicalOpenCasePayload,
   caseWorkflowId,
+  MeDtoSchema,
   OpenCaseInputSchema,
   OpenCaseResultSchema,
   OperationSchema,
+  ORCHESTRATION_TASK_QUEUE,
+  residentProvisioningWorkflowId,
+  ResidentOpenCaseInputSchema,
   UPDATE_NAMES,
   WORKFLOW_NAMES,
 } from "@townops/orchestration-contract";
 import type {
+  AccountRole,
   ApiError,
   CaseDto,
+  OpenCaseInput,
   OpenCaseResult,
   Operation,
 } from "@townops/orchestration-contract";
@@ -28,6 +34,17 @@ import { z } from "zod/v4";
 
 const idempotencyKeySchema = z.uuid();
 const caseAtomResponseSchema = z.object({ cases: z.array(z.unknown()) });
+const residentAtomResponseSchema = z.object({
+  residents: z.array(z.unknown()),
+});
+const authResponseSchema = z.object({
+  user: z.object({
+    id: z.uuid(),
+    name: z.string(),
+    email: z.string(),
+    role: z.string(),
+  }),
+});
 const browserOrigins = new Set([
   "http://localhost:3001",
   "http://localhost:3002",
@@ -36,18 +53,35 @@ const browserOrigins = new Set([
 
 type GatewayWorkflowClient = {
   executeUpdateWithStart(updateName: string, options: any): Promise<unknown>;
+  start(workflowType: string, options: any): Promise<unknown>;
 };
 
 type GatewayDependencies = {
   workflowClient: GatewayWorkflowClient;
   caseAtomUrl: string;
+  residentAtomUrl: string;
+  authAtomUrl: string;
   authenticate?: MiddlewareHandler;
   fetchImpl?: typeof fetch;
   updateTimeoutMs?: number;
 };
 
-type JwtPayload = { sub?: unknown; role?: unknown };
+type JwtPayload = {
+  sub?: unknown;
+  role?: unknown;
+  name?: unknown;
+  email?: unknown;
+  contractorId?: unknown;
+};
 type GatewayEnv = { Variables: { jwtPayload: JwtPayload } };
+
+type Actor = {
+  accountId: string;
+  role: AccountRole;
+  name: string;
+  email: string;
+  contractorId: string | null;
+};
 
 function deterministicUuid(value: string) {
   const bytes = createHash("sha256").update(value).digest().subarray(0, 16);
@@ -116,9 +150,97 @@ function toCaseDto(record: unknown): CaseDto {
   });
 }
 
+/**
+ * Resolves the authenticated Actor from the JWT payload the `authenticate`
+ * middleware attaches to the request context. Legacy rows still carry
+ * lowercase roles, so the role claim is uppercased defensively before being
+ * validated against the fixed Account Role enum. Returns undefined when the
+ * token cannot back a usable Actor — a missing/invalid subject or an
+ * unrecognized role.
+ */
+function resolveActor(jwtPayload: JwtPayload | undefined): Actor | undefined {
+  if (!jwtPayload) return undefined;
+
+  const accountId = z.uuid().safeParse(jwtPayload.sub);
+  const role = AccountRoleSchema.safeParse(
+    typeof jwtPayload.role === "string"
+      ? jwtPayload.role.toUpperCase()
+      : jwtPayload.role
+  );
+  if (!accountId.success || !role.success) return undefined;
+
+  return {
+    accountId: accountId.data,
+    role: role.data,
+    name: typeof jwtPayload.name === "string" ? jwtPayload.name : "",
+    email: typeof jwtPayload.email === "string" ? jwtPayload.email : "",
+    contractorId:
+      typeof jwtPayload.contractorId === "string"
+        ? jwtPayload.contractorId
+        : null,
+  };
+}
+
+type ResidentProfileLookup =
+  | { status: "FOUND" }
+  | { status: "ABSENT" }
+  | { status: "UNAVAILABLE" };
+
+/**
+ * Looks up whether a Resident profile already exists for an Account. Shared
+ * by `/api/me` and Case opening so both agree on found / absent / unreachable
+ * without duplicating the Resident atom call.
+ */
+async function lookupResidentProfile(
+  residentAtomUrl: string,
+  fetchImpl: typeof fetch,
+  accountId: string
+): Promise<ResidentProfileLookup> {
+  let response: Response;
+  try {
+    response = await fetchImpl(`${residentAtomUrl}/api/residents/${accountId}`);
+  } catch {
+    return { status: "UNAVAILABLE" };
+  }
+  if (!response.ok) return { status: "UNAVAILABLE" };
+
+  const parsed = residentAtomResponseSchema.safeParse(await response.json());
+  if (!parsed.success || parsed.data.residents.length === 0) {
+    return { status: "ABSENT" };
+  }
+  return { status: "FOUND" };
+}
+
+/**
+ * Fires a reconciliation attempt at the Resident Provisioning workflow.
+ * Always a best-effort nudge: the caller never awaits it, and a rejection
+ * must never escape, since provisioning is not the caller's critical path.
+ */
+function ensureResidentProvisioning(
+  workflowClient: GatewayWorkflowClient,
+  actor: { accountId: string; name: string; email: string }
+) {
+  workflowClient
+    .start(WORKFLOW_NAMES.residentProvisioning, {
+      workflowId: residentProvisioningWorkflowId(actor.accountId),
+      taskQueue: ORCHESTRATION_TASK_QUEUE,
+      args: [
+        {
+          accountId: actor.accountId,
+          fullName: actor.name,
+          email: actor.email,
+        },
+      ],
+      workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+    })
+    .catch(() => undefined);
+}
+
 export function createGatewayApp({
   workflowClient,
   caseAtomUrl,
+  residentAtomUrl,
+  authAtomUrl,
   authenticate,
   fetchImpl = fetch,
   updateTimeoutMs = 20_000,
@@ -131,26 +253,146 @@ export function createGatewayApp({
       origin: (origin) => (browserOrigins.has(origin) ? origin : undefined),
       allowHeaders: ["Authorization", "Content-Type", "Idempotency-Key"],
       allowMethods: ["GET", "POST", "OPTIONS"],
+      credentials: true,
+      exposeHeaders: ["Retry-After"],
     })
   );
-  if (authenticate) app.use("/api/*", authenticate);
 
-  app.post("/api/cases", async (c) => {
-    const jwtPayload = c.get("jwtPayload") as JwtPayload | undefined;
-    if (!jwtPayload || jwtPayload.role !== "officer") {
-      return error(c, 403, {
-        code: "FORBIDDEN",
-        message: "Officer access is required",
-        retryable: false,
+  app.all("/api/auth/*", async (c) => {
+    const url = new URL(c.req.url);
+    const target = `${authAtomUrl}${url.pathname}${url.search}`;
+
+    const headers = new Headers();
+    for (const name of ["content-type", "authorization", "cookie"]) {
+      const value = c.req.header(name);
+      if (value) headers.set(name, value);
+    }
+
+    const method = c.req.method;
+    const body =
+      method === "GET" || method === "HEAD" ? undefined : await c.req.text();
+
+    let upstream: Response;
+    try {
+      upstream = await fetchImpl(target, { method, headers, body });
+    } catch {
+      return error(c, 503, {
+        code: "AUTH_ATOM_UNAVAILABLE",
+        message: "Auth service is unavailable",
+        retryable: true,
       });
     }
-    if (
-      typeof jwtPayload.sub !== "string" ||
-      !z.uuid().safeParse(jwtPayload.sub).success
-    ) {
+
+    const responseText = await upstream.text();
+
+    if (upstream.ok && /\/sign-(up|in)\b/.test(url.pathname)) {
+      try {
+        const parsed = authResponseSchema.safeParse(JSON.parse(responseText));
+        if (
+          parsed.success &&
+          parsed.data.user.role.toUpperCase() === "RESIDENT"
+        ) {
+          ensureResidentProvisioning(workflowClient, {
+            accountId: parsed.data.user.id,
+            name: parsed.data.user.name,
+            email: parsed.data.user.email,
+          });
+        }
+      } catch {
+        // Best-effort — an unparsable body never blocks the proxied response.
+      }
+    }
+
+    const responseHeaders = new Headers();
+    const contentType = upstream.headers.get("content-type");
+    if (contentType) responseHeaders.set("content-type", contentType);
+    for (const cookie of upstream.headers.getSetCookie()) {
+      responseHeaders.append("set-cookie", cookie);
+    }
+
+    return new Response(responseText, {
+      status: upstream.status,
+      headers: responseHeaders,
+    });
+  });
+
+  if (authenticate) app.use("/api/*", authenticate);
+
+  app.get("/api/me", async (c) => {
+    const actor = resolveActor(c.get("jwtPayload"));
+    if (!actor) {
       return error(c, 401, {
         code: "INVALID_TOKEN",
         message: "Token subject is invalid",
+        retryable: false,
+      });
+    }
+
+    if (actor.role !== "RESIDENT") {
+      return c.json({
+        data: MeDtoSchema.parse({
+          accountId: actor.accountId,
+          role: actor.role,
+          residentId: null,
+          contractorId: actor.contractorId,
+          provisioningState: "NOT_APPLICABLE",
+          canOpenCases: actor.role === "OFFICER",
+        }),
+      });
+    }
+
+    const lookup = await lookupResidentProfile(
+      residentAtomUrl,
+      fetchImpl,
+      actor.accountId
+    );
+    if (lookup.status === "UNAVAILABLE") {
+      return error(c, 503, {
+        code: "RESIDENT_ATOM_UNAVAILABLE",
+        message: "Resident service is unavailable",
+        retryable: true,
+      });
+    }
+
+    if (lookup.status === "ABSENT") {
+      ensureResidentProvisioning(workflowClient, actor);
+      return c.json({
+        data: MeDtoSchema.parse({
+          accountId: actor.accountId,
+          role: actor.role,
+          residentId: null,
+          contractorId: actor.contractorId,
+          provisioningState: "PROVISIONING",
+          canOpenCases: false,
+        }),
+      });
+    }
+
+    return c.json({
+      data: MeDtoSchema.parse({
+        accountId: actor.accountId,
+        role: actor.role,
+        residentId: actor.accountId,
+        contractorId: actor.contractorId,
+        provisioningState: "PROVISIONED",
+        canOpenCases: true,
+      }),
+    });
+  });
+
+  app.post("/api/cases", async (c) => {
+    const actor = resolveActor(c.get("jwtPayload"));
+    if (!actor) {
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
+        retryable: false,
+      });
+    }
+    if (actor.role !== "RESIDENT" && actor.role !== "OFFICER") {
+      return error(c, 403, {
+        code: "FORBIDDEN",
+        message: "Resident or Officer access is required",
         retryable: false,
       });
     }
@@ -166,27 +408,64 @@ export function createGatewayApp({
       });
     }
 
-    const body = OpenCaseInputSchema.safeParse(
-      await c.req.json().catch(() => undefined)
-    );
-    if (!body.success) {
-      return error(c, 400, {
-        code: "VALIDATION_ERROR",
-        message: "Case opening input is invalid",
-        retryable: false,
-        details: body.error.flatten(),
-      });
+    const json = await c.req.json().catch(() => undefined);
+    let input: OpenCaseInput;
+
+    if (actor.role === "OFFICER") {
+      const body = OpenCaseInputSchema.safeParse(json);
+      if (!body.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Case opening input is invalid",
+          retryable: false,
+          details: body.error.flatten(),
+        });
+      }
+      input = body.data;
+    } else {
+      const body = ResidentOpenCaseInputSchema.safeParse(json);
+      if (!body.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Case opening input is invalid",
+          retryable: false,
+          details: body.error.flatten(),
+        });
+      }
+
+      const lookup = await lookupResidentProfile(
+        residentAtomUrl,
+        fetchImpl,
+        actor.accountId
+      );
+      if (lookup.status === "UNAVAILABLE") {
+        return error(c, 503, {
+          code: "RESIDENT_ATOM_UNAVAILABLE",
+          message: "Resident service is unavailable",
+          retryable: true,
+        });
+      }
+      if (lookup.status === "ABSENT") {
+        ensureResidentProvisioning(workflowClient, actor);
+        return error(c, 409, {
+          code: "RESIDENT_PROFILE_PROVISIONING",
+          message: "Resident profile is still being provisioned",
+          retryable: true,
+        });
+      }
+
+      input = { ...body.data, residentId: actor.accountId };
     }
 
     const operation = operationFor(
       idempotencyKey.data,
-      canonicalOpenCasePayload(body.data)
+      canonicalOpenCasePayload(input)
     );
     const startWorkflowOperation = new WithStartWorkflowOperation(
       WORKFLOW_NAMES.case,
       {
         workflowId: operation.workflowId,
-        taskQueue: CASE_TASK_QUEUE,
+        taskQueue: ORCHESTRATION_TASK_QUEUE,
         args: [{ caseId: operation.caseId }],
         workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
       }
@@ -201,9 +480,9 @@ export function createGatewayApp({
               operation.idempotencyKey.length + 1
             ),
             operationId: operation.updateId,
-            actorId: jwtPayload.sub,
-            actorRole: "OFFICER",
-            input: body.data,
+            actorId: actor.accountId,
+            actorRole: actor.role,
+            input,
           },
         ],
         updateId: operation.updateId,
@@ -259,14 +538,22 @@ export function createGatewayApp({
   });
 
   app.get("/api/cases/:caseId", async (c) => {
-    const jwtPayload = c.get("jwtPayload") as JwtPayload | undefined;
-    if (!jwtPayload || jwtPayload.role !== "officer") {
-      return error(c, 403, {
-        code: "FORBIDDEN",
-        message: "Officer access is required",
+    const actor = resolveActor(c.get("jwtPayload"));
+    if (!actor) {
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
         retryable: false,
       });
     }
+    if (actor.role !== "RESIDENT" && actor.role !== "OFFICER") {
+      return error(c, 403, {
+        code: "FORBIDDEN",
+        message: "Resident or Officer access is required",
+        retryable: false,
+      });
+    }
+
     const caseId = z.uuid().safeParse(c.req.param("caseId"));
     if (!caseId.success) {
       return error(c, 400, {
@@ -302,7 +589,17 @@ export function createGatewayApp({
         retryable: false,
       });
     }
-    return c.json({ data: toCaseDto(parsed.data.cases[0]) });
+
+    const caseDto = toCaseDto(parsed.data.cases[0]);
+    if (actor.role === "RESIDENT" && caseDto.residentId !== actor.accountId) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+      });
+    }
+
+    return c.json({ data: caseDto });
   });
 
   return app;

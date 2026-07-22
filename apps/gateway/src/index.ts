@@ -12,6 +12,8 @@ const config = z
     TEMPORAL_NAMESPACE: z.string().min(1).default("default"),
     JWKS_URI: z.url(),
     CASE_ATOM_URL: z.url().default("http://localhost:5005"),
+    RESIDENT_ATOM_URL: z.url().default("http://localhost:5008"),
+    AUTH_ATOM_URL: z.url().default("http://localhost:5001"),
   })
   .parse(process.env);
 
@@ -38,8 +40,12 @@ const app = createGatewayApp({
         updateName,
         options
       ),
+    start: async (workflowType, options) =>
+      (await getTemporalWorkflowClient()).start(workflowType, options),
   },
   caseAtomUrl: config.CASE_ATOM_URL,
+  residentAtomUrl: config.RESIDENT_ATOM_URL,
+  authAtomUrl: config.AUTH_ATOM_URL,
   authenticate: jwk({ jwks_uri: config.JWKS_URI, alg: ["EdDSA"] }),
 });
 

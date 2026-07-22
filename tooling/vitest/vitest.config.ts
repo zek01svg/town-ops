@@ -28,6 +28,11 @@ export const baseConfig = defineConfig({
   },
 });
 
+// Detects a `vitest run tests/unit` invocation so atoms whose unit suite
+// mocks the database can skip the Testcontainers-backed globalSetup that the
+// full (Docker-requiring) suite needs.
+export const isUnitRun = process.argv.some((arg) => arg.includes("tests/unit"));
+
 const vitestConfig = mergeConfig(
   baseConfig,
   defineProject({

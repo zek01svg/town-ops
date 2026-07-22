@@ -33,16 +33,23 @@ export const auth = betterAuth({
     "http://localhost:5174",
     "http://localhost:5175",
   ],
+  /**
+   * `input: false` on both fields means public sign-up can never elect
+   * Officer or Contractor status, or link a Contractor ID, itself — those
+   * are seeded internally only.
+   */
   user: {
     additionalFields: {
       role: {
         type: "string",
-        input: true, // dev: allow role to be set at sign-up for seeding
+        input: false,
+        required: true,
+        defaultValue: "RESIDENT",
       },
       contractorId: {
         type: "string",
         fieldName: "contractor_id",
-        input: true, // contractor's OutSystems UUID
+        input: false,
         required: false,
       },
     },

@@ -13,6 +13,7 @@
     "clean": "rimraf node_modules",
     "lint": "bun run oxlint -c ../../../tooling/oxlint/oxlint.config.ts",
     "test": "bun run load-env -- vitest run tests",
+    "test:unit": "bun run load-env -- vitest run tests/unit",
     "load-env": "dotenv -e .env",
     "db:pull": "bun run load-env -- bun drizzle-kit pull",
     "db:push": "bun run load-env -- bun drizzle-kit push",

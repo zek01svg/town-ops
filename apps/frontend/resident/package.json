@@ -30,6 +30,7 @@
     "@townops/close-case-composite": "workspace:*",
     "@townops/handle-breach-composite": "workspace:*",
     "@townops/open-case-composite": "workspace:*",
+    "@townops/orchestration-contract": "workspace:*",
     "@townops/reschedule-job-composite": "workspace:*",
     "@townops/shared-ts": "workspace:*",
     "@townops/ui": "workspace:*",

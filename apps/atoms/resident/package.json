@@ -12,6 +12,7 @@
     "build:docker": "bun run build && docker build -t resident-atom .",
     "clean": "rimraf node_modules",
     "test": "bun run load-env -- vitest run tests",
+    "test:unit": "bun run load-env -- vitest run tests/unit",
     "load-env": "dotenv -e .env",
     "db:pull": "bun run load-env -- bun drizzle-kit pull",
     "db:push": "bun run load-env -- bun drizzle-kit push",
@@ -20,6 +21,7 @@
   },
   "dependencies": {
     "@t3-oss/env-core": "catalog:",
+    "@townops/orchestration-contract": "workspace:*",
     "@townops/shared-ts": "workspace:*",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "catalog:",

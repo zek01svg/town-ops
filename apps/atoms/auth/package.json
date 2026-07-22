@@ -12,6 +12,7 @@
     "test": "bun run load-env -- vitest run tests/unit",
     "load-env": "dotenv -e .env",
     "db:pull": "bun run load-env -- bun drizzle-kit pull",
+    "db:backfill-roles": "bun run load-env -- psql $DATABASE_URL -f scripts/backfill-roles.sql",
     "db:push": "bun run load-env -- bun drizzle-kit push",
     "db:generate": "bun run load-env -- bun drizzle-kit generate",
     "auth:generate": "pnpm dlx auth@latest generate",

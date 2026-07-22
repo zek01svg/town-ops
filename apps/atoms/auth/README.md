@@ -27,12 +27,14 @@ Once the server is running, visit:
 
 ## 💻 **Development Commands**
 
-| Command                | Description                                                                    |
-| :--------------------- | :----------------------------------------------------------------------------- |
-| `bun run dev`          | Starts server with `--hot` reloading addressing workspace filters.             |
-| `bun run build`        | Bundles exact index payload into a standalone `build/index.js`.                |
-| `bun run test:unit`    | Executes isolated endpoints verification suite with coverage.                  |
-| `bun run build:docker` | Chained script that bundles locally, then builds optimized single-liner image. |
+| Command                     | Description                                                                                                                                                             |
+| :-------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run dev`               | Starts server with `--hot` reloading addressing workspace filters.                                                                                                      |
+| `bun run build`             | Bundles exact index payload into a standalone `build/index.js`.                                                                                                         |
+| `bun run test:unit`         | Executes isolated endpoints verification suite with coverage.                                                                                                           |
+| `bun run build:docker`      | Chained script that bundles locally, then builds optimized single-liner image.                                                                                          |
+| `bun run db:backfill-roles` | Normalizes legacy `role` values (NULL/lowercase) before `db:push`. Local/dev only — run once, before `db:push` (production cutover PRS-154 uses a fresh reset instead). |
+| `bun run db:push`           | Applies `src/database/schema.ts` to the database. Run `db:backfill-roles` first on any pre-existing database.                                                           |
 
 ---
 

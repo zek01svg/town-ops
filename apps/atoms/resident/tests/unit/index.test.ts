@@ -7,6 +7,7 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
   // Set mock environment variables before running tests
   process.env.DATABASE_URL = "postgres://root:password@localhost:5432/testdb";
   process.env.PORT = "5002"; // Distinct from case atom
+  process.env.WORKER_SERVICE_TOKEN = "a".repeat(32);
   process.env.JWT_SECRET = "supersecret";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
@@ -17,6 +18,7 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
     set: vi.fn().mockReturnThis(),
     values: vi.fn().mockReturnThis(),
     returning: vi.fn().mockReturnThis(),
+    onConflictDoNothing: vi.fn().mockReturnThis(),
     // eslint-disable-next-line unicorn/no-thenable
     then: vi.fn(),
   };
@@ -189,6 +191,74 @@ describe("Resident Atom API Endpoints", () => {
       });
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe("POST /internal/residents", () => {
+    // WORKER_SERVICE_TOKEN is set to "a".repeat(32) in the hoisted env setup
+    // above -- these exercise `workerAuth`'s real `timingSafeEqual` branch
+    // (packages/shared-ts/src/worker-auth.ts), not just the missing-header
+    // 401 already covered above.
+    const correctToken = "a".repeat(32);
+    const provisionPayload = {
+      accountId: VALID_UUID_1,
+      fullName: "Rae Resident",
+      email: "rae@example.com",
+    };
+
+    it("rejects requests without the Worker service identity", async () => {
+      const res = await app.request("/internal/residents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects a same-length but incorrect Bearer token", async () => {
+      const res = await app.request("/internal/residents", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${"b".repeat(32)}`,
+        },
+        body: JSON.stringify(provisionPayload),
+      });
+
+      expect(res.status).toBe(401);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("accepts the correct Worker service token and provisions the profile", async () => {
+      mockQuery.then.mockImplementationOnce((resolve) =>
+        resolve([
+          {
+            id: provisionPayload.accountId,
+            fullName: provisionPayload.fullName,
+            email: provisionPayload.email,
+          },
+        ])
+      );
+
+      const res = await app.request("/internal/residents", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${correctToken}`,
+        },
+        body: JSON.stringify(provisionPayload),
+      });
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({
+        resident: {
+          id: provisionPayload.accountId,
+          fullName: provisionPayload.fullName,
+          email: provisionPayload.email,
+        },
+      });
+      expect(mockDb.insert).toHaveBeenCalled();
     });
   });
 });
