@@ -18,6 +18,22 @@ services:
       timeout: 5s
       retries: 10
 
+  # One physical instance, one database per atom. Creates the databases and
+  # their extensions before the atoms start (mirrors temporal-schema).
+  postgres-init:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: townops
+      PGPASSWORD: townops
+    volumes:
+      - ./infrastructure/postgres/scripts:/scripts:ro
+    entrypoint: ["/bin/sh"]
+    command: /scripts/create-databases.sh
+
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     restart: unless-stopped
@@ -121,9 +137,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5001
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_auth
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: http://auth-atom:5001
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
@@ -137,13 +155,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
     environment:
       PORT: 5002
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_alert
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       RESEND_API_KEY: ${RESEND_API_KEY}
+      # Empty OTEL vars satisfy shared-ts env validation and disable tracing
+      # locally (otel.ts treats a falsy endpoint as "tracing disabled").
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5002:5002"
 
@@ -153,10 +177,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5003
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_appointment
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5003:5003"
 
@@ -166,10 +194,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5004
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_assignment
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      JWKS_URI: http://auth-atom:5001/api/auth/jwks
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5004:5004"
 
@@ -179,9 +212,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5005
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_case
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
@@ -194,10 +229,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5006
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_metrics
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      JWKS_URI: http://auth-atom:5001/api/auth/jwks
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5006:5006"
 
@@ -207,11 +247,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5007
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_proof
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_KEY: ${SUPABASE_KEY}
+      SUPABASE_BUCKET: ${SUPABASE_BUCKET:-proofs}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5007:5007"
 
@@ -221,9 +266,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5008
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_resident
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
@@ -236,10 +283,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5009
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_contractor
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5009:5009"
 
