@@ -1,15 +1,20 @@
+import type { Context, Next } from "hono";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { app } from "../../src/index";
 
 // 1. Setup Environment Variables BEFORE importing anything else
-const { mockDb } = vi.hoisted(() => {
+const { mockDb, mockWrite } = vi.hoisted(() => {
   process.env.DATABASE_URL = "postgres://root:password@localhost:5432/testdb";
   process.env.PORT = "5005";
   process.env.JWKS_URI = "http://localhost:5001/.well-known/jwks.json";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
-  process.env.SUPABASE_URL = "http://localhost";
-  process.env.SUPABASE_KEY = "test-key";
+  process.env.S3_ENDPOINT = "http://localhost:9000";
+  process.env.S3_PUBLIC_URL = "http://localhost:9000/proofs";
+  process.env.S3_ACCESS_KEY_ID = "test";
+  process.env.S3_SECRET_ACCESS_KEY = "test";
+  process.env.S3_BUCKET = "proofs";
+  process.env.S3_REGION = "us-east-1";
 
   const mockReturning = vi.fn();
   const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
@@ -20,11 +25,11 @@ const { mockDb } = vi.hoisted(() => {
   const db = {
     select: mockSelect,
     insert: vi.fn().mockReturnValue({ values: mockValues }),
-    _mockWhere: mockWhere,
-    _mockReturning: mockReturning,
+    whereMock: mockWhere,
+    returningMock: mockReturning,
   };
 
-  return { mockDb: db };
+  return { mockDb: db, mockWrite: vi.fn().mockResolvedValue(undefined) };
 });
 
 // 2. Mock Database and Custom Middlewares
@@ -33,26 +38,12 @@ vi.mock("../../src/database/db", () => ({
 }));
 
 vi.mock("hono/jwk", () => ({
-  jwk: () => (c: any, next: any) => next(),
+  jwk: () => (c: Context, next: Next) => next(),
 }));
 
-// Mock Supabase Storage interface
-const mockUpload = vi
-  .fn()
-  .mockResolvedValue({ data: { path: "uploaded/path" }, error: null });
-const mockGetPublicUrl = vi.fn().mockReturnValue({
-  data: { publicUrl: "http://supabase.com/uploaded/path" },
-});
-
-vi.mock("../../src/supabase", () => ({
-  supabase: {
-    storage: {
-      from: vi.fn().mockReturnValue({
-        upload: (...args: any[]) => mockUpload(...args),
-        getPublicUrl: (...args: any[]) => mockGetPublicUrl(...args),
-      }),
-    },
-  },
+// Mock storage interface (Bun S3 client)
+vi.mock("../../src/storage", () => ({
+  storage: { write: mockWrite },
 }));
 
 describe("Proof Atom Endpoints", () => {
@@ -76,7 +67,7 @@ describe("Proof Atom Endpoints", () => {
       const mockResult = [
         { id: "1", caseId: VALID_CASE_ID, mediaUrl: "http://media.com" },
       ];
-      mockDb._mockWhere.mockResolvedValue(mockResult);
+      mockDb.whereMock.mockResolvedValue(mockResult);
 
       const res = await app.request(`/api/proof/${VALID_CASE_ID}`);
       expect(res.status).toBe(200);
@@ -86,19 +77,15 @@ describe("Proof Atom Endpoints", () => {
   });
 
   describe("POST /api/proof", () => {
-    it("should upload file to Supabase stream and return 201 with public url index", async () => {
+    it("should upload file to storage and return 201 with public url index", async () => {
       // Create a fake File or FormData
       const mockResult = {
         id: "3",
         caseId: VALID_CASE_ID,
-        mediaUrl: "http://supabase.com/uploaded/path",
+        mediaUrl: "http://localhost:9000/proofs/uploaded/path",
         type: "after",
       };
-      mockDb._mockReturning.mockResolvedValue([mockResult]);
-      mockUpload.mockResolvedValueOnce({
-        data: { path: "uploaded/path" },
-        error: null,
-      });
+      mockDb.returningMock.mockResolvedValue([mockResult]);
 
       const formData = new FormData();
       // Form parser creates File object inside Hono
@@ -117,8 +104,10 @@ describe("Proof Atom Endpoints", () => {
 
       expect(res.status).toBe(201);
       const data = await res.json();
-      expect(data.proof.mediaUrl).toBe("http://supabase.com/uploaded/path");
-      expect(mockUpload).toHaveBeenCalled();
+      expect(data.proof.mediaUrl).toBe(
+        "http://localhost:9000/proofs/uploaded/path"
+      );
+      expect(mockWrite).toHaveBeenCalled();
     });
   });
 });

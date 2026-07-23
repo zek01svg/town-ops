@@ -1,6 +1,6 @@
 # 📁 Proof Atom
 
-A backend microservice (Atom) dedicated to managing evidence storage (Before/After pictures, signatures, remarks) for maintenance cases. It interacts with **Supabase Storage buckets** for assets management, constructed using **Hono**, **Bun**, and **Drizzle ORM** with OpenTelemetry instrumentation mapping.
+A backend microservice (Atom) dedicated to managing evidence storage (Before/After pictures, signatures, remarks) for maintenance cases. It stores assets in **S3-compatible object storage** (self-hosted **MinIO** locally, **Cloudflare R2** in production) via Bun's native S3 client, constructed using **Hono**, **Bun**, and **Drizzle ORM** with OpenTelemetry instrumentation mapping.
 
 ---
 
@@ -8,7 +8,7 @@ A backend microservice (Atom) dedicated to managing evidence storage (Before/Aft
 
 - **Runtime**: [Bun](https://bun.sh/)
 - **Framework**: [Hono](https://hono.dev/)
-- **Storage Client**: [@supabase/supabase-js](https://supabase.com/docs/reference/javascript/introduction)
+- **Storage Client**: [Bun S3](https://bun.sh/docs/api/s3) (S3-compatible — MinIO / Cloudflare R2)
 - **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
 - **Database ORM**: [Drizzle ORM](https://orm.drizzle.team/)
 - **Testing**: [Vitest](https://vitest.dev/) with **Testcontainers** 🐳
@@ -44,11 +44,15 @@ Once the server is running, visit:
 Create a `.env` file in this directory with the following variables:
 
 ```env
-DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
+DATABASE_URL=postgresql://townops:townops@localhost:5432/townops_proof
 PORT=5007
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-service-role-key
-SUPABASE_BUCKET=proofs
+# S3-compatible storage. Locally, run `docker compose up -d minio minio-init`.
+S3_ENDPOINT=http://localhost:9000
+S3_PUBLIC_URL=http://localhost:9000/proofs
+S3_ACCESS_KEY_ID=townops
+S3_SECRET_ACCESS_KEY=townopssecret
+S3_BUCKET=proofs
+S3_REGION=us-east-1
 ```
 
 ### 2. Database Migrations

@@ -26,7 +26,6 @@
   },
   "dependencies": {
     "@cloudamqp/amqp-client": "^4.0.0",
-    "@supabase/supabase-js": "catalog:",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "catalog:",
     "pg": "catalog:"

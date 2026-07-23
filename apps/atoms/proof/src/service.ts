@@ -1,7 +1,10 @@
 import { eq } from "drizzle-orm";
 
 import db from "./database/db";
+import type { proofType } from "./database/schema";
 import { proofItems } from "./database/schema";
+
+type ProofType = (typeof proofType.enumValues)[number];
 
 /**
  * Get proof items for a specific case.
@@ -16,12 +19,12 @@ export async function getProofByCaseId(caseId: string) {
 export async function storeProofItems(
   caseId: string,
   uploaderId: string,
-  items: any[]
+  items: { mediaUrl: string; type: ProofType; remarks?: string }[]
 ) {
   return db
     .insert(proofItems)
     .values(
-      items.map((item: any) => ({
+      items.map((item) => ({
         caseId,
         uploaderId,
         mediaUrl: item.mediaUrl,
@@ -39,7 +42,7 @@ export async function storeSingleProofItem(data: {
   caseId: string;
   uploaderId: string;
   mediaUrl: string;
-  type: string;
+  type: ProofType;
   remarks?: string;
 }) {
   const rows = await db
@@ -48,7 +51,7 @@ export async function storeSingleProofItem(data: {
       caseId: data.caseId,
       uploaderId: data.uploaderId,
       mediaUrl: data.mediaUrl,
-      type: data.type as any,
+      type: data.type,
       remarks: data.remarks,
     })
     .returning();

@@ -32,7 +32,6 @@ catalog:
   "@scalar/hono-api-reference": ^0.11.11
   "@sentry/bun": 10.66.0
   "@sentry/react": 10.66.0
-  "@supabase/supabase-js": ^2.110.7
   "@t3-oss/env-core": 0.13.11
   "@tailwindcss/vite": 4.3.3
   "@tanstack/devtools": 0.12.5

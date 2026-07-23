@@ -14,7 +14,7 @@ import { z } from "zod/v4";
 
 import { env } from "./env";
 import * as proofService from "./service";
-import { supabase } from "./supabase";
+import { storage } from "./storage";
 import { getProofSchema, uploadProofSchema } from "./validation-schemas";
 
 const app = new Hono();
@@ -76,30 +76,24 @@ const proofRouter = new Hono()
 
       const filePath = `${caseId}/${Date.now()}_proof_item`;
 
-      // 1. Upload file to Supabase Storage
-      const { error } = await supabase.storage
-        .from(env.SUPABASE_BUCKET)
-        .upload(filePath, file, {
-          contentType: file.type || "application/octet-stream",
-        });
+      // Upload to S3-compatible storage
+      // storage.write throws on failure; app.onError returns 500.
+      await storage.write(filePath, file, {
+        type: file.type || "application/octet-stream",
+      });
 
-      if (error) {
-        logger.error({ error: error.message }, "Supabase upload failed");
-        return c.json({ error: error.message }, 500);
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from(env.SUPABASE_BUCKET)
-        .getPublicUrl(filePath);
-
-      const mediaUrl = publicUrlData.publicUrl;
+      // S3_PUBLIC_URL is the base under which objects are publicly served:
+      // MinIO path-style includes the bucket (…:9000/proofs), R2's public
+      // domain is already bucket-scoped. Keeping the bucket in config (not
+      // here) makes the MinIO→R2 swap config-only.
+      const mediaUrl = `${env.S3_PUBLIC_URL}/${filePath}`;
 
       // 2. Create record in database using service
       const proof = await proofService.storeSingleProofItem({
         caseId,
         uploaderId,
         mediaUrl,
-        type: type as any,
+        type: type,
         remarks,
       });
 
