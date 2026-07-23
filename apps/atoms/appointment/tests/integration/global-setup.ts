@@ -33,11 +33,15 @@ export async function setup() {
       "SELECT id FROM townops_migrations.appointment_atom"
     );
     await pool.end();
-    if (journal.rows[0]?.id !== "0000_prs_142_slot_claim_exclusion") {
+    const appliedIds = new Set(journal.rows.map((row) => row.id));
+    if (
+      !appliedIds.has("0000_prs_142_slot_claim_exclusion") ||
+      !appliedIds.has("0001_prs_145_appointment_in_progress")
+    ) {
       throw new Error("Appointment migration journal was not recorded");
     }
     console.log("[Integration Setup] Appointment migration completed.");
-  } catch (error: any) {
+  } catch (error) {
     await container.stop();
     throw error;
   }

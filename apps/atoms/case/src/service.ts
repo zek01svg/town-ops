@@ -1,6 +1,7 @@
 import type {
   CreateCaseActivityInput,
   MarkCaseBreachedInput,
+  MarkCaseInProgressInput,
   RecordAllocationAcceptanceInput,
 } from "@townops/orchestration-contract";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
@@ -31,7 +32,8 @@ const casePriorityByLevel = {
 type OfficerAttentionKind =
   | "NO_ELIGIBLE_CONTRACTOR"
   | "ALLOCATION_FAILED"
-  | "ACCEPTANCE_SLA_BREACH";
+  | "ACCEPTANCE_SLA_BREACH"
+  | "WORK_START_FAILED";
 
 const allocationAttentionKinds: OfficerAttentionKind[] = [
   "NO_ELIGIBLE_CONTRACTOR",
@@ -39,13 +41,16 @@ const allocationAttentionKinds: OfficerAttentionKind[] = [
 ];
 
 // A Case going terminal (completed/cancelled) resolves every kind of
-// operational attention, including a still-open acceptance SLA breach —
-// unlike allocationAttentionKinds above, which markCaseAssignedForOperation
-// resolves and which must NOT include ACCEPTANCE_SLA_BREACH (a replacement
-// merely being assigned is not the replacement being accepted, AC8).
+// operational attention, including a still-open acceptance SLA breach or
+// work-start failure — unlike allocationAttentionKinds above, which
+// markCaseAssignedForOperation resolves and which must NOT include
+// ACCEPTANCE_SLA_BREACH (a replacement merely being assigned is not the
+// replacement being accepted, AC8) or WORK_START_FAILED (an assign must not
+// clear a work-start failure, PRS-145).
 const terminalResolvedAttentionKinds: OfficerAttentionKind[] = [
   ...allocationAttentionKinds,
   "ACCEPTANCE_SLA_BREACH",
+  "WORK_START_FAILED",
 ];
 
 /**
@@ -291,6 +296,66 @@ export async function markCaseAssignedForOperation(input: {
       );
 
     return { outcome: "ASSIGNED" as const };
+  });
+}
+
+/**
+ * Start-work Saga step 3 (PRS-145): marks a Case in_progress and appends a
+ * CASE_WORK_STARTED history row, once per operationId. Same claim-then-write
+ * shape as markCaseAssignedForOperation — no guard beyond the terminal check,
+ * since the Appointment/Assignment atoms are the source of truth for whether
+ * starting work was actually valid (accepts a prior status of assigned or
+ * pending). No attention resolution here — a work-start failure is only
+ * cleared on completion/cancellation (terminalResolvedAttentionKinds), never
+ * by an assign or a later start-work success.
+ */
+export async function markCaseInProgressForOperation(
+  input: MarkCaseInProgressInput
+) {
+  return db.transaction(async (tx) => {
+    const [currentCase] = await tx
+      .select()
+      .from(cases)
+      .where(eq(cases.id, input.caseId))
+      .for("update");
+    if (!currentCase) {
+      throw new Error("Case was not found to mark in progress");
+    }
+    if (
+      currentCase.status === "completed" ||
+      currentCase.status === "cancelled"
+    ) {
+      return { outcome: "CASE_TERMINAL" as const };
+    }
+
+    const [insertedOperation] = await tx
+      .insert(caseOperations)
+      .values({ operationId: input.operationId, caseId: input.caseId })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!insertedOperation) {
+      return { outcome: "IN_PROGRESS" as const, case: currentCase };
+    }
+
+    const [updatedCase] = await tx
+      .update(cases)
+      .set({ status: "in_progress", updatedAt: new Date().toISOString() })
+      .where(eq(cases.id, input.caseId))
+      .returning();
+    if (!updatedCase) {
+      throw new Error("Case was not found to mark in progress");
+    }
+
+    await tx.insert(caseHistory).values({
+      caseId: input.caseId,
+      eventType: "CASE_WORK_STARTED",
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      operationId: input.operationId,
+    });
+
+    return { outcome: "IN_PROGRESS" as const, case: updatedCase };
   });
 }
 

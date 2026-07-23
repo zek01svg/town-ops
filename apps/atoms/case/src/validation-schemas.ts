@@ -25,7 +25,11 @@ export const markCaseAssignedSchema = z
 
 export const raiseOfficerAttentionSchema = z
   .object({
-    kind: z.enum(["NO_ELIGIBLE_CONTRACTOR", "ALLOCATION_FAILED"]),
+    kind: z.enum([
+      "NO_ELIGIBLE_CONTRACTOR",
+      "ALLOCATION_FAILED",
+      "WORK_START_FAILED",
+    ]),
     detail: z.string().trim().min(1).max(10_000),
     operationId: z.string().min(1),
   })

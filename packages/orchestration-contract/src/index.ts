@@ -144,6 +144,7 @@ export const OfficerAttentionKindSchema = z.enum([
   "NO_ELIGIBLE_CONTRACTOR",
   "ALLOCATION_FAILED",
   "ACCEPTANCE_SLA_BREACH",
+  "WORK_START_FAILED",
 ]);
 export type OfficerAttentionKind = z.infer<typeof OfficerAttentionKindSchema>;
 
@@ -216,6 +217,7 @@ export const UPDATE_NAMES = {
   openCase: "openCase",
   allocateContractor: "allocateContractor",
   acceptAllocation: "acceptAllocation",
+  startWork: "startWork",
 } as const;
 export const ORCHESTRATION_TASK_QUEUE = "townops-orchestration";
 
@@ -330,7 +332,7 @@ export const AllocationAttemptDtoSchema = z.object({
 });
 export type AllocationAttemptDto = z.infer<typeof AllocationAttemptDtoSchema>;
 
-export const AppointmentStatusSchema = z.enum(["SCHEDULED"]);
+export const AppointmentStatusSchema = z.enum(["SCHEDULED", "IN_PROGRESS"]);
 export type AppointmentStatus = z.infer<typeof AppointmentStatusSchema>;
 
 export const AppointmentDtoSchema = z.object({
@@ -670,3 +672,132 @@ export const MarkCaseBreachedResultSchema = z.object({
 export type MarkCaseBreachedResult = z.infer<
   typeof MarkCaseBreachedResultSchema
 >;
+
+// ─── Start work during the Appointment (PRS-145) ───────────────────────────
+
+export const StartWorkCommandSchema = z.object({
+  idempotencyKey: z.uuid(),
+  payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+  operationId: z.string().min(1),
+  actorId: z.uuid(),
+  actorRole: z.literal("CONTRACTOR"),
+  contractorId: z.uuid(),
+  caseId: z.uuid(),
+  assignmentId: z.uuid(),
+  appointmentId: z.uuid(),
+  startTime: AcceptAllocationInputSchema.shape.startTime,
+  endTime: AcceptAllocationInputSchema.shape.endTime,
+});
+export type StartWorkCommand = z.infer<typeof StartWorkCommandSchema>;
+
+export const StartWorkDataSchema = z.object({
+  appointment: AppointmentDtoSchema,
+  assignment: AssignmentDtoSchema,
+  case: CaseDtoSchema,
+});
+export type StartWorkData = z.infer<typeof StartWorkDataSchema>;
+
+export const StartWorkResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SUCCESS"), data: StartWorkDataSchema }),
+  z.object({ kind: z.literal("IDEMPOTENCY_KEY_REUSED") }),
+  z.object({ kind: z.literal("CASE_MISMATCH") }),
+  z.object({ kind: z.literal("APPOINTMENT_MISMATCH") }),
+  z.object({ kind: z.literal("NOT_IN_WINDOW") }),
+  z.object({ kind: z.literal("NOT_SCHEDULED") }),
+  z.object({ kind: z.literal("WRONG_CONTRACTOR") }),
+  z.object({ kind: z.literal("NOT_ACCEPTED") }),
+  z.object({ kind: z.literal("CASE_TERMINAL") }),
+  z.object({ kind: z.literal("WORK_START_FAILED") }),
+]);
+export type StartWorkResult = z.infer<typeof StartWorkResultSchema>;
+
+export const StartWorkAppointmentInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    appointmentId: z.uuid(),
+    contractorId: z.uuid(),
+  })
+  .strict();
+export type StartWorkAppointmentInput = z.infer<
+  typeof StartWorkAppointmentInputSchema
+>;
+
+export const StartWorkAppointmentResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({
+      outcome: z.literal("STARTED"),
+      appointment: AppointmentDtoSchema,
+    }),
+    z.object({
+      outcome: z.literal("ALREADY_STARTED"),
+      appointment: AppointmentDtoSchema,
+    }),
+    z.object({ outcome: z.literal("NOT_SCHEDULED") }),
+    z.object({ outcome: z.literal("WRONG_CONTRACTOR") }),
+    z.object({ outcome: z.literal("APPOINTMENT_NOT_FOUND") }),
+  ]
+);
+export type StartWorkAppointmentResult = z.infer<
+  typeof StartWorkAppointmentResultSchema
+>;
+
+export const MarkAssignmentInProgressInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    assignmentId: z.uuid(),
+    changedBy: z.string().min(1),
+  })
+  .strict();
+export type MarkAssignmentInProgressInput = z.infer<
+  typeof MarkAssignmentInProgressInputSchema
+>;
+
+export const MarkAssignmentInProgressResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({
+      outcome: z.literal("IN_PROGRESS"),
+      assignment: AssignmentDtoSchema,
+    }),
+    z.object({
+      outcome: z.literal("ALREADY_IN_PROGRESS"),
+      assignment: AssignmentDtoSchema,
+    }),
+    z.object({ outcome: z.literal("NOT_ACCEPTED") }),
+    z.object({ outcome: z.literal("ASSIGNMENT_NOT_FOUND") }),
+  ]
+);
+export type MarkAssignmentInProgressResult = z.infer<
+  typeof MarkAssignmentInProgressResultSchema
+>;
+
+export const MarkCaseInProgressInputSchema = z
+  .object({
+    caseId: z.uuid(),
+    operationId: z.string().min(1),
+    actorId: z.uuid(),
+    actorRole: z.literal("CONTRACTOR"),
+  })
+  .strict();
+export type MarkCaseInProgressInput = z.infer<
+  typeof MarkCaseInProgressInputSchema
+>;
+
+export const MarkCaseInProgressResultSchema = z.discriminatedUnion("outcome", [
+  z.object({ outcome: z.literal("IN_PROGRESS"), case: CaseDtoSchema }),
+  z.object({ outcome: z.literal("CASE_TERMINAL") }),
+]);
+export type MarkCaseInProgressResult = z.infer<
+  typeof MarkCaseInProgressResultSchema
+>;
+
+export function canonicalStartWorkPayload(
+  caseId: string,
+  appointmentId: string
+) {
+  return JSON.stringify({
+    caseId,
+    appointmentId,
+  });
+}

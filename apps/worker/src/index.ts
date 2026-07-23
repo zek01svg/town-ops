@@ -7,6 +7,7 @@ import { z } from "zod/v4";
 import { createAllocateContractorActivities } from "./activities/allocate-contractor.ts";
 import { createOpenCaseActivity } from "./activities/open-case.ts";
 import { createProvisionResidentActivity } from "./activities/provision-resident.ts";
+import { createStartWorkActivities } from "./activities/start-work.ts";
 
 const config = z
   .object({
@@ -48,6 +49,12 @@ const worker = await Worker.create({
       assignmentAtomUrl: config.ASSIGNMENT_ATOM_URL,
       caseAtomUrl: config.CASE_ATOM_URL,
       appointmentAtomUrl: config.APPOINTMENT_ATOM_URL,
+      workerServiceToken: config.WORKER_SERVICE_TOKEN,
+    }),
+    ...createStartWorkActivities({
+      appointmentAtomUrl: config.APPOINTMENT_ATOM_URL,
+      assignmentAtomUrl: config.ASSIGNMENT_ATOM_URL,
+      caseAtomUrl: config.CASE_ATOM_URL,
       workerServiceToken: config.WORKER_SERVICE_TOKEN,
     }),
   },

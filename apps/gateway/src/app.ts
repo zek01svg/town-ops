@@ -21,12 +21,14 @@ import {
   ManualAllocationInputSchema,
   ManualAllocationResultSchema,
   OfficerAttentionDtoSchema,
+  canonicalStartWorkPayload,
   OpenCaseInputSchema,
   OpenCaseResultSchema,
   OperationSchema,
   ORCHESTRATION_TASK_QUEUE,
   residentProvisioningWorkflowId,
   ResidentOpenCaseInputSchema,
+  StartWorkResultSchema,
   UPDATE_NAMES,
   WORKFLOW_NAMES,
 } from "@townops/orchestration-contract";
@@ -42,6 +44,7 @@ import type {
   OpenCaseInput,
   OpenCaseResult,
   Operation,
+  StartWorkResult,
 } from "@townops/orchestration-contract";
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
@@ -278,6 +281,42 @@ async function lookupCaseAssignment(
   }
 
   return { assignment: assignment.data, currentAttempt };
+}
+
+/**
+ * Looks up one of a Case's Appointments by ID (PRS-145 start-work
+ * authorization pre-check). Authorization-only: it does not filter by
+ * status, so a retry-after-ambiguous (the Saga already committed and the
+ * Appointment is now IN_PROGRESS) still resolves the row and reaches the
+ * Workflow's idempotency-cache replay instead of a stale 404. The Workflow
+ * owns the window gate and the Appointment atom owns the status gate
+ * (NOT_SCHEDULED) — this only confirms the row belongs to this Case and
+ * Contractor. An unreachable atom, an unexpected response shape, or no
+ * matching row resolves to null rather than failing closed with a 5xx.
+ */
+async function lookupCurrentAppointment(
+  appointmentAtomUrl: string,
+  fetchImpl: typeof fetch,
+  caseId: string,
+  appointmentId: string
+): Promise<AppointmentDto | null> {
+  try {
+    const response = await fetchImpl(
+      `${appointmentAtomUrl}/api/appointments/${caseId}`
+    );
+    if (!response.ok) return null;
+    const parsed = appointmentAtomResponseSchema.safeParse(
+      await response.json().catch(() => undefined)
+    );
+    if (!parsed.success) return null;
+    return (
+      parsed.data.appointments
+        .map(toAppointmentDto)
+        .find((appointment) => appointment?.id === appointmentId) ?? null
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -852,6 +891,182 @@ export function createGatewayApp({
       return error(c, 409, {
         code: result.kind,
         message: "Allocation Attempt is no longer available for acceptance",
+        retryable: false,
+        operation,
+      });
+    }
+  );
+
+  app.put(
+    "/api/cases/:caseId/appointments/:appointmentId/start-work",
+    async (c) => {
+      const actor = resolveActor(c.get("jwtPayload"));
+      if (!actor) {
+        return error(c, 401, {
+          code: "INVALID_TOKEN",
+          message: "Token subject is invalid",
+          retryable: false,
+        });
+      }
+      const contractorId = z.uuid().safeParse(actor.contractorId);
+      if (actor.role !== "CONTRACTOR" || !contractorId.success) {
+        return error(c, 403, {
+          code: "FORBIDDEN",
+          message: "Contractor access is required",
+          retryable: false,
+        });
+      }
+
+      const caseId = z.uuid().safeParse(c.req.param("caseId"));
+      const appointmentId = z.uuid().safeParse(c.req.param("appointmentId"));
+      if (!caseId.success || !appointmentId.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Case ID and Appointment ID must be UUIDs",
+          retryable: false,
+        });
+      }
+      const idempotencyKey = idempotencyKeySchema.safeParse(
+        c.req.header("Idempotency-Key")
+      );
+      if (!idempotencyKey.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Idempotency-Key must be a UUID",
+          retryable: false,
+        });
+      }
+
+      const currentAppointment = await lookupCurrentAppointment(
+        appointmentAtomUrl,
+        fetchImpl,
+        caseId.data,
+        appointmentId.data
+      );
+      if (
+        !currentAppointment ||
+        currentAppointment.contractorId !== contractorId.data
+      ) {
+        return error(c, 404, {
+          code: "APPOINTMENT_NOT_FOUND",
+          message: "Appointment was not found",
+          retryable: false,
+        });
+      }
+
+      const operation = operationForCase(
+        caseId.data,
+        idempotencyKey.data,
+        canonicalStartWorkPayload(caseId.data, appointmentId.data)
+      );
+      const startWorkflowOperation = new WithStartWorkflowOperation(
+        WORKFLOW_NAMES.case,
+        {
+          workflowId: operation.workflowId,
+          taskQueue: ORCHESTRATION_TASK_QUEUE,
+          args: [{ caseId: caseId.data }],
+          workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+        }
+      );
+      const update = workflowClient.executeUpdateWithStart(
+        UPDATE_NAMES.startWork,
+        {
+          args: [
+            {
+              idempotencyKey: operation.idempotencyKey,
+              payloadHash: operation.updateId.slice(
+                operation.idempotencyKey.length + 1
+              ),
+              operationId: operation.updateId,
+              actorId: actor.accountId,
+              actorRole: "CONTRACTOR",
+              contractorId: contractorId.data,
+              caseId: caseId.data,
+              assignmentId: currentAppointment.assignmentId,
+              appointmentId: appointmentId.data,
+              startTime: currentAppointment.startTime,
+              endTime: currentAppointment.endTime,
+            },
+          ],
+          updateId: operation.updateId,
+          startWorkflowOperation,
+        }
+      );
+      void update.catch(() => undefined);
+
+      let result: StartWorkResult;
+      try {
+        result = StartWorkResultSchema.parse(
+          await withTimeout(update, updateTimeoutMs)
+        );
+      } catch (caught) {
+        if (
+          caught instanceof Error &&
+          caught.message === "workflow update timed out"
+        ) {
+          c.header("Retry-After", "2");
+          return error(c, 504, {
+            code: "WORKFLOW_UPDATE_PENDING",
+            message: "Work start is still being processed",
+            retryable: true,
+            operation,
+          });
+        }
+        if (isTemporalUnavailable(caught)) {
+          return error(c, 503, {
+            code: "TEMPORAL_UNAVAILABLE",
+            message: "Case workflow service is unavailable",
+            retryable: true,
+            operation,
+          });
+        }
+        return error(c, 500, {
+          code: "WORKFLOW_UPDATE_FAILED",
+          message: "Work start could not be completed",
+          retryable: false,
+          operation,
+        });
+      }
+
+      if (result.kind === "SUCCESS") {
+        return c.json({ data: result.data, operation }, 200);
+      }
+      if (result.kind === "IDEMPOTENCY_KEY_REUSED") {
+        return error(c, 409, {
+          code: "IDEMPOTENCY_KEY_REUSED",
+          message: "Idempotency-Key was already used with a different request",
+          retryable: false,
+          operation,
+        });
+      }
+      if (result.kind === "NOT_IN_WINDOW") {
+        return error(c, 409, {
+          code: "APPOINTMENT_NOT_IN_PROGRESS_WINDOW",
+          message: "Work can only start during the Appointment interval",
+          retryable: false,
+          operation,
+        });
+      }
+      if (
+        result.kind === "WRONG_CONTRACTOR" ||
+        result.kind === "APPOINTMENT_MISMATCH" ||
+        result.kind === "CASE_MISMATCH"
+      ) {
+        return error(c, 404, {
+          code: "APPOINTMENT_NOT_FOUND",
+          message: "Appointment was not found",
+          retryable: false,
+          operation,
+        });
+      }
+      // NOT_SCHEDULED is a clean domain rejection; WORK_START_FAILED means an
+      // Officer Attention was raised after the Appointment already started.
+      // CASE_TERMINAL / NOT_ACCEPTED are unreachable in practice — the Worker
+      // collapses both into WORK_START_FAILED — kept here only so this stays
+      // exhaustive against the contract union.
+      return error(c, 409, {
+        code: result.kind,
+        message: "Work could not be started for this Appointment",
         retryable: false,
         operation,
       });

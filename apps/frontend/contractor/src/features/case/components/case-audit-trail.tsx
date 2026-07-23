@@ -1,6 +1,7 @@
 import { useQuery, queryOptions, useQueryClient } from "@tanstack/react-query";
-import { Clock, History, User, CheckCircle } from "lucide-react";
-import { useRef, useState } from "react";
+import { Clock, History, User, CheckCircle, Play } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { z } from "zod/v4";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,27 +10,54 @@ import { auth } from "@/libr/auth";
 import { fetchWithAuth } from "@/libr/auth-token";
 
 import { auditQueries } from "../api/audit-queries";
-import { useAcceptJobMutation, useNoAccessMutation } from "../api/mutations";
+import {
+  useAcceptJobMutation,
+  useNoAccessMutation,
+  useStartWorkMutation,
+} from "../api/mutations";
 import { caseKeys } from "../api/query-keys";
 import type { CaseItem } from "../types";
 import { CloseJobSheet } from "./close-job-sheet";
 
-type GatewayAssignment = {
-  id: string;
-  currentAttempt: {
-    id: string;
-    status: "PENDING_ACCEPTANCE" | "ACCEPTED";
-    deadlineAt: string;
-  } | null;
-  appointment: {
-    startTime: string;
-    endTime: string;
-  } | null;
-};
+// Tolerant schema — status leaves stay `z.string()` so a terminal Appointment
+// or Attempt still parses and renders in the timeline; the UI only ever
+// compares status against literals.
+const gatewayAssignmentSchema = z.object({
+  id: z.string(),
+  currentAttempt: z
+    .object({
+      id: z.string(),
+      status: z.string(),
+      deadlineAt: z.string(),
+    })
+    .nullish(),
+  appointment: z
+    .object({
+      id: z.string(),
+      contractorId: z.string(),
+      status: z.string(),
+      startTime: z.string(),
+      endTime: z.string(),
+    })
+    .nullish(),
+});
+
+const gatewayCaseSchema = z.object({
+  data: z.object({ assignment: gatewayAssignmentSchema.nullish() }).nullish(),
+});
 
 async function getContractorId(): Promise<string> {
   const session = await auth.getSession();
-  return (session?.data?.user as any)?.contractorId ?? "unknown";
+  const user = session?.data?.user;
+  if (
+    user &&
+    typeof user === "object" &&
+    "contractorId" in user &&
+    typeof user.contractorId === "string"
+  ) {
+    return user.contractorId;
+  }
+  return "unknown";
 }
 
 function useGatewayAssignment(caseId: string) {
@@ -45,10 +73,8 @@ function useGatewayAssignment(caseId: string) {
           env.VITE_AUTH_URL
         );
         if (!res.ok) return null;
-        const data = (await res.json()) as {
-          data?: { assignment?: GatewayAssignment | null };
-        };
-        return data.data?.assignment ?? null;
+        const parsed = gatewayCaseSchema.safeParse(await res.json());
+        return parsed.success ? (parsed.data.data?.assignment ?? null) : null;
       },
     })
   );
@@ -78,13 +104,21 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
   const { data: assignment } = useGatewayAssignment(caseId);
   const acceptJob = useAcceptJobMutation();
   const noAccess = useNoAccessMutation();
+  const startWork = useStartWorkMutation();
   const qc = useQueryClient();
   const acceptanceKey = useRef<string | undefined>(undefined);
+  const startWorkKey = useRef<string | undefined>(undefined);
+  const [myContractorId, setMyContractorId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getContractorId().then(setMyContractorId);
+  }, []);
 
   const [closeJobOpen, setCloseJobOpen] = useState(false);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const attempt = assignment?.currentAttempt;
+  const appointment = assignment?.appointment;
   const isPendingAcceptance = attempt?.status === "PENDING_ACCEPTANCE";
   const isAccepted = attempt?.status === "ACCEPTED";
   const isAwaitingResident = caseData?.status === "pending_resident_input";
@@ -98,6 +132,18 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
     !!endTime &&
     Date.parse(endTime) > Date.parse(startTime) &&
     (isAcceptanceRetry || Date.parse(startTime) > Date.now());
+  // Ticks every second while now < appointment.endTime (piggybacks the
+  // existing countdown timer instead of a second interval) so the window
+  // opening/closing is reflected without a manual refetch.
+  useCountdown(
+    appointment?.status === "SCHEDULED" ? appointment.endTime : undefined
+  );
+  const canStartWork =
+    isAccepted &&
+    appointment?.status === "SCHEDULED" &&
+    appointment.contractorId === myContractorId &&
+    Date.now() >= Date.parse(appointment.startTime) &&
+    Date.now() < Date.parse(appointment.endTime);
 
   function handleAccept() {
     if (!attempt || !isValidAppointment) return;
@@ -121,10 +167,26 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
     );
   }
 
+  function handleStartWork() {
+    if (!appointment) return;
+    const idempotencyKey = startWorkKey.current ?? crypto.randomUUID();
+    startWorkKey.current = idempotencyKey;
+    startWork.mutate(
+      { caseId, appointmentId: appointment.id, idempotencyKey },
+      {
+        onSuccess: () => {
+          startWorkKey.current = undefined;
+          void qc.invalidateQueries({ queryKey: ["gateway-case", caseId] });
+          void qc.invalidateQueries({ queryKey: caseKeys.all });
+        },
+      }
+    );
+  }
+
   function handleNoAccess() {
     if (!assignment) return;
     void getContractorId().then((contractorId) => {
-      noAccess.mutate(
+      return noAccess.mutate(
         {
           caseId,
           assignmentId: assignment.id,
@@ -288,6 +350,21 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
                 : "Your appointment is being confirmed."}
             </p>
             <div className="flex flex-col gap-2">
+              {canStartWork && (
+                <Button
+                  onClick={handleStartWork}
+                  disabled={startWork.isPending}
+                  className="rounded-none uppercase text-[10px] font-label tracking-widest w-full bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Play className="h-3.5 w-3.5 mr-2" />
+                  {startWork.isPending ? "Starting Work..." : "Start Work"}
+                </Button>
+              )}
+              {startWork.isError && (
+                <p className="text-[10px] text-destructive uppercase">
+                  {startWork.error?.message}
+                </p>
+              )}
               <Button
                 onClick={() => setCloseJobOpen(true)}
                 disabled={isAwaitingResident}

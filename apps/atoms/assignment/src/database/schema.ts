@@ -20,6 +20,7 @@ export const assignmentSource = pgEnum("assignment_source", [
 export const assignmentStatus = pgEnum("assignment_status", [
   "PENDING_ACCEPTANCE",
   "ACCEPTED",
+  "IN_PROGRESS",
   "BREACHED",
   "REASSIGNED",
   "CANCELLED",
@@ -35,6 +36,7 @@ export const allocationAttemptStatus = pgEnum("allocation_attempt_status", [
 export const assignmentStatusEnum = z.enum([
   "PENDING_ACCEPTANCE",
   "ACCEPTED",
+  "IN_PROGRESS",
   "BREACHED",
   "REASSIGNED",
   "CANCELLED",

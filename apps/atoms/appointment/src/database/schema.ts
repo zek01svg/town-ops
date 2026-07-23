@@ -12,6 +12,7 @@ import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 
 export const appointmentStatus = pgEnum("appointment_status", [
   "scheduled",
+  "in_progress",
   "rescheduled",
   "cancelled",
   "missed",

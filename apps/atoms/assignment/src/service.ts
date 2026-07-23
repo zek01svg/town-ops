@@ -2,6 +2,7 @@ import type {
   AcceptAllocationAttemptInput,
   BreachAllocationAttemptInput,
   CommitAllocationInput,
+  MarkAssignmentInProgressInput,
 } from "@townops/orchestration-contract";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
@@ -310,6 +311,50 @@ export async function breachAllocationAttempt(
     }
 
     return { outcome: "BREACHED" as const };
+  });
+}
+
+/**
+ * Start-work Saga step 2 (PRS-145): ACCEPTED -> IN_PROGRESS. Idempotent by
+ * the Assignment's own status, not by operationId — same pattern as
+ * `breachAllocationAttempt` (PRS-144). `IN_PROGRESS` already means the
+ * caller must still proceed to the Case write; only a status other than
+ * ACCEPTED/IN_PROGRESS means the offer is not in a state work can start from.
+ */
+export async function markAssignmentInProgress(
+  input: MarkAssignmentInProgressInput
+) {
+  return db.transaction(async (tx) => {
+    const [assignment] = await tx
+      .select()
+      .from(assignments)
+      .where(eq(assignments.id, input.assignmentId))
+      .for("update");
+    if (!assignment) return { outcome: "ASSIGNMENT_NOT_FOUND" as const };
+
+    if (assignment.status === "IN_PROGRESS") {
+      return { outcome: "ALREADY_IN_PROGRESS" as const, assignment };
+    }
+    if (assignment.status !== "ACCEPTED") {
+      return { outcome: "NOT_ACCEPTED" as const };
+    }
+
+    const [updated] = await tx
+      .update(assignments)
+      .set({ status: "IN_PROGRESS", updatedAt: new Date().toISOString() })
+      .where(eq(assignments.id, assignment.id))
+      .returning();
+    if (!updated) throw new Error("Assignment update did not return a row");
+
+    await tx.insert(assignmentStatusHistory).values({
+      assignmentId: assignment.id,
+      fromStatus: "ACCEPTED",
+      toStatus: "IN_PROGRESS",
+      changedBy: input.changedBy,
+      reason: "WORK_STARTED",
+    });
+
+    return { outcome: "IN_PROGRESS" as const, assignment: updated };
   });
 }
 

@@ -6,11 +6,28 @@ import type {
   ConfirmAppointmentSlotInput,
   ReleaseAppointmentSlotInput,
   ReserveAppointmentSlotInput,
+  StartWorkAppointmentInput,
 } from "@townops/orchestration-contract";
 import { eq } from "drizzle-orm";
 
 import db from "./database/db";
 import { appointmentSlotClaims, appointments } from "./database/schema";
+
+/** Reads a Postgres error code off an unknown thrown value without an unsafe cast. */
+function pgErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  if ("code" in error && typeof error.code === "string") return error.code;
+  if (
+    "cause" in error &&
+    typeof error.cause === "object" &&
+    error.cause !== null &&
+    "code" in error.cause &&
+    typeof error.cause.code === "string"
+  ) {
+    return error.cause.code;
+  }
+  return undefined;
+}
 
 /**
  * Get all appointments for a given Case ID.
@@ -24,7 +41,9 @@ export async function getAppointmentsByCaseId(caseId: string) {
  * Create a new appointment.
  * @param values The appointment data.
  */
-export async function createAppointment(values: any) {
+export async function createAppointment(
+  values: typeof appointments.$inferInsert
+) {
   const rows = await db.insert(appointments).values(values).returning();
   return rows[0];
 }
@@ -62,9 +81,7 @@ export async function reserveAppointmentSlot(
       throw new Error("Appointment slot claim insert did not return a row");
     return { outcome: "HELD" as const, claim: claimDto(claim) };
   } catch (error) {
-    const code =
-      (error as { code?: string; cause?: { code?: string } }).code ??
-      (error as { cause?: { code?: string } }).cause?.code;
+    const code = pgErrorCode(error);
     if (code === "23P01") return { outcome: "CONFLICT" as const };
     if (code === "23505") {
       const [reused] = await db
@@ -147,5 +164,46 @@ export async function releaseAppointmentSlot(
       .set({ status: "RELEASED" })
       .where(eq(appointmentSlotClaims.id, claim.id));
     return { outcome: "RELEASED" as const };
+  });
+}
+
+/**
+ * Start-work Saga step 1 (PRS-145): flips a SCHEDULED Appointment to
+ * IN_PROGRESS. Idempotent by status, not by operationId — a replay after the
+ * Workflow's window gate already let it through is safe to observe as
+ * ALREADY_STARTED rather than re-checked against a stored operationId.
+ */
+export async function startWorkAppointment(input: StartWorkAppointmentInput) {
+  return db.transaction(async (tx) => {
+    const [appointment] = await tx
+      .select()
+      .from(appointments)
+      .where(eq(appointments.id, input.appointmentId))
+      .for("update");
+    if (!appointment) return { outcome: "APPOINTMENT_NOT_FOUND" as const };
+    if (appointment.contractorId !== input.contractorId) {
+      return { outcome: "WRONG_CONTRACTOR" as const };
+    }
+    if (appointment.status === "in_progress") {
+      return {
+        outcome: "ALREADY_STARTED" as const,
+        appointment: appointmentDto(appointment),
+      };
+    }
+    if (appointment.status !== "scheduled") {
+      return { outcome: "NOT_SCHEDULED" as const };
+    }
+
+    const [updated] = await tx
+      .update(appointments)
+      .set({ status: "in_progress", updatedAt: new Date().toISOString() })
+      .where(eq(appointments.id, appointment.id))
+      .returning();
+    if (!updated) throw new Error("Appointment update did not return a row");
+
+    return {
+      outcome: "STARTED" as const,
+      appointment: appointmentDto(updated),
+    };
   });
 }

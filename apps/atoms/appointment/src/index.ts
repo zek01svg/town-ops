@@ -3,6 +3,7 @@ import {
   ConfirmAppointmentSlotInputSchema,
   ReleaseAppointmentSlotInputSchema,
   ReserveAppointmentSlotInputSchema,
+  StartWorkAppointmentInputSchema,
 } from "@townops/orchestration-contract";
 import {
   logger,
@@ -106,6 +107,25 @@ const appointmentSlotRoutes = new Hono()
         return c.json({ error: "Appointment slot claim was not found" }, 404);
       }
       return c.json({ outcome: result.outcome }, 200);
+    }
+  )
+  .post(
+    "/start-work",
+    validator("json", StartWorkAppointmentInputSchema),
+    async (c) => {
+      const result = await appointmentService.startWorkAppointment(
+        c.req.valid("json")
+      );
+      if (result.outcome === "APPOINTMENT_NOT_FOUND") {
+        return c.json(result, 404);
+      }
+      if (
+        result.outcome === "NOT_SCHEDULED" ||
+        result.outcome === "WRONG_CONTRACTOR"
+      ) {
+        return c.json(result, 409);
+      }
+      return c.json(result, 201);
     }
   );
 

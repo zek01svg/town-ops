@@ -6,4 +6,4 @@ COPY build ./build
 COPY drizzle ./drizzle
 
 EXPOSE 5004
-CMD ["sh", "-c", "APPOINTMENT_MIGRATION_FILE=/app/drizzle/0000_prs_142_slot_claim_exclusion.sql bun build/database/apply-slot-claim-constraint.js && bun build/index.js"]
+CMD ["sh", "-c", "APPOINTMENT_MIGRATION_FILE=/app/drizzle/0000_prs_142_slot_claim_exclusion.sql APPOINTMENT_MIGRATION_FILE_0001=/app/drizzle/0001_prs_145_appointment_in_progress.sql bun build/database/apply-slot-claim-constraint.js && bun build/index.js"]

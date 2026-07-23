@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod/v4";
 
 import { env } from "@/env";
 import { closeCaseClient, rescheduleJobClient } from "@/libr/api";
@@ -9,13 +10,14 @@ import { caseKeys } from "./query-keys";
 async function throwIfRequestFailed(res: Response) {
   if (res.ok) return;
   if (res.status === 401) clearAuth();
-  const error = (await res.json().catch(() => ({}))) as {
-    message?: string;
-    error?: { message?: string };
-  };
-  throw new Error(
-    error.error?.message ?? error.message ?? `Error ${res.status}`
-  );
+  const parsed = z
+    .object({
+      message: z.string().optional(),
+      error: z.object({ message: z.string().optional() }).optional(),
+    })
+    .safeParse(await res.json().catch(() => ({})));
+  const body = parsed.success ? parsed.data : {};
+  throw new Error(body.error?.message ?? body.message ?? `Error ${res.status}`);
 }
 
 export async function uploadProofFile(
@@ -38,8 +40,10 @@ export async function uploadProofFile(
     body: form,
   });
   if (!res.ok) throw new Error(`Proof upload failed: ${res.status}`);
-  const data = await res.json();
-  return data.proof.mediaUrl as string;
+  const data = z
+    .object({ proof: z.object({ mediaUrl: z.string() }) })
+    .parse(await res.json());
+  return data.proof.mediaUrl;
 }
 
 export type AcceptJobInput = {
@@ -67,6 +71,33 @@ export function useAcceptJobMutation() {
             startTime: input.startTime,
             endTime: input.endTime,
           }),
+        }
+      );
+      await throwIfRequestFailed(res);
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
+  });
+}
+
+export type StartWorkInput = {
+  caseId: string;
+  appointmentId: string;
+  idempotencyKey: string;
+};
+
+export function useStartWorkMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: StartWorkInput) => {
+      const res = await fetch(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/appointments/${input.appointmentId}/start-work`,
+        {
+          method: "PUT",
+          headers: {
+            ...getAuthHeader(),
+            "Idempotency-Key": input.idempotencyKey,
+          },
         }
       );
       await throwIfRequestFailed(res);
@@ -123,8 +154,10 @@ export function useRescheduleJobMutation() {
       return res.json();
     },
     onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: caseKeys.all });
-      qc.invalidateQueries({ queryKey: caseKeys.appointments(vars.caseId) });
+      void qc.invalidateQueries({ queryKey: caseKeys.all });
+      void qc.invalidateQueries({
+        queryKey: caseKeys.appointments(vars.caseId),
+      });
     },
   });
 }

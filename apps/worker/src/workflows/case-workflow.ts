@@ -12,6 +12,7 @@ import {
   ManualAllocationCommandSchema,
   OpenCaseCommandSchema,
   postalSector,
+  StartWorkCommandSchema,
   UPDATE_NAMES,
 } from "@townops/orchestration-contract";
 import type {
@@ -28,13 +29,21 @@ import type {
   CreateCaseActivityInput,
   ManualAllocationCommand,
   ManualAllocationResult,
+  MarkAssignmentInProgressInput,
+  MarkAssignmentInProgressResult,
   MarkCaseAssignedResult,
   MarkCaseBreachedInput,
   MarkCaseBreachedResult,
+  MarkCaseInProgressInput,
+  MarkCaseInProgressResult,
   OpenCaseCommand,
   OpenCaseResult,
   PerformanceEntryDto,
   RecordPerformanceEntryInput,
+  StartWorkAppointmentInput,
+  StartWorkAppointmentResult,
+  StartWorkCommand,
+  StartWorkResult,
 } from "@townops/orchestration-contract";
 
 export const openCase = defineUpdate<OpenCaseResult, [OpenCaseCommand]>(
@@ -48,6 +57,9 @@ export const acceptAllocation = defineUpdate<
   AcceptAllocationResult,
   [AcceptAllocationCommand]
 >(UPDATE_NAMES.acceptAllocation);
+export const startWork = defineUpdate<StartWorkResult, [StartWorkCommand]>(
+  UPDATE_NAMES.startWork
+);
 
 const activities = proxyActivities<{
   isCaseTerminal(input: { caseId: string }): Promise<boolean>;
@@ -70,7 +82,7 @@ const activities = proxyActivities<{
   }): Promise<MarkCaseAssignedResult["outcome"]>;
   raiseOfficerAttention(input: {
     caseId: string;
-    kind: "NO_ELIGIBLE_CONTRACTOR" | "ALLOCATION_FAILED";
+    kind: "NO_ELIGIBLE_CONTRACTOR" | "ALLOCATION_FAILED" | "WORK_START_FAILED";
     detail: string;
     operationId: string;
   }): Promise<unknown>;
@@ -83,6 +95,15 @@ const activities = proxyActivities<{
   markCaseBreached(
     input: MarkCaseBreachedInput
   ): Promise<MarkCaseBreachedResult["outcome"]>;
+  startWorkAppointment(
+    input: StartWorkAppointmentInput
+  ): Promise<StartWorkAppointmentResult>;
+  markAssignmentInProgress(
+    input: MarkAssignmentInProgressInput
+  ): Promise<MarkAssignmentInProgressResult>;
+  markCaseInProgress(
+    input: MarkCaseInProgressInput
+  ): Promise<MarkCaseInProgressResult>;
 }>({ startToCloseTimeout: "10 seconds" });
 
 type Operation = {
@@ -129,6 +150,11 @@ type AcceptanceOperation = {
   payloadHash: string;
   result?: AcceptAllocationResult;
   pending?: Promise<AcceptAllocationResult>;
+};
+type StartWorkOperation = {
+  payloadHash: string;
+  result?: StartWorkResult;
+  pending?: Promise<StartWorkResult>;
 };
 
 /**
@@ -454,6 +480,80 @@ async function runBreach(
 }
 
 /**
+ * The start-work Saga (PRS-145), forward-only: Appointment SCHEDULED ->
+ * IN_PROGRESS, then Assignment ACCEPTED -> IN_PROGRESS, then Case ->
+ * in_progress, one deterministic operation ID fanned out to each atom.
+ *
+ * A step-1 rejection (NOT_SCHEDULED / WRONG_CONTRACTOR / the Appointment not
+ * found) means nothing was mutated anywhere — a clean, stable domain
+ * response. A step-2 or step-3 rejection happens only *after* the
+ * Appointment already committed: that is an invariant break, not a clean
+ * rejection, so it raises Officer Attention and never rolls the Appointment
+ * back (AC4 — no compensation, start-work is forward-only).
+ */
+async function runStartWork(
+  command: StartWorkCommand
+): Promise<StartWorkResult> {
+  const op = command.operationId;
+
+  const appointmentResult = await activities.startWorkAppointment({
+    operationId: `${op}/appointment`,
+    appointmentId: command.appointmentId,
+    contractorId: command.contractorId,
+  });
+  if (appointmentResult.outcome === "APPOINTMENT_NOT_FOUND") {
+    return { kind: "APPOINTMENT_MISMATCH" };
+  }
+  if (appointmentResult.outcome === "NOT_SCHEDULED") {
+    return { kind: "NOT_SCHEDULED" };
+  }
+  if (appointmentResult.outcome === "WRONG_CONTRACTOR") {
+    return { kind: "WRONG_CONTRACTOR" };
+  }
+  const appointment = appointmentResult.appointment;
+
+  const assignmentResult = await activities.markAssignmentInProgress({
+    operationId: `${op}/assignment`,
+    assignmentId: command.assignmentId,
+    changedBy: command.actorId,
+  });
+  if (
+    assignmentResult.outcome !== "IN_PROGRESS" &&
+    assignmentResult.outcome !== "ALREADY_IN_PROGRESS"
+  ) {
+    await activities.raiseOfficerAttention({
+      caseId: command.caseId,
+      kind: "WORK_START_FAILED",
+      detail: `Assignment could not start work (${assignmentResult.outcome}) after the Appointment already started.`,
+      operationId: `${op}/work-start-failed`,
+    });
+    return { kind: "WORK_START_FAILED" };
+  }
+  const assignment = assignmentResult.assignment;
+
+  const caseResult = await activities.markCaseInProgress({
+    caseId: command.caseId,
+    operationId: `${op}/case`,
+    actorId: command.actorId,
+    actorRole: command.actorRole,
+  });
+  if (caseResult.outcome !== "IN_PROGRESS") {
+    await activities.raiseOfficerAttention({
+      caseId: command.caseId,
+      kind: "WORK_START_FAILED",
+      detail: `Case could not start work (${caseResult.outcome}) after the Appointment and Assignment already started.`,
+      operationId: `${op}/work-start-failed`,
+    });
+    return { kind: "WORK_START_FAILED" };
+  }
+
+  return {
+    kind: "SUCCESS",
+    data: { appointment, assignment, case: caseResult.case },
+  };
+}
+
+/**
  * Durable owner of the opening operation for one Case.
  *
  * The workflow remains open for later PRS-81 lifecycle updates. Its first
@@ -463,6 +563,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   const operations = new Map<string, Operation>();
   const manualOperations = new Map<string, ManualOperation>();
   const acceptanceOperations = new Map<string, AcceptanceOperation>();
+  const startWorkOperations = new Map<string, StartWorkOperation>();
   // In-Workflow only — never exposed as a Query/read model. Tracks which
   // Contractors this Workflow already committed or attempted, across
   // allocation passes for this Case's whole lifetime.
@@ -634,6 +735,46 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     } finally {
       delete operation.pending;
       acceptanceGuard--;
+    }
+  });
+
+  setHandler(startWork, async (unparsedCommand) => {
+    const command = StartWorkCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    const existing = startWorkOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error("Start-work operation has no result or pending activity");
+    }
+
+    // The window gate runs before the cache below is populated — load-
+    // bearing. A before-window NOT_IN_WINDOW is non-terminal (the window
+    // opens later), so a same-key retry once startTime arrives must still be
+    // able to succeed, never replay a stale rejection. SUCCESS and every
+    // atom-returned terminal outcome below (WRONG_CONTRACTOR, NOT_SCHEDULED,
+    // WORK_START_FAILED, …) are cached and replay on a same-key retry; the
+    // catch below deletes the entry so a transient failure re-runs (mirrors
+    // acceptAllocation above).
+    const now = Date.now();
+    if (now < Date.parse(command.startTime)) return { kind: "NOT_IN_WINDOW" };
+    if (now >= Date.parse(command.endTime)) return { kind: "NOT_IN_WINDOW" };
+
+    const operation: StartWorkOperation = { payloadHash: command.payloadHash };
+    startWorkOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = runStartWork(command);
+      operation.result = await operation.pending;
+      return operation.result;
+    } catch (error) {
+      startWorkOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
     }
   });
 

@@ -2,6 +2,7 @@ import { Scalar } from "@scalar/hono-api-reference";
 import {
   CreateCaseActivityInputSchema,
   MarkCaseBreachedInputSchema,
+  MarkCaseInProgressInputSchema,
   RecordAllocationAcceptanceInputSchema,
 } from "@townops/orchestration-contract";
 import {
@@ -260,6 +261,19 @@ const internalCasesRouter = new Hono()
       if (body.caseId !== id) return c.json({ error: "Case ID mismatch" }, 400);
       const result = await caseService.markCaseBreachedForOperation(body);
       return c.json(result, 200);
+    }
+  )
+  .post(
+    "/:id/start-work",
+    validator("param", z.object({ id: z.uuid() })),
+    validator("json", MarkCaseInProgressInputSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      if (body.caseId !== id) return c.json({ error: "Case ID mismatch" }, 400);
+      const result = await caseService.markCaseInProgressForOperation(body);
+      if (result.outcome === "CASE_TERMINAL") return c.json(result, 409);
+      return c.json(result, 201);
     }
   );
 

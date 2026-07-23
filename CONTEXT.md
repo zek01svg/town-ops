@@ -47,7 +47,10 @@ _Avoid_: Assignment, reassignment
 
 **Appointment**:
 A planned time interval for a Contractor to attend a Case under its Assignment.
-A Case may have multiple Appointments after rescheduling.
+A Case may have multiple Appointments after rescheduling. Acceptance confirms
+an Appointment as SCHEDULED. A Contractor starting work during that interval
+advances it to IN_PROGRESS — the state PRS-146 (No Access) and PRS-148
+(cancellation) guard against once work has begun.
 _Avoid_: Assignment, booking
 
 **Proof Item**:

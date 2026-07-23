@@ -32,10 +32,13 @@ flowchart LR
     Worker --> Metrics[Metrics atom]
 ```
 
-The implemented Workflow Updates are `openCase`, `allocateContractor`, and
-`acceptAllocation`. Acceptance reserves an internal Appointment slot, accepts
-the current Allocation Attempt, then confirms the public Appointment. A
-permanent acceptance failure compensates by releasing the held slot.
+The implemented Workflow Updates are `openCase`, `allocateContractor`,
+`acceptAllocation`, and `startWork`. Acceptance reserves an internal
+Appointment slot, accepts the current Allocation Attempt, then confirms the
+public Appointment. A permanent acceptance failure compensates by releasing
+the held slot. `startWork` advances a SCHEDULED Appointment, its Assignment,
+and the Case to IN_PROGRESS once the Contractor starts work inside the
+Appointment window; it is forward-only, with no compensation.
 
 RabbitMQ remains available to the existing composite and notification flows;
 it is not the authority for the Temporal Case path above.

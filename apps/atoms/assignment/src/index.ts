@@ -3,6 +3,7 @@ import {
   AcceptAllocationAttemptInputSchema,
   BreachAllocationAttemptInputSchema,
   CommitAllocationInputSchema,
+  MarkAssignmentInProgressInputSchema,
 } from "@townops/orchestration-contract";
 import {
   logger,
@@ -446,6 +447,23 @@ const internalAssignmentsRouter = new Hono()
         return c.json(result, 409);
       }
       return c.json(result, result.outcome === "ACCEPTED" ? 201 : 200);
+    }
+  )
+  .post(
+    "/start-work",
+    describeRoute({
+      description: "Start work: ACCEPTED -> IN_PROGRESS (PRS-145)",
+    }),
+    validator("json", MarkAssignmentInProgressInputSchema),
+    async (c) => {
+      const result = await assignmentService.markAssignmentInProgress(
+        c.req.valid("json")
+      );
+      if (result.outcome === "ASSIGNMENT_NOT_FOUND") {
+        return c.json(result, 404);
+      }
+      if (result.outcome === "NOT_ACCEPTED") return c.json(result, 409);
+      return c.json(result, 201);
     }
   );
 
