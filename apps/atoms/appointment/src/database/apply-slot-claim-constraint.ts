@@ -28,15 +28,41 @@ const migrations = [
         import.meta.url
       ),
   },
+  {
+    id: "0002_prs_146_appointment_no_access",
+    file:
+      process.env.APPOINTMENT_MIGRATION_FILE_0002 ??
+      new URL(
+        "../../drizzle/0002_prs_146_appointment_no_access.sql",
+        import.meta.url
+      ),
+  },
+  {
+    id: "0003_prs_146_one_live_appointment_per_attempt",
+    file:
+      process.env.APPOINTMENT_MIGRATION_FILE_0003 ??
+      new URL(
+        "../../drizzle/0003_prs_146_one_live_appointment_per_attempt.sql",
+        import.meta.url
+      ),
+  },
+  {
+    id: "0004_prs_146_appointment_reason",
+    file:
+      process.env.APPOINTMENT_MIGRATION_FILE_0004 ??
+      new URL(
+        "../../drizzle/0004_prs_146_appointment_reason.sql",
+        import.meta.url
+      ),
+  },
 ];
 
 const pool = new Pool({ connectionString: env.DATABASE_URL });
 const client = await pool.connect();
 
 try {
-  await client.query("BEGIN");
   await client.query(
-    "SELECT pg_advisory_xact_lock(hashtext('appointment-atom-prs-142'))"
+    "SELECT pg_advisory_lock(hashtext('appointment-atom-prs-142'))"
   );
   await client.query("CREATE SCHEMA IF NOT EXISTS townops_migrations");
   await client.query(`
@@ -47,25 +73,30 @@ try {
   `);
 
   for (const { id, file } of migrations) {
-    const applied = await client.query(
-      "SELECT 1 FROM townops_migrations.appointment_atom WHERE id = $1",
-      [id]
-    );
-    if (applied.rowCount === 0) {
-      const migration = await readFile(file, "utf8");
-      await client.query(migration);
-      await client.query(
-        "INSERT INTO townops_migrations.appointment_atom (id) VALUES ($1)",
+    await client.query("BEGIN");
+    try {
+      const applied = await client.query(
+        "SELECT 1 FROM townops_migrations.appointment_atom WHERE id = $1",
         [id]
       );
+      if (applied.rowCount === 0) {
+        const migration = await readFile(file, "utf8");
+        await client.query(migration);
+        await client.query(
+          "INSERT INTO townops_migrations.appointment_atom (id) VALUES ($1)",
+          [id]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
     }
   }
-
-  await client.query("COMMIT");
-} catch (error) {
-  await client.query("ROLLBACK").catch(() => undefined);
-  throw error;
 } finally {
+  await client
+    .query("SELECT pg_advisory_unlock(hashtext('appointment-atom-prs-142'))")
+    .catch(() => undefined);
   client.release();
   await pool.end();
 }

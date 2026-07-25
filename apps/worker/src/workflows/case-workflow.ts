@@ -12,6 +12,8 @@ import {
   ManualAllocationCommandSchema,
   OpenCaseCommandSchema,
   postalSector,
+  ReplaceAppointmentCommandSchema,
+  ReportNoAccessCommandSchema,
   StartWorkCommandSchema,
   UPDATE_NAMES,
 } from "@townops/orchestration-contract";
@@ -31,15 +33,27 @@ import type {
   ManualAllocationResult,
   MarkAssignmentInProgressInput,
   MarkAssignmentInProgressResult,
+  MarkCaseAppointmentReplacedInput,
+  MarkCaseAppointmentReplacedResult,
   MarkCaseAssignedResult,
   MarkCaseBreachedInput,
   MarkCaseBreachedResult,
   MarkCaseInProgressInput,
   MarkCaseInProgressResult,
+  MarkCaseNoAccessInput,
+  MarkCaseNoAccessResult,
   OpenCaseCommand,
   OpenCaseResult,
   PerformanceEntryDto,
   RecordPerformanceEntryInput,
+  ReplaceAppointmentCommand,
+  ReplaceAppointmentResult,
+  ReplaceAppointmentSlotInput,
+  ReplaceAppointmentSlotResult,
+  ReportNoAccessAppointmentInput,
+  ReportNoAccessAppointmentResult,
+  ReportNoAccessCommand,
+  ReportNoAccessResult,
   StartWorkAppointmentInput,
   StartWorkAppointmentResult,
   StartWorkCommand,
@@ -60,6 +74,14 @@ export const acceptAllocation = defineUpdate<
 export const startWork = defineUpdate<StartWorkResult, [StartWorkCommand]>(
   UPDATE_NAMES.startWork
 );
+export const reportNoAccess = defineUpdate<
+  ReportNoAccessResult,
+  [ReportNoAccessCommand]
+>(UPDATE_NAMES.reportNoAccess);
+export const replaceAppointment = defineUpdate<
+  ReplaceAppointmentResult,
+  [ReplaceAppointmentCommand]
+>(UPDATE_NAMES.replaceAppointment);
 
 const activities = proxyActivities<{
   isCaseTerminal(input: { caseId: string }): Promise<boolean>;
@@ -104,6 +126,18 @@ const activities = proxyActivities<{
   markCaseInProgress(
     input: MarkCaseInProgressInput
   ): Promise<MarkCaseInProgressResult>;
+  reportNoAccessAppointment(
+    input: ReportNoAccessAppointmentInput
+  ): Promise<ReportNoAccessAppointmentResult>;
+  markCaseNoAccess(
+    input: MarkCaseNoAccessInput
+  ): Promise<MarkCaseNoAccessResult>;
+  replaceAppointmentSlot(
+    input: ReplaceAppointmentSlotInput
+  ): Promise<ReplaceAppointmentSlotResult>;
+  markCaseAppointmentReplaced(
+    input: MarkCaseAppointmentReplacedInput
+  ): Promise<MarkCaseAppointmentReplacedResult>;
 }>({ startToCloseTimeout: "10 seconds" });
 
 type Operation = {
@@ -155,6 +189,16 @@ type StartWorkOperation = {
   payloadHash: string;
   result?: StartWorkResult;
   pending?: Promise<StartWorkResult>;
+};
+type NoAccessOperation = {
+  payloadHash: string;
+  result?: ReportNoAccessResult;
+  pending?: Promise<ReportNoAccessResult>;
+};
+type ReplaceAppointmentOperation = {
+  payloadHash: string;
+  result?: ReplaceAppointmentResult;
+  pending?: Promise<ReplaceAppointmentResult>;
 };
 
 /**
@@ -554,6 +598,105 @@ async function runStartWork(
 }
 
 /**
+ * The No-Access Saga (PRS-146 AC1), forward-only: Appointment SCHEDULED ->
+ * NO_ACCESS, then the Case parked on the Resident.
+ *
+ * Unlike start-work there is no Officer Attention branch here: the Case write
+ * is total — it either succeeds or reports CASE_TERMINAL, which is a clean
+ * domain answer, never a half-applied state needing repair. The Assignment is
+ * deliberately untouched; the Contractor keeps the job across the reschedule
+ * (AC7).
+ */
+async function runNoAccess(
+  command: ReportNoAccessCommand
+): Promise<ReportNoAccessResult> {
+  const op = command.operationId;
+
+  const appointmentResult = await activities.reportNoAccessAppointment({
+    operationId: `${op}/appointment`,
+    appointmentId: command.appointmentId,
+    contractorId: command.contractorId,
+  });
+  if (appointmentResult.outcome === "APPOINTMENT_NOT_FOUND") {
+    return { kind: "APPOINTMENT_MISMATCH" };
+  }
+  if (appointmentResult.outcome === "NOT_SCHEDULED") {
+    return { kind: "NOT_SCHEDULED" };
+  }
+  if (appointmentResult.outcome === "WRONG_CONTRACTOR") {
+    return { kind: "WRONG_CONTRACTOR" };
+  }
+  const appointment = appointmentResult.appointment;
+
+  const caseResult = await activities.markCaseNoAccess({
+    caseId: command.caseId,
+    operationId: `${op}/case`,
+    actorId: command.actorId,
+    actorRole: command.actorRole,
+  });
+  if (caseResult.outcome === "CASE_TERMINAL") {
+    return { kind: "CASE_TERMINAL" };
+  }
+
+  return {
+    kind: "SUCCESS",
+    data: { appointment, case: caseResult.case },
+  };
+}
+
+/**
+ * The reschedule Saga (PRS-146 AC4/AC5), forward-only: the Appointment atom
+ * retires the old slot and books the replacement in one transaction, then the
+ * Case records it. A step-1 rejection means nothing was mutated — the old
+ * schedule still stands, which is what makes APPOINTMENT_CONFLICT safe to
+ * return to the caller as "pick another slot".
+ */
+async function runReplaceAppointment(
+  command: ReplaceAppointmentCommand
+): Promise<ReplaceAppointmentResult> {
+  const op = command.operationId;
+
+  // The atom derives its own `/claim` and `/appointment` suffixes beneath
+  // this, so name the step for what it is rather than doubling `/appointment`.
+  const slotResult = await activities.replaceAppointmentSlot({
+    operationId: `${op}/replace`,
+    caseId: command.caseId,
+    appointmentId: command.appointmentId,
+    startTime: command.input.startTime,
+    endTime: command.input.endTime,
+    reason: command.input.reason,
+  });
+  if (slotResult.outcome === "APPOINTMENT_NOT_FOUND") {
+    return { kind: "APPOINTMENT_MISMATCH" };
+  }
+  if (slotResult.outcome === "CASE_MISMATCH") {
+    return { kind: "CASE_MISMATCH" };
+  }
+  if (slotResult.outcome === "NOT_REPLACEABLE") {
+    return { kind: "NOT_REPLACEABLE" };
+  }
+  if (slotResult.outcome === "CONFLICT") {
+    return { kind: "APPOINTMENT_CONFLICT" };
+  }
+  const appointment = slotResult.appointment;
+
+  const caseResult = await activities.markCaseAppointmentReplaced({
+    caseId: command.caseId,
+    operationId: `${op}/case`,
+    actorId: command.actorId,
+    actorRole: command.actorRole,
+  });
+  if (caseResult.outcome === "CASE_TERMINAL") {
+    return { kind: "CASE_TERMINAL" };
+  }
+
+  return {
+    kind: "SUCCESS",
+    data: { appointment, case: caseResult.case },
+  };
+}
+
+/**
  * Durable owner of the opening operation for one Case.
  *
  * The workflow remains open for later PRS-81 lifecycle updates. Its first
@@ -564,6 +707,11 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   const manualOperations = new Map<string, ManualOperation>();
   const acceptanceOperations = new Map<string, AcceptanceOperation>();
   const startWorkOperations = new Map<string, StartWorkOperation>();
+  const noAccessOperations = new Map<string, NoAccessOperation>();
+  const replaceAppointmentOperations = new Map<
+    string,
+    ReplaceAppointmentOperation
+  >();
   // In-Workflow only — never exposed as a Query/read model. Tracks which
   // Contractors this Workflow already committed or attempted, across
   // allocation passes for this Case's whole lifetime.
@@ -772,6 +920,93 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       return operation.result;
     } catch (error) {
       startWorkOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
+  });
+
+  setHandler(reportNoAccess, async (unparsedCommand) => {
+    const command = ReportNoAccessCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    // Cache lookup ahead of the window gate, exactly as in startWork above: a
+    // legitimate in-window report whose retry only lands after endTime must
+    // replay its cached result rather than be rejected as out of window.
+    const existing = noAccessOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error("No-access operation has no result or pending activity");
+    }
+
+    // Half-open [startTime, endTime), same gate as start-work: No Access is a
+    // report about an attended visit, so it is only truthful while the
+    // Appointment is actually running.
+    const now = Date.now();
+    if (now < Date.parse(command.startTime)) return { kind: "NOT_IN_WINDOW" };
+    if (now >= Date.parse(command.endTime)) return { kind: "NOT_IN_WINDOW" };
+
+    const operation: NoAccessOperation = { payloadHash: command.payloadHash };
+    noAccessOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = runNoAccess(command);
+      operation.result = await operation.pending;
+      return operation.result;
+    } catch (error) {
+      noAccessOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
+  });
+
+  setHandler(replaceAppointment, async (unparsedCommand) => {
+    const command = ReplaceAppointmentCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    // Same ordering rule as the two handlers above — a cached result outranks
+    // a time gate that has since closed under a retry.
+    const existing = replaceAppointmentOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error(
+        "Replace-appointment operation has no result or pending activity"
+      );
+    }
+
+    const now = Date.now();
+    if (Date.parse(command.input.startTime) <= now) {
+      return { kind: "NOT_FUTURE" };
+    }
+    // AC4 permits a proactive reschedule only of a *future* SCHEDULED
+    // Appointment: once its window has opened, moving it is missed-visit
+    // recovery, which PRS-149 owns. A NO_ACCESS Appointment carries no such
+    // constraint — rescheduling one is precisely the AC5 recovery path.
+    if (
+      command.previousStatus === "SCHEDULED" &&
+      Date.parse(command.previousStartTime) <= now
+    ) {
+      return { kind: "NOT_FUTURE" };
+    }
+
+    const operation: ReplaceAppointmentOperation = {
+      payloadHash: command.payloadHash,
+    };
+    replaceAppointmentOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = runReplaceAppointment(command);
+      operation.result = await operation.pending;
+      return operation.result;
+    } catch (error) {
+      replaceAppointmentOperations.delete(command.idempotencyKey);
       throw error;
     } finally {
       delete operation.pending;

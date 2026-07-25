@@ -30,5 +30,5 @@ Create a `.env` file in this directory:
 ```env
 VITE_APP_URL=http://localhost:3003
 VITE_AUTH_URL=http://localhost:5001
-VITE_RESCHEDULE_JOB_URL=http://localhost:6006
+VITE_GATEWAY_URL=http://localhost:6010
 ```

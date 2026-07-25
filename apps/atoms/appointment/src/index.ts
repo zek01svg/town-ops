@@ -2,6 +2,8 @@ import { Scalar } from "@scalar/hono-api-reference";
 import {
   ConfirmAppointmentSlotInputSchema,
   ReleaseAppointmentSlotInputSchema,
+  ReplaceAppointmentSlotInputSchema,
+  ReportNoAccessAppointmentInputSchema,
   ReserveAppointmentSlotInputSchema,
   StartWorkAppointmentInputSchema,
 } from "@townops/orchestration-contract";
@@ -122,6 +124,45 @@ const appointmentSlotRoutes = new Hono()
       if (
         result.outcome === "NOT_SCHEDULED" ||
         result.outcome === "WRONG_CONTRACTOR"
+      ) {
+        return c.json(result, 409);
+      }
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/no-access",
+    validator("json", ReportNoAccessAppointmentInputSchema),
+    async (c) => {
+      const result = await appointmentService.reportNoAccessAppointment(
+        c.req.valid("json")
+      );
+      if (result.outcome === "APPOINTMENT_NOT_FOUND") {
+        return c.json(result, 404);
+      }
+      if (
+        result.outcome === "NOT_SCHEDULED" ||
+        result.outcome === "WRONG_CONTRACTOR"
+      ) {
+        return c.json(result, 409);
+      }
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/replacements",
+    validator("json", ReplaceAppointmentSlotInputSchema),
+    async (c) => {
+      const result = await appointmentService.replaceAppointmentSlot(
+        c.req.valid("json")
+      );
+      if (result.outcome === "APPOINTMENT_NOT_FOUND") {
+        return c.json(result, 404);
+      }
+      if (
+        result.outcome === "NOT_REPLACEABLE" ||
+        result.outcome === "CASE_MISMATCH" ||
+        result.outcome === "CONFLICT"
       ) {
         return c.json(result, 409);
       }

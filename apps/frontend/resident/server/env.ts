@@ -6,7 +6,6 @@ export const env = createEnv({
     VITE_APP_URL: z.url(),
     VITE_AUTH_URL: z.url(),
     VITE_GATEWAY_URL: z.url(),
-    VITE_RESCHEDULE_JOB_URL: z.url(),
   },
   server: {
     NODE_ENV: z.enum(["development", "production"]).default("development"),
@@ -17,8 +16,6 @@ export const env = createEnv({
     VITE_APP_URL: process.env.VITE_APP_URL ?? `http://localhost:4000`,
     VITE_AUTH_URL: process.env.VITE_AUTH_URL ?? `http://localhost:5008`,
     VITE_GATEWAY_URL: process.env.VITE_GATEWAY_URL ?? `http://localhost:6010`,
-    VITE_RESCHEDULE_JOB_URL:
-      process.env.VITE_RESCHEDULE_JOB_URL ?? `http://localhost:6006`,
   },
   skipValidation:
     !!process.env.CI || process.env.npm_lifecycle_event === "lint",

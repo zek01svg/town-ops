@@ -96,13 +96,14 @@ describe("acceptAllocation activity", () => {
             startTime: input.input.startTime,
             endTime: input.input.endTime,
             status: "SCHEDULED",
+            reason: null,
             operationId: `${input.operationId}/confirm`,
             createdAt: "2030-01-01T00:00:00.000Z",
           },
         })
       )
       .mockResolvedValueOnce(Response.json({ history: {} }));
-    const fetchImpl = fetchMock as unknown as typeof fetch;
+    const fetchImpl = fetchMock;
 
     const result = await dependencies(fetchImpl).acceptAllocation(input);
 
@@ -139,7 +140,7 @@ describe("acceptAllocation activity", () => {
         Response.json({ outcome: "ASSIGNMENT_NOT_PENDING" }, { status: 409 })
       )
       .mockResolvedValueOnce(Response.json({ outcome: "RELEASED" }));
-    const fetchImpl = fetchMock as unknown as typeof fetch;
+    const fetchImpl = fetchMock;
 
     await expect(
       dependencies(fetchImpl).acceptAllocation(input)
@@ -164,9 +165,7 @@ describe("acceptAllocation activity", () => {
       );
 
     await expect(
-      dependencies(fetchMock as unknown as typeof fetch).acceptAllocation(
-        command()
-      )
+      dependencies(fetchMock).acceptAllocation(command())
     ).resolves.toEqual({ kind: "APPOINTMENT_NOT_FUTURE" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

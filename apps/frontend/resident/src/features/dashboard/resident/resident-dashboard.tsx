@@ -1,110 +1,105 @@
-import { useForm } from "@tanstack/react-form";
-import { useMutation } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { ResidentAppointmentDto } from "@townops/orchestration-contract";
+import type { FormEvent } from "react";
+import { useRef, useState } from "react";
 import { z } from "zod/v4";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { rescheduleJobClient } from "@/libr/api";
-import { clearAuth, getAuthHeader } from "@/libr/auth-token";
+import { useReplaceAppointmentMutation } from "@/features/case/api/mutations";
+import { getCase } from "@/libr/gateway";
 
-const rescheduleSchema = z.object({
-  caseId: z.string().uuid(),
-  assignmentId: z.string().uuid(),
-  residentId: z.string().uuid(),
-  newStartTime: z.string().min(1),
-  newEndTime: z.string().min(1),
-  appointmentId: z.string().uuid().optional(),
-});
-
-type RescheduleValues = z.infer<typeof rescheduleSchema>;
-
-type RescheduleResponse = {
-  appointmentId: string;
-  caseId: string;
-  status: string;
-  message: string;
-  newStartTime: string;
-};
+/**
+ * Why the Reschedule cannot be submitted, or null when it can. Prose rather
+ * than a boolean so the disabled button can say what is missing — the
+ * Gateway's own guards should never be the first the Resident hears of it.
+ */
+export function rescheduleBlocker(
+  appointment: ResidentAppointmentDto | null,
+  startTime: string,
+  endTime: string,
+  reason: string,
+  isRetry: boolean
+): string | null {
+  if (!appointment) return "This case has no appointment to reschedule.";
+  if (
+    appointment.status !== "SCHEDULED" &&
+    appointment.status !== "NO_ACCESS"
+  ) {
+    return `This appointment is ${appointment.status} and can no longer be rescheduled.`;
+  }
+  if (!startTime || !endTime) return "Choose the new start and end times.";
+  if (Date.parse(endTime) <= Date.parse(startTime)) {
+    return "The new end time must be after the new start time.";
+  }
+  // A retry reuses its idempotency key, so the slot it carries may have aged
+  // past "now" while the first attempt was in flight — the server still holds
+  // the gate.
+  if (!isRetry && Date.parse(startTime) <= Date.now()) {
+    return "The new appointment must start in the future.";
+  }
+  // A reason is required while the visit is still going ahead, and optional
+  // when it is being rearranged after a failed one.
+  if (appointment.status === "SCHEDULED" && !reason.trim()) {
+    return "Tell us why you are moving this visit.";
+  }
+  return null;
+}
 
 export function ResidentDashboard() {
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitResult, setSubmitResult] = useState<RescheduleResponse | null>(
-    null
+  const [caseId, setCaseId] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [reason, setReason] = useState("");
+  const replacementKey = useRef<string | undefined>(undefined);
+
+  const isCaseId = z.uuid().safeParse(caseId).success;
+  const caseQuery = useQuery({
+    queryKey: ["case", caseId],
+    queryFn: () => getCase(caseId),
+    enabled: isCaseId,
+    retry: false,
+  });
+
+  const appointment = caseQuery.data?.appointment ?? null;
+  const isReasonRequired = appointment?.status === "SCHEDULED";
+  const mutation = useReplaceAppointmentMutation();
+  const blockedFor = rescheduleBlocker(
+    appointment,
+    startTime,
+    endTime,
+    reason,
+    replacementKey.current !== undefined
   );
 
-  const mutation = useMutation({
-    mutationFn: async (payload: RescheduleValues) => {
-      const res = await rescheduleJobClient.api.cases["reschedule-job"].$post(
-        { json: payload },
-        { headers: getAuthHeader() }
-      );
-      if ((res.status as number) === 401) {
-        clearAuth();
-      }
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(
-          (err as any).error ?? (err as any).message ?? `Error ${res.status}`
-        );
-      }
-      return res.json() as Promise<RescheduleResponse>;
-    },
-  });
-
-  const form = useForm({
-    defaultValues: {
-      caseId: "",
-      assignmentId: "",
-      residentId: "",
-      newStartTime: "",
-      newEndTime: "",
-    },
-    validators: {
-      onChange: ({ value }) => {
-        const res = rescheduleSchema.safeParse(value);
-        if (res.success) return undefined;
-        return res.error.message;
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!appointment || blockedFor) return;
+    const idempotencyKey = replacementKey.current ?? crypto.randomUUID();
+    replacementKey.current = idempotencyKey;
+    mutation.mutate(
+      {
+        caseId,
+        appointmentId: appointment.id,
+        input: {
+          startTime: new Date(startTime).toISOString(),
+          endTime: new Date(endTime).toISOString(),
+          reason: reason.trim() || undefined,
+        },
+        idempotencyKey,
       },
-    },
-    onSubmit: async ({ value }) => {
-      setSubmitError(null);
-      setSubmitResult(null);
-
-      const start = new Date(value.newStartTime);
-      const end = new Date(value.newEndTime);
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        setSubmitError("Please provide valid start and end times.");
-        return;
+      {
+        onSuccess: () => {
+          replacementKey.current = undefined;
+          setStartTime("");
+          setEndTime("");
+          setReason("");
+        },
       }
-
-      try {
-        const payload: RescheduleValues = {
-          caseId: value.caseId,
-          assignmentId: value.assignmentId,
-          residentId: value.residentId,
-          newStartTime: start.toISOString(),
-          newEndTime: end.toISOString(),
-        };
-
-        const result = await mutation.mutateAsync(payload);
-        setSubmitResult(result);
-      } catch (err: any) {
-        setSubmitError(err?.message ?? "Reschedule failed.");
-      }
-    },
-  });
-
-  const statusBadge = useMemo(() => {
-    if (!submitResult) return null;
-    return (
-      <Badge className="rounded-none uppercase text-[10px] bg-emerald-500/15 text-emerald-400 border-emerald-500/40">
-        {submitResult.status}
-      </Badge>
     );
-  }, [submitResult]);
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -113,179 +108,160 @@ export function ResidentDashboard() {
           Resident Service Desk
         </h1>
         <p className="text-muted-foreground text-sm mt-2">
-          If your contractor reported no access, choose a new slot below to
-          reschedule the visit.
+          Move a visit to a slot that suits you. If your contractor could not
+          get in, the reason they gave is shown below.
         </p>
       </div>
 
       <Card className="bg-surface-container border border-border rounded-none">
-        <CardHeader className="flex flex-col gap-2">
+        <CardHeader>
           <CardTitle className="text-sm font-label uppercase tracking-widest text-primary">
-            Reschedule Appointment
+            Reschedule a Visit
           </CardTitle>
-          <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase text-muted-foreground">
-            <Badge variant="outline" className="rounded-none border-border">
-              JWT Required
-            </Badge>
-            <span>Provide your case and assignment IDs.</span>
-          </div>
         </CardHeader>
         <CardContent>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              form.handleSubmit();
-            }}
-            className="space-y-5"
-          >
-            <form.Field
-              name="caseId"
-              children={(field) => (
-                <div className="space-y-2">
-                  <label className="text-xs uppercase font-label tracking-widest text-primary">
-                    Case ID
-                  </label>
-                  <Input
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="e.g. 123e4567-e89b-12d3..."
-                    className="rounded-none border-border bg-surface-container"
-                  />
-                  {field.state.meta.errors ? (
-                    <em className="text-xs text-destructive">
-                      {field.state.meta.errors.join(", ")}
-                    </em>
-                  ) : null}
-                </div>
-              )}
-            />
-
-            <form.Field
-              name="assignmentId"
-              children={(field) => (
-                <div className="space-y-2">
-                  <label className="text-xs uppercase font-label tracking-widest text-primary">
-                    Assignment ID
-                  </label>
-                  <Input
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="e.g. 223e4567-e89b-12d3..."
-                    className="rounded-none border-border bg-surface-container"
-                  />
-                  {field.state.meta.errors ? (
-                    <em className="text-xs text-destructive">
-                      {field.state.meta.errors.join(", ")}
-                    </em>
-                  ) : null}
-                </div>
-              )}
-            />
-
-            <form.Field
-              name="residentId"
-              children={(field) => (
-                <div className="space-y-2">
-                  <label className="text-xs uppercase font-label tracking-widest text-primary">
-                    Resident ID
-                  </label>
-                  <Input
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="e.g. 323e4567-e89b-12d3..."
-                    className="rounded-none border-border bg-surface-container"
-                  />
-                  {field.state.meta.errors ? (
-                    <em className="text-xs text-destructive">
-                      {field.state.meta.errors.join(", ")}
-                    </em>
-                  ) : null}
-                </div>
-              )}
-            />
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <form.Field
-                name="newStartTime"
-                children={(field) => (
-                  <div className="space-y-2">
-                    <label className="text-xs uppercase font-label tracking-widest text-primary">
-                      New Start Time
-                    </label>
-                    <Input
-                      type="datetime-local"
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      className="rounded-none border-border bg-surface-container"
-                    />
-                    {field.state.meta.errors ? (
-                      <em className="text-xs text-destructive">
-                        {field.state.meta.errors.join(", ")}
-                      </em>
-                    ) : null}
-                  </div>
-                )}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-2">
+              <label
+                htmlFor="case-id"
+                className="block text-xs uppercase font-label tracking-widest text-primary"
+              >
+                Case ID
+              </label>
+              <Input
+                id="case-id"
+                value={caseId}
+                onChange={(e) => setCaseId(e.target.value)}
+                placeholder="e.g. 123e4567-e89b-12d3..."
+                className="rounded-none border-border bg-surface-container"
               />
-
-              <form.Field
-                name="newEndTime"
-                children={(field) => (
-                  <div className="space-y-2">
-                    <label className="text-xs uppercase font-label tracking-widest text-primary">
-                      New End Time
-                    </label>
-                    <Input
-                      type="datetime-local"
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      className="rounded-none border-border bg-surface-container"
-                    />
-                    {field.state.meta.errors ? (
-                      <em className="text-xs text-destructive">
-                        {field.state.meta.errors.join(", ")}
-                      </em>
-                    ) : null}
-                  </div>
-                )}
-              />
+              {caseQuery.isError && (
+                <p className="text-xs text-destructive">
+                  {caseQuery.error.message}
+                </p>
+              )}
             </div>
 
-            {submitError && (
-              <p className="text-xs text-destructive uppercase tracking-widest">
-                {submitError}
-              </p>
-            )}
-
-            {submitResult && (
-              <div className="border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-label uppercase tracking-widest text-emerald-400">
-                    {submitResult.message}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground font-mono mt-1">
-                    New start time:{" "}
-                    {new Date(submitResult.newStartTime).toLocaleString()}
-                  </p>
+            {appointment && (
+              <div className="border border-border p-3 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] uppercase font-label tracking-widest text-muted-foreground">
+                    Current visit
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="rounded-none text-[10px] uppercase border-border"
+                  >
+                    {appointment.status}
+                  </Badge>
                 </div>
-                {statusBadge}
+                <p className="text-xs text-foreground">
+                  {new Date(appointment.startTime).toLocaleString()} –{" "}
+                  {new Date(appointment.endTime).toLocaleTimeString()}
+                </p>
+                {appointment.reason && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {appointment.reason}
+                  </p>
+                )}
               </div>
             )}
 
-            <form.Subscribe
-              selector={(state) => [state.canSubmit, state.isSubmitting]}
-              children={([canSubmit, isSubmitting]) => (
-                <Button
-                  type="submit"
-                  disabled={!canSubmit || mutation.isPending}
-                  className="w-full rounded-none tracking-widest font-bold uppercase font-label"
+            {isCaseId && !caseQuery.isPending && !appointment && (
+              <p className="text-xs text-muted-foreground">
+                This case has no visit booked yet.
+              </p>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label
+                  htmlFor="new-start-time"
+                  className="block text-xs uppercase font-label tracking-widest text-primary"
                 >
-                  {isSubmitting || mutation.isPending
-                    ? "Submitting..."
-                    : "Confirm Reschedule"}
-                </Button>
-              )}
-            />
+                  New Start Time
+                </label>
+                <Input
+                  id="new-start-time"
+                  type="datetime-local"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="rounded-none border-border bg-surface-container"
+                />
+              </div>
+              <div className="space-y-2">
+                <label
+                  htmlFor="new-end-time"
+                  className="block text-xs uppercase font-label tracking-widest text-primary"
+                >
+                  New End Time
+                </label>
+                <Input
+                  id="new-end-time"
+                  type="datetime-local"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="rounded-none border-border bg-surface-container"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="reschedule-reason"
+                className="block text-xs uppercase font-label tracking-widest text-primary"
+              >
+                {isReasonRequired
+                  ? "Why are you moving this visit?"
+                  : "Anything we should know? (optional)"}
+              </label>
+              <textarea
+                id="reschedule-reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                required={isReasonRequired}
+                aria-required={isReasonRequired}
+                maxLength={1000}
+                rows={3}
+                className="w-full rounded-none border border-border bg-surface-container p-2 text-sm"
+              />
+            </div>
+
+            {mutation.isError && (
+              <p className="text-xs text-destructive uppercase tracking-widest">
+                {mutation.error.message}
+              </p>
+            )}
+
+            {mutation.isSuccess && (
+              <div className="border border-emerald-500/40 bg-emerald-500/10 p-3">
+                <p className="text-xs font-label uppercase tracking-widest text-emerald-400">
+                  Visit rescheduled
+                </p>
+                <p className="text-[10px] text-muted-foreground font-mono mt-1">
+                  {new Date(
+                    mutation.data.data.appointment.startTime
+                  ).toLocaleString()}
+                </p>
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              disabled={mutation.isPending || !!blockedFor}
+              aria-describedby={blockedFor ? "reschedule-blocked" : undefined}
+              className="w-full rounded-none tracking-widest font-bold uppercase font-label"
+            >
+              {mutation.isPending ? "Submitting..." : "Confirm Reschedule"}
+            </Button>
+            {blockedFor && (
+              <p
+                id="reschedule-blocked"
+                className="text-xs text-muted-foreground"
+              >
+                {blockedFor}
+              </p>
+            )}
           </form>
         </CardContent>
       </Card>

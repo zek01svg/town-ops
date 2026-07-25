@@ -16,6 +16,9 @@ const { mockDb } = vi.hoisted(() => {
     insert: vi.fn().mockReturnThis(),
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
+    // getAppointmentsByCaseId now ends on .orderBy(), so that is the awaited
+    // link of the chain (PRS-146).
+    orderBy: vi.fn().mockReturnThis(),
     values: vi.fn().mockReturnThis(),
     returning: vi.fn().mockReturnThis(),
   };
@@ -28,7 +31,7 @@ vi.mock("../../src/database/db", () => ({
 }));
 
 vi.mock("hono/jwk", () => ({
-  jwk: () => (c: any, next: any) => next(),
+  jwk: () => (_c: unknown, next: () => unknown) => next(),
 }));
 
 describe("Appointment Atom", () => {
@@ -60,7 +63,8 @@ describe("Appointment Atom", () => {
       ];
       mockDb.select.mockReturnThis();
       mockDb.from.mockReturnThis();
-      mockDb.where.mockResolvedValue(sampleAppointments);
+      mockDb.where.mockReturnThis();
+      mockDb.orderBy.mockResolvedValue(sampleAppointments);
 
       // Act
       const res = await app.request(`/api/appointments/${mockCaseId}`);
@@ -74,7 +78,7 @@ describe("Appointment Atom", () => {
     it("should return empty list if none found", async () => {
       // Arrange
       const mockCaseId = "123e4567-e89b-12d3-a456-426614174000";
-      mockDb.where.mockResolvedValue([]);
+      mockDb.orderBy.mockResolvedValue([]);
 
       // Act
       const res = await app.request(`/api/appointments/${mockCaseId}`);

@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod/v4";
 
 import { env } from "@/env";
-import { closeCaseClient, rescheduleJobClient } from "@/libr/api";
+import { closeCaseClient } from "@/libr/api";
 import { clearAuth, getAuthHeader } from "@/libr/auth-token";
 
 import { caseKeys } from "./query-keys";
@@ -133,40 +133,10 @@ export function useCloseCaseMutation() {
   });
 }
 
-export type RescheduleJobInput = {
-  appointmentId: string;
-  residentId: string;
-  caseId: string;
-  assignmentId: string;
-  newStartTime: string;
-  newEndTime: string;
-};
-
-export function useRescheduleJobMutation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: RescheduleJobInput) => {
-      const res = await rescheduleJobClient.api.cases["reschedule-job"].$post(
-        { json: input },
-        { headers: getAuthHeader() }
-      );
-      await throwIfRequestFailed(res);
-      return res.json();
-    },
-    onSuccess: (_, vars) => {
-      void qc.invalidateQueries({ queryKey: caseKeys.all });
-      void qc.invalidateQueries({
-        queryKey: caseKeys.appointments(vars.caseId),
-      });
-    },
-  });
-}
-
 export type NoAccessInput = {
   caseId: string;
-  assignmentId: string;
-  contractorId: string;
-  reason?: string;
+  appointmentId: string;
+  idempotencyKey: string;
 };
 
 export function useNoAccessMutation() {
@@ -174,11 +144,13 @@ export function useNoAccessMutation() {
   return useMutation({
     mutationFn: async (input: NoAccessInput) => {
       const res = await fetch(
-        `${env.VITE_HANDLE_NO_ACCESS_URL}/api/cases/no-access`,
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/appointments/${input.appointmentId}/no-access`,
         {
           method: "PUT",
-          headers: { ...getAuthHeader(), "Content-Type": "application/json" },
-          body: JSON.stringify(input),
+          headers: {
+            ...getAuthHeader(),
+            "Idempotency-Key": input.idempotencyKey,
+          },
         }
       );
       await throwIfRequestFailed(res);

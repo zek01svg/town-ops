@@ -30,6 +30,7 @@ Create a `.env` file in this directory:
 ```env
 VITE_APP_URL=http://localhost:3001
 VITE_AUTH_URL=http://localhost:5001
+VITE_GATEWAY_URL=http://localhost:6010
 VITE_CASE_ATOM_URL=http://localhost:5005
 VITE_ASSIGNMENT_ATOM_URL=http://localhost:5004
 VITE_APPOINTMENT_ATOM_URL=http://localhost:5003

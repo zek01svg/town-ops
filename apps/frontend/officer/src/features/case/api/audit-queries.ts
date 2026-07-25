@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import { z } from "zod/v4";
 
 import { env } from "@/env";
 import { fetchWithAuth } from "@/libr/auth-token";
@@ -13,6 +14,10 @@ export interface TimelineEvent {
   timestamp: string;
   description: string;
 }
+
+const contractorResponseSchema = z.object({
+  contractor: z.object({ name: z.string() }),
+});
 
 export const auditQueries = {
   timeline: (caseId: string) =>
@@ -57,13 +62,15 @@ export const auditQueries = {
             const contractorRes = await safe(
               `${env.VITE_CONTRACTOR_ATOM_URL}/api/contractors/${a.contractorId}`
             );
-            const contractorName = contractorRes?.ok
-              ? (
-                  (await contractorRes.json()) as {
-                    contractor: { name: string };
-                  }
-                ).contractor.name
-              : `Contractor ${a.contractorId.slice(0, 8)}…`;
+            let contractorName = `Contractor ${a.contractorId.slice(0, 8)}…`;
+            if (contractorRes?.ok) {
+              const contractor = contractorResponseSchema.safeParse(
+                await contractorRes.json()
+              );
+              if (contractor.success) {
+                contractorName = contractor.data.contractor.name;
+              }
+            }
 
             events.push({
               type: "Assigned",
@@ -101,7 +108,7 @@ export const auditQueries = {
               type: "Appointment",
               actor: "System",
               timestamp: appt.createdAt,
-              description: `Appointment ${appt.status}. Scheduled ${new Date(appt.startTime).toLocaleString()} – ${new Date(appt.endTime).toLocaleTimeString()}.`,
+              description: `Appointment ${appt.status}${appt.reason ? `: ${appt.reason}` : ""}. Scheduled ${new Date(appt.startTime).toLocaleString()} – ${new Date(appt.endTime).toLocaleTimeString()}.`,
             });
           }
         }

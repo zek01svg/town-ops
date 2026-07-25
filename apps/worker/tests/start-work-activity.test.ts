@@ -43,6 +43,7 @@ describe("startWorkAppointment activity", () => {
             startTime: "2030-01-01T09:00:00.000Z",
             endTime: "2030-01-01T10:00:00.000Z",
             status: "IN_PROGRESS",
+            reason: null,
             operationId: input.operationId,
             createdAt: "2030-01-01T09:00:00.000Z",
           },

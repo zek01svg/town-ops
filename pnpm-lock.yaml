@@ -1202,9 +1202,6 @@ importers:
       '@townops/open-case-composite':
         specifier: workspace:*
         version: link:../../composites/open-case
-      '@townops/reschedule-job-composite':
-        specifier: workspace:*
-        version: link:../../composites/reschedule-job
       '@townops/shared-ts':
         specifier: workspace:*
         version: link:../../../packages/shared-ts
@@ -1362,9 +1359,6 @@ importers:
       '@townops/open-case-composite':
         specifier: workspace:*
         version: link:../../composites/open-case
-      '@townops/reschedule-job-composite':
-        specifier: workspace:*
-        version: link:../../composites/reschedule-job
       '@townops/shared-ts':
         specifier: workspace:*
         version: link:../../../packages/shared-ts
@@ -1519,9 +1513,6 @@ importers:
       '@townops/orchestration-contract':
         specifier: workspace:*
         version: link:../../../packages/orchestration-contract
-      '@townops/reschedule-job-composite':
-        specifier: workspace:*
-        version: link:../../composites/reschedule-job
       '@townops/shared-ts':
         specifier: workspace:*
         version: link:../../../packages/shared-ts

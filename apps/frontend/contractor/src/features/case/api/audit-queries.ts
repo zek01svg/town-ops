@@ -89,7 +89,7 @@ export const auditQueries = {
               type: "Appointment",
               actor: "System",
               timestamp: appt.createdAt,
-              description: `Appointment ${appt.status}. Scheduled ${new Date(appt.startTime).toLocaleString()} - ${new Date(appt.endTime).toLocaleTimeString()}.`,
+              description: `Appointment ${appt.status}${appt.reason ? `: ${appt.reason}` : ""}. Scheduled ${new Date(appt.startTime).toLocaleString()} - ${new Date(appt.endTime).toLocaleTimeString()}.`,
             });
           }
         }

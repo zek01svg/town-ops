@@ -26,7 +26,11 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
     select: vi.fn().mockReturnValue(q),
     update: vi.fn().mockReturnValue(q),
     insert: vi.fn().mockReturnValue(q),
+    // Some services (e.g. updateCaseStatus) wrap their writes in a
+    // transaction; hand the callback the same query builder as `tx`.
+    transaction: vi.fn(),
   };
+  db.transaction.mockImplementation(async (cb) => cb(db));
 
   return { mockQuery: q, mockDb: db };
 });
@@ -36,14 +40,19 @@ vi.mock("../../src/database/db", () => ({
 }));
 
 vi.mock("hono/jwk", () => ({
-  jwk: () => (c: any, next: any) => next(),
+  jwk: () => (_c: unknown, next: () => unknown) => next(),
 }));
 
 describe("Case Atom API Endpoints", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Default resolve value for queries:
+    // clearAllMocks clears call history but NOT the mockImplementationOnce
+    // queue, so an unconsumed Once from a prior test (e.g. a handler that
+    // 400s before awaiting its query) would leak into the next and resolve
+    // the wrong row. Fully reset `then` to drain that queue, then restore the
+    // default resolve value.
+    mockQuery.then.mockReset();
     mockQuery.then.mockImplementation((resolve) => resolve([]));
   });
 

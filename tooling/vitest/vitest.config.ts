@@ -1,5 +1,3 @@
-import { fileURLToPath, URL } from "node:url";
-
 import { defineConfig, defineProject, mergeConfig } from "vitest/config";
 
 export const baseConfig = defineConfig({
@@ -13,9 +11,6 @@ export const baseConfig = defineConfig({
       "playwright",
       "../../tests/e2e",
     ],
-    alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
-    },
     coverage: {
       provider: "istanbul" as const,
       reporter: [

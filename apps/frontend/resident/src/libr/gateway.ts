@@ -1,14 +1,46 @@
+import {
+  CaseDtoSchema,
+  MeDtoSchema,
+  OperationSchema,
+  ResidentAppointmentDtoSchema,
+} from "@townops/orchestration-contract";
 import type {
   CaseDto,
-  MeDto,
   Operation,
+  ReplaceAppointmentInput,
+  ResidentAppointmentDto,
   ResidentOpenCaseInput,
 } from "@townops/orchestration-contract";
+import { z } from "zod/v4";
 
 import { env } from "../env";
 import { clearAuth, getAuthHeader } from "./auth-token";
 
 type Envelope<T> = { data: T; operation?: Operation };
+
+const errorResponseSchema = z.object({
+  error: z
+    .object({ message: z.string().optional(), code: z.string().optional() })
+    .optional(),
+});
+
+const residentCaseDtoSchema = CaseDtoSchema.extend({
+  appointment: ResidentAppointmentDtoSchema.nullable(),
+});
+
+const replacementDataSchema = z.object({
+  appointment: ResidentAppointmentDtoSchema,
+  case: CaseDtoSchema,
+});
+
+/**
+ * How the Gateway projects a Case for the Resident who owns it: the live
+ * Appointment sits flat on the Case, with no Assignment envelope — a Resident
+ * has nothing to do with allocation bookkeeping.
+ */
+export type ResidentCaseDto = CaseDto & {
+  appointment: ResidentAppointmentDto | null;
+};
 
 /**
  * The Resident browser talks to the Gateway and nothing else. Atoms, Temporal,
@@ -23,7 +55,8 @@ async function request<T>(
   init: Omit<RequestInit, "headers"> & {
     headers?: Record<string, string>;
     idempotencyKey?: string;
-  } = {}
+  } = {},
+  dataSchema: z.ZodType<T>
 ): Promise<Envelope<T>> {
   const { idempotencyKey, headers, ...rest } = init;
   const response = await fetch(`${env.VITE_GATEWAY_URL}${path}`, {
@@ -43,16 +76,23 @@ async function request<T>(
 
   const body = await response.json().catch(() => undefined);
   if (!response.ok) {
+    const error = errorResponseSchema.safeParse(body);
     throw Object.assign(
-      new Error(body?.error?.message ?? `Request failed (${response.status})`),
-      { code: body?.error?.code as string | undefined }
+      new Error(
+        error.data?.error?.message ?? `Request failed (${response.status})`
+      ),
+      { code: error.data?.error?.code }
     );
   }
-  return body as Envelope<T>;
+  const envelope = z
+    .object({ data: dataSchema, operation: OperationSchema.optional() })
+    .safeParse(body);
+  if (!envelope.success) throw new Error("Invalid Gateway response.");
+  return envelope.data;
 }
 
 export async function getMe() {
-  return (await request<MeDto>("/api/me")).data;
+  return (await request("/api/me", {}, MeDtoSchema)).data;
 }
 
 /**
@@ -62,13 +102,34 @@ export async function getMe() {
  * failure reattach to the same operation instead of opening a second Case.
  */
 export function openCase(input: ResidentOpenCaseInput, idempotencyKey: string) {
-  return request<CaseDto>("/api/cases", {
-    method: "POST",
-    body: JSON.stringify(input),
-    idempotencyKey,
-  });
+  return request(
+    "/api/cases",
+    { method: "POST", body: JSON.stringify(input), idempotencyKey },
+    CaseDtoSchema
+  );
 }
 
 export async function getCase(caseId: string) {
-  return (await request<CaseDto>(`/api/cases/${caseId}`)).data;
+  return (await request(`/api/cases/${caseId}`, {}, residentCaseDtoSchema))
+    .data;
+}
+
+/**
+ * Reschedules the Case's live Appointment. The Gateway requires a reason while
+ * the Appointment is still SCHEDULED and accepts one optionally once the
+ * Contractor has reported No Access. Reusing the idempotency key across
+ * retries reattaches to the same operation instead of booking a second
+ * Appointment.
+ */
+export function replaceAppointment(
+  caseId: string,
+  appointmentId: string,
+  input: ReplaceAppointmentInput,
+  idempotencyKey: string
+) {
+  return request(
+    `/api/cases/${caseId}/appointments/${appointmentId}/replacement`,
+    { method: "PUT", body: JSON.stringify(input), idempotencyKey },
+    replacementDataSchema
+  );
 }

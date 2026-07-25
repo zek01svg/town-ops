@@ -46,6 +46,37 @@ const gatewayCaseSchema = z.object({
   data: z.object({ assignment: gatewayAssignmentSchema.nullish() }).nullish(),
 });
 
+type GatewayAppointment = NonNullable<
+  z.infer<typeof gatewayAssignmentSchema>["appointment"]
+>;
+
+/**
+ * Why the No Access control is unavailable, or null when it is available.
+ * Mirrors the Start Work gate — a report only makes sense for this
+ * Contractor's own live visit — so it closes the moment Start Work advances
+ * the Appointment past SCHEDULED. Doubles as the disabled button's spoken
+ * explanation.
+ */
+export function noAccessBlocker(
+  appointment: GatewayAppointment | null | undefined,
+  myContractorId: string | null
+): string | null {
+  if (!appointment) return "No appointment has been scheduled yet.";
+  if (appointment.status !== "SCHEDULED") {
+    return `This appointment is ${appointment.status} — only a scheduled visit can be reported as no access.`;
+  }
+  if (appointment.contractorId !== myContractorId) {
+    return "This appointment belongs to another contractor.";
+  }
+  if (Date.now() < Date.parse(appointment.startTime)) {
+    return `Available from ${new Date(appointment.startTime).toLocaleString()}.`;
+  }
+  if (Date.now() >= Date.parse(appointment.endTime)) {
+    return "The appointment window has closed.";
+  }
+  return null;
+}
+
 async function getContractorId(): Promise<string> {
   const session = await auth.getSession();
   const user = session?.data?.user;
@@ -108,6 +139,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
   const qc = useQueryClient();
   const acceptanceKey = useRef<string | undefined>(undefined);
   const startWorkKey = useRef<string | undefined>(undefined);
+  const noAccessKey = useRef<string | undefined>(undefined);
   const [myContractorId, setMyContractorId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -144,6 +176,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
     appointment.contractorId === myContractorId &&
     Date.now() >= Date.parse(appointment.startTime) &&
     Date.now() < Date.parse(appointment.endTime);
+  const noAccessBlockedFor = noAccessBlocker(appointment, myContractorId);
 
   function handleAccept() {
     if (!attempt || !isValidAppointment) return;
@@ -184,23 +217,23 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
   }
 
   function handleNoAccess() {
-    if (!assignment) return;
-    void getContractorId().then((contractorId) => {
-      return noAccess.mutate(
-        {
-          caseId,
-          assignmentId: assignment.id,
-          contractorId,
-          reason: "Contractor reported no access at site.",
+    if (!appointment || noAccessBlockedFor) return;
+    const idempotencyKey = noAccessKey.current ?? crypto.randomUUID();
+    noAccessKey.current = idempotencyKey;
+    noAccess.mutate(
+      {
+        caseId,
+        appointmentId: appointment.id,
+        idempotencyKey,
+      },
+      {
+        onSuccess: () => {
+          noAccessKey.current = undefined;
+          void qc.invalidateQueries({ queryKey: ["gateway-case", caseId] });
+          void qc.invalidateQueries({ queryKey: caseKeys.all });
         },
-        {
-          onSuccess: () => {
-            void qc.invalidateQueries({ queryKey: ["gateway-case", caseId] });
-            void qc.invalidateQueries({ queryKey: caseKeys.all });
-          },
-        }
-      );
-    });
+      }
+    );
   }
 
   return (
@@ -345,8 +378,8 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               Appointment Scheduled
             </span>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              {assignment?.appointment
-                ? `${new Date(assignment.appointment.startTime).toLocaleString()} — ${new Date(assignment.appointment.endTime).toLocaleString()}`
+              {appointment
+                ? `${new Date(appointment.startTime).toLocaleString()} — ${new Date(appointment.endTime).toLocaleString()}`
                 : "Your appointment is being confirmed."}
             </p>
             <div className="flex flex-col gap-2">
@@ -375,12 +408,23 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               </Button>
               <Button
                 onClick={handleNoAccess}
-                disabled={noAccess.isPending || isAwaitingResident}
+                disabled={noAccess.isPending || !!noAccessBlockedFor}
+                aria-describedby={
+                  noAccessBlockedFor ? "no-access-blocked" : undefined
+                }
                 variant="outline"
                 className="rounded-none uppercase text-[10px] font-label tracking-widest w-full border-destructive/40 text-destructive hover:bg-destructive/10"
               >
                 Report No Access
               </Button>
+              {noAccessBlockedFor && (
+                <p
+                  id="no-access-blocked"
+                  className="text-[10px] text-muted-foreground"
+                >
+                  {noAccessBlockedFor}
+                </p>
+              )}
               {noAccess.isError && (
                 <p className="text-[10px] text-destructive uppercase">
                   {noAccess.error?.message}

@@ -218,6 +218,8 @@ export const UPDATE_NAMES = {
   allocateContractor: "allocateContractor",
   acceptAllocation: "acceptAllocation",
   startWork: "startWork",
+  reportNoAccess: "reportNoAccess",
+  replaceAppointment: "replaceAppointment",
 } as const;
 export const ORCHESTRATION_TASK_QUEUE = "townops-orchestration";
 
@@ -332,7 +334,17 @@ export const AllocationAttemptDtoSchema = z.object({
 });
 export type AllocationAttemptDto = z.infer<typeof AllocationAttemptDtoSchema>;
 
-export const AppointmentStatusSchema = z.enum(["SCHEDULED", "IN_PROGRESS"]);
+/**
+ * Every status an Appointment row can hold. A replaced Appointment keeps its
+ * row, so NO_ACCESS/RESCHEDULED must parse — a narrower schema turns an
+ * ordinary read of a rescheduled Case into a 500.
+ */
+export const AppointmentStatusSchema = z.enum([
+  "SCHEDULED",
+  "IN_PROGRESS",
+  "NO_ACCESS",
+  "RESCHEDULED",
+]);
 export type AppointmentStatus = z.infer<typeof AppointmentStatusSchema>;
 
 export const AppointmentDtoSchema = z.object({
@@ -344,10 +356,29 @@ export const AppointmentDtoSchema = z.object({
   startTime: z.string(),
   endTime: z.string(),
   status: AppointmentStatusSchema,
+  // The reason supplied when this Appointment was created by a Reschedule.
+  reason: z.string().nullable(),
   operationId: z.string().min(1),
   createdAt: z.string(),
 });
 export type AppointmentDto = z.infer<typeof AppointmentDtoSchema>;
+
+/**
+ * What a Resident is allowed to see of an Appointment. `contractorId` is
+ * dropped because the Resident app has no Contractor directory to resolve the
+ * UUID against, and `attemptId` because allocation bookkeeping would expose
+ * Contractor churn across Acceptance SLA Breaches.
+ */
+export const ResidentAppointmentDtoSchema = AppointmentDtoSchema.pick({
+  id: true,
+  startTime: true,
+  endTime: true,
+  status: true,
+  reason: true,
+});
+export type ResidentAppointmentDto = z.infer<
+  typeof ResidentAppointmentDtoSchema
+>;
 
 export const AcceptAllocationInputSchema = z
   .object({
@@ -799,5 +830,237 @@ export function canonicalStartWorkPayload(
   return JSON.stringify({
     caseId,
     appointmentId,
+  });
+}
+
+// ─── Handle No Access and rescheduling (PRS-146) ───────────────────────────
+
+export const ReportNoAccessCommandSchema = z.object({
+  idempotencyKey: z.uuid(),
+  payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+  operationId: z.string().min(1),
+  actorId: z.uuid(),
+  actorRole: z.literal("CONTRACTOR"),
+  contractorId: z.uuid(),
+  caseId: z.uuid(),
+  appointmentId: z.uuid(),
+  startTime: AcceptAllocationInputSchema.shape.startTime,
+  endTime: AcceptAllocationInputSchema.shape.endTime,
+});
+export type ReportNoAccessCommand = z.infer<typeof ReportNoAccessCommandSchema>;
+
+export const ReportNoAccessDataSchema = z.object({
+  appointment: AppointmentDtoSchema,
+  case: CaseDtoSchema,
+});
+export type ReportNoAccessData = z.infer<typeof ReportNoAccessDataSchema>;
+
+export const ReportNoAccessResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SUCCESS"), data: ReportNoAccessDataSchema }),
+  z.object({ kind: z.literal("IDEMPOTENCY_KEY_REUSED") }),
+  z.object({ kind: z.literal("CASE_MISMATCH") }),
+  z.object({ kind: z.literal("APPOINTMENT_MISMATCH") }),
+  z.object({ kind: z.literal("NOT_IN_WINDOW") }),
+  z.object({ kind: z.literal("NOT_SCHEDULED") }),
+  z.object({ kind: z.literal("WRONG_CONTRACTOR") }),
+  z.object({ kind: z.literal("CASE_TERMINAL") }),
+]);
+export type ReportNoAccessResult = z.infer<typeof ReportNoAccessResultSchema>;
+
+/**
+ * The reason is optional *here* and required at the Gateway. AC4 demands one
+ * for a proactive Reschedule and AC5 (recovery after No Access) does not, so
+ * required-ness depends on the Appointment's current status — which this
+ * schema validates the request *body* against and the body deliberately does
+ * not carry: a client-supplied status would be spoofable. The Gateway applies
+ * the rule once it has derived the status itself.
+ */
+export const ReplaceAppointmentInputSchema = z
+  .object({
+    startTime: AcceptAllocationInputSchema.shape.startTime,
+    endTime: AcceptAllocationInputSchema.shape.endTime,
+    reason: z.string().trim().min(1).max(1_000).optional(),
+  })
+  .strict()
+  .refine((value) => Date.parse(value.endTime) > Date.parse(value.startTime), {
+    message: "endTime must be after startTime",
+    path: ["endTime"],
+  });
+export type ReplaceAppointmentInput = z.infer<
+  typeof ReplaceAppointmentInputSchema
+>;
+
+export const ReplaceAppointmentCommandSchema = z.object({
+  idempotencyKey: z.uuid(),
+  payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+  operationId: z.string().min(1),
+  actorId: z.uuid(),
+  actorRole: ActorRoleSchema,
+  caseId: z.uuid(),
+  appointmentId: z.uuid(),
+  input: ReplaceAppointmentInputSchema,
+  // The Workflow owns the time gates but cannot query the Appointment it is
+  // replacing, so the Gateway carries the old row's interval and status in —
+  // exactly as StartWorkCommand carries startTime/endTime. Deliberately not
+  // part of canonicalReplaceAppointmentPayload below: the hash represents
+  // what the caller asked for, and on a same-key retry previousStatus has
+  // legitimately moved (SCHEDULED -> RESCHEDULED), which would turn a valid
+  // retry into a spurious IDEMPOTENCY_KEY_REUSED.
+  previousStartTime: AcceptAllocationInputSchema.shape.startTime,
+  previousStatus: AppointmentStatusSchema,
+});
+export type ReplaceAppointmentCommand = z.infer<
+  typeof ReplaceAppointmentCommandSchema
+>;
+
+export const ReplaceAppointmentDataSchema = ReportNoAccessDataSchema;
+export type ReplaceAppointmentData = z.infer<
+  typeof ReplaceAppointmentDataSchema
+>;
+
+export const ReplaceAppointmentResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SUCCESS"), data: ReplaceAppointmentDataSchema }),
+  z.object({ kind: z.literal("IDEMPOTENCY_KEY_REUSED") }),
+  z.object({ kind: z.literal("CASE_MISMATCH") }),
+  z.object({ kind: z.literal("APPOINTMENT_MISMATCH") }),
+  z.object({ kind: z.literal("NOT_REPLACEABLE") }),
+  z.object({ kind: z.literal("NOT_FUTURE") }),
+  z.object({ kind: z.literal("APPOINTMENT_CONFLICT") }),
+  z.object({ kind: z.literal("CASE_TERMINAL") }),
+]);
+export type ReplaceAppointmentResult = z.infer<
+  typeof ReplaceAppointmentResultSchema
+>;
+
+/** The Contractor acting on their own scheduled Appointment. */
+export const ReportNoAccessAppointmentInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    appointmentId: z.uuid(),
+    contractorId: z.uuid(),
+  })
+  .strict();
+export type ReportNoAccessAppointmentInput = z.infer<
+  typeof ReportNoAccessAppointmentInputSchema
+>;
+
+export const ReportNoAccessAppointmentResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({
+      outcome: z.literal("NO_ACCESS"),
+      appointment: AppointmentDtoSchema,
+    }),
+    z.object({
+      outcome: z.literal("ALREADY_NO_ACCESS"),
+      appointment: AppointmentDtoSchema,
+    }),
+    z.object({ outcome: z.literal("NOT_SCHEDULED") }),
+    z.object({ outcome: z.literal("WRONG_CONTRACTOR") }),
+    z.object({ outcome: z.literal("APPOINTMENT_NOT_FOUND") }),
+  ]
+);
+export type ReportNoAccessAppointmentResult = z.infer<
+  typeof ReportNoAccessAppointmentResultSchema
+>;
+
+export const ReplaceAppointmentSlotInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    caseId: z.uuid(),
+    appointmentId: z.uuid(),
+    startTime: AcceptAllocationInputSchema.shape.startTime,
+    endTime: AcceptAllocationInputSchema.shape.endTime,
+    reason: ReplaceAppointmentInputSchema.shape.reason,
+  })
+  .strict()
+  .refine((value) => Date.parse(value.endTime) > Date.parse(value.startTime), {
+    message: "endTime must be after startTime",
+    path: ["endTime"],
+  });
+export type ReplaceAppointmentSlotInput = z.infer<
+  typeof ReplaceAppointmentSlotInputSchema
+>;
+
+export const ReplaceAppointmentSlotResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({
+      outcome: z.literal("REPLACED"),
+      appointment: AppointmentDtoSchema,
+    }),
+    z.object({
+      outcome: z.literal("ALREADY_REPLACED"),
+      appointment: AppointmentDtoSchema,
+    }),
+    z.object({ outcome: z.literal("NOT_REPLACEABLE") }),
+    z.object({ outcome: z.literal("CONFLICT") }),
+    z.object({ outcome: z.literal("CASE_MISMATCH") }),
+    z.object({ outcome: z.literal("APPOINTMENT_NOT_FOUND") }),
+  ]
+);
+export type ReplaceAppointmentSlotResult = z.infer<
+  typeof ReplaceAppointmentSlotResultSchema
+>;
+
+/** Contractor-driven, same shape as the start-work Case write. */
+export const MarkCaseNoAccessInputSchema = MarkCaseInProgressInputSchema;
+export type MarkCaseNoAccessInput = z.infer<typeof MarkCaseNoAccessInputSchema>;
+
+export const MarkCaseNoAccessResultSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("PENDING_RESIDENT_INPUT"),
+    case: CaseDtoSchema,
+  }),
+  z.object({ outcome: z.literal("CASE_TERMINAL") }),
+]);
+export type MarkCaseNoAccessResult = z.infer<
+  typeof MarkCaseNoAccessResultSchema
+>;
+
+export const MarkCaseAppointmentReplacedInputSchema = z
+  .object({
+    caseId: z.uuid(),
+    operationId: z.string().min(1),
+    actorId: z.uuid(),
+    actorRole: ActorRoleSchema,
+  })
+  .strict();
+export type MarkCaseAppointmentReplacedInput = z.infer<
+  typeof MarkCaseAppointmentReplacedInputSchema
+>;
+
+export const MarkCaseAppointmentReplacedResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({ outcome: z.literal("REPLACED"), case: CaseDtoSchema }),
+    z.object({ outcome: z.literal("CASE_TERMINAL") }),
+  ]
+);
+export type MarkCaseAppointmentReplacedResult = z.infer<
+  typeof MarkCaseAppointmentReplacedResultSchema
+>;
+
+export function canonicalReportNoAccessPayload(
+  caseId: string,
+  appointmentId: string
+) {
+  return JSON.stringify({
+    caseId,
+    appointmentId,
+  });
+}
+
+export function canonicalReplaceAppointmentPayload(
+  caseId: string,
+  appointmentId: string,
+  input: ReplaceAppointmentInput
+) {
+  return JSON.stringify({
+    caseId,
+    appointmentId,
+    startTime: input.startTime,
+    endTime: input.endTime,
+    reason: input.reason,
   });
 }

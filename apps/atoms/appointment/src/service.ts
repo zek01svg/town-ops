@@ -5,10 +5,12 @@ import {
 import type {
   ConfirmAppointmentSlotInput,
   ReleaseAppointmentSlotInput,
+  ReplaceAppointmentSlotInput,
+  ReportNoAccessAppointmentInput,
   ReserveAppointmentSlotInput,
   StartWorkAppointmentInput,
 } from "@townops/orchestration-contract";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import db from "./database/db";
 import { appointmentSlotClaims, appointments } from "./database/schema";
@@ -29,12 +31,36 @@ function pgErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
+/** Reads the violated constraint's name off an unknown thrown value. */
+function pgConstraintName(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  if ("constraint" in error && typeof error.constraint === "string") {
+    return error.constraint;
+  }
+  if (
+    "cause" in error &&
+    typeof error.cause === "object" &&
+    error.cause !== null &&
+    "constraint" in error.cause &&
+    typeof error.cause.constraint === "string"
+  ) {
+    return error.cause.constraint;
+  }
+  return undefined;
+}
+
 /**
- * Get all appointments for a given Case ID.
+ * Get all appointments for a given Case ID, newest first. A rescheduled Case
+ * keeps every retired Appointment row, so callers picking "the current one"
+ * need the order to be defined rather than whatever Postgres returns.
  * @param caseId The UUID of the case.
  */
 export async function getAppointmentsByCaseId(caseId: string) {
-  return db.select().from(appointments).where(eq(appointments.caseId, caseId));
+  return db
+    .select()
+    .from(appointments)
+    .where(eq(appointments.caseId, caseId))
+    .orderBy(desc(appointments.createdAt));
 }
 
 /**
@@ -206,4 +232,210 @@ export async function startWorkAppointment(input: StartWorkAppointmentInput) {
       appointment: appointmentDto(updated),
     };
   });
+}
+
+/**
+ * No-access Saga step 1 (PRS-146): flips a SCHEDULED Appointment to NO_ACCESS.
+ * Idempotent by status for the same reason as startWorkAppointment — the
+ * Workflow's window gate has already run, so a replay is safe to observe as
+ * ALREADY_NO_ACCESS. An in_progress Appointment deliberately falls through to
+ * NOT_SCHEDULED: once work has started the visit was not a no-access one, and
+ * no report may rewrite that (AC1).
+ * The slot claim stays ACTIVE — the wasted interval remains owned by the
+ * Contractor until a replacement releases it.
+ */
+export async function reportNoAccessAppointment(
+  input: ReportNoAccessAppointmentInput
+) {
+  return db.transaction(async (tx) => {
+    const [appointment] = await tx
+      .select()
+      .from(appointments)
+      .where(eq(appointments.id, input.appointmentId))
+      .for("update");
+    if (!appointment) return { outcome: "APPOINTMENT_NOT_FOUND" as const };
+    if (appointment.contractorId !== input.contractorId) {
+      return { outcome: "WRONG_CONTRACTOR" as const };
+    }
+    if (appointment.status === "no_access") {
+      return {
+        outcome: "ALREADY_NO_ACCESS" as const,
+        appointment: appointmentDto(appointment),
+      };
+    }
+    if (appointment.status !== "scheduled") {
+      return { outcome: "NOT_SCHEDULED" as const };
+    }
+
+    const [updated] = await tx
+      .update(appointments)
+      .set({
+        status: "no_access",
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(appointments.id, appointment.id))
+      .returning();
+    if (!updated) throw new Error("Appointment update did not return a row");
+
+    return {
+      outcome: "NO_ACCESS" as const,
+      appointment: appointmentDto(updated),
+    };
+  });
+}
+
+/**
+ * Reschedule Saga step 1 (PRS-146): retires an Appointment and books its
+ * replacement in one transaction, so a Case is never left with neither.
+ *
+ * The replay check sits behind the FOR UPDATE lock, not in front of it. Two
+ * concurrent attempts of the same operation — an Activity retry firing while
+ * the first attempt is still running — serialise on that lock, and under READ
+ * COMMITTED the check then runs on a snapshot fresh enough to see the winner's
+ * committed replacement, so the loser answers ALREADY_REPLACED. Ahead of the
+ * lock it reads a pre-winner snapshot and goes on to answer NOT_REPLACEABLE
+ * for a retired `scheduled` source, or to violate
+ * appointments_operation_id_idx for a `no_access` source the winner correctly
+ * left alone. The lock is not a mutation, so nothing is written before the
+ * replay short-circuit either way.
+ *
+ * The old claim is RELEASED before the new one is inserted: both belong to
+ * the same Contractor, and appointment_slot_claims_contractor_interval_excl
+ * would reject a replacement touching the very interval being retired.
+ *
+ * A 23P01 from a genuine clash with another live claim is therefore allowed to
+ * escape the transaction callback rather than be swallowed inside it. Postgres
+ * has already aborted the transaction at that point, so the release and the
+ * retirement roll back with it and the original schedule survives intact
+ * (AC6); returning CONFLICT from inside would instead commit a Case that has
+ * lost its Appointment.
+ */
+export async function replaceAppointmentSlot(
+  input: ReplaceAppointmentSlotInput
+) {
+  const claimOperationId = `${input.operationId}/claim`;
+  const appointmentOperationId = `${input.operationId}/appointment`;
+
+  try {
+    return await db.transaction(async (tx) => {
+      const [previous] = await tx
+        .select()
+        .from(appointments)
+        .where(eq(appointments.id, input.appointmentId))
+        .for("update");
+      if (!previous) return { outcome: "APPOINTMENT_NOT_FOUND" as const };
+
+      // Behind the lock, still before any mutation — see the docblock; moving
+      // this ahead of the lock reopens the concurrent-replay race.
+      const [replacement] = await tx
+        .select()
+        .from(appointments)
+        .where(eq(appointments.operationId, appointmentOperationId));
+      if (replacement) {
+        return {
+          outcome: "ALREADY_REPLACED" as const,
+          appointment: appointmentDto(replacement),
+        };
+      }
+
+      if (previous.caseId !== input.caseId) {
+        return { outcome: "CASE_MISMATCH" as const };
+      }
+      // attemptId/contractorId are nullable for legacy public-route rows, and
+      // a slot claim cannot be issued without them.
+      if (
+        (previous.status !== "scheduled" && previous.status !== "no_access") ||
+        !previous.attemptId ||
+        !previous.contractorId
+      ) {
+        return { outcome: "NOT_REPLACEABLE" as const };
+      }
+
+      if (previous.slotClaimId) {
+        await tx
+          .update(appointmentSlotClaims)
+          .set({ status: "RELEASED" })
+          .where(eq(appointmentSlotClaims.id, previous.slotClaimId));
+      }
+
+      // reserveAppointmentSlot recovers from a duplicate operation_id by
+      // catching the 23505; inside a transaction that is not an option, since
+      // the violation aborts the whole transaction. The insert absorbs the
+      // replay itself instead. Naming the conflict target is load-bearing —
+      // an untargeted DO NOTHING would also swallow the gist exclusion
+      // violation this transaction must roll back on.
+      let [claim] = await tx
+        .insert(appointmentSlotClaims)
+        .values({
+          operationId: claimOperationId,
+          caseId: previous.caseId,
+          assignmentId: previous.assignmentId,
+          attemptId: previous.attemptId,
+          contractorId: previous.contractorId,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          status: "ACTIVE",
+        })
+        .onConflictDoNothing({ target: appointmentSlotClaims.operationId })
+        .returning();
+      if (!claim) {
+        [claim] = await tx
+          .select()
+          .from(appointmentSlotClaims)
+          .where(eq(appointmentSlotClaims.operationId, claimOperationId));
+        if (!claim) {
+          throw new Error("Appointment slot claim was not found after a reuse");
+        }
+      }
+
+      // A no-access Appointment keeps its outcome; only a still-scheduled one
+      // is retired as rescheduled (AC5).
+      if (previous.status === "scheduled") {
+        await tx
+          .update(appointments)
+          .set({ status: "rescheduled", updatedAt: new Date().toISOString() })
+          .where(eq(appointments.id, previous.id));
+      }
+
+      // The reason lands on the new row, not the retired one. The audit trail
+      // emits one event per Appointment row timestamped createdAt, and this
+      // row's createdAt *is* the moment of the Reschedule; on the retired row
+      // the same text would render at that Appointment's original booking
+      // time, chronologically ahead of the event it explains.
+      const [appointment] = await tx
+        .insert(appointments)
+        .values({
+          caseId: previous.caseId,
+          assignmentId: previous.assignmentId,
+          attemptId: previous.attemptId,
+          contractorId: previous.contractorId,
+          operationId: appointmentOperationId,
+          slotClaimId: claim.id,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          status: "scheduled",
+          reason: input.reason ?? null,
+        })
+        .returning();
+      if (!appointment)
+        throw new Error("Appointment insert did not return a row");
+
+      return {
+        outcome: "REPLACED" as const,
+        appointment: appointmentDto(appointment),
+      };
+    });
+  } catch (error) {
+    if (pgErrorCode(error) === "23P01") return { outcome: "CONFLICT" as const };
+    // The Attempt already owns a live Appointment, so this one was superseded
+    // by a replacement the caller had not seen. Matched by constraint name so
+    // an operation-id collision — a different 23505 entirely — still surfaces.
+    if (
+      pgErrorCode(error) === "23505" &&
+      pgConstraintName(error) === "appointments_one_live_per_attempt"
+    ) {
+      return { outcome: "NOT_REPLACEABLE" as const };
+    }
+    throw error;
+  }
 }

@@ -1,7 +1,9 @@
 import type {
   CreateCaseActivityInput,
+  MarkCaseAppointmentReplacedInput,
   MarkCaseBreachedInput,
   MarkCaseInProgressInput,
+  MarkCaseNoAccessInput,
   RecordAllocationAcceptanceInput,
 } from "@townops/orchestration-contract";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
@@ -474,5 +476,129 @@ export async function markCaseBreachedForOperation(
       .onConflictDoNothing();
 
     return { outcome: "PENDING" as const };
+  });
+}
+
+/**
+ * No-access Saga step 2 (PRS-146): parks the Case on the Resident, who has to
+ * arrange a new visit, and appends a CASE_NO_ACCESS history row once per
+ * operationId. Same claim-then-write shape as markCaseInProgressForOperation
+ * — the Appointment atom already ruled on whether the report was valid, so
+ * the terminal check is the only guard this write owns. No Officer Attention:
+ * a locked door is a routine outcome, not an operational exception.
+ */
+export async function markCaseNoAccessForOperation(
+  input: MarkCaseNoAccessInput
+) {
+  return db.transaction(async (tx) => {
+    const [currentCase] = await tx
+      .select()
+      .from(cases)
+      .where(eq(cases.id, input.caseId))
+      .for("update");
+    if (!currentCase) {
+      throw new Error("Case was not found to mark as no access");
+    }
+    if (
+      currentCase.status === "completed" ||
+      currentCase.status === "cancelled"
+    ) {
+      return { outcome: "CASE_TERMINAL" as const };
+    }
+
+    const [insertedOperation] = await tx
+      .insert(caseOperations)
+      .values({ operationId: input.operationId, caseId: input.caseId })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!insertedOperation) {
+      return { outcome: "PENDING_RESIDENT_INPUT" as const, case: currentCase };
+    }
+
+    const [updatedCase] = await tx
+      .update(cases)
+      .set({
+        status: "pending_resident_input",
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(cases.id, input.caseId))
+      .returning();
+    if (!updatedCase) {
+      throw new Error("Case was not found to mark as no access");
+    }
+
+    await tx.insert(caseHistory).values({
+      caseId: input.caseId,
+      eventType: "CASE_NO_ACCESS",
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      operationId: input.operationId,
+    });
+
+    return { outcome: "PENDING_RESIDENT_INPUT" as const, case: updatedCase };
+  });
+}
+
+/**
+ * Reschedule Saga step 2 (PRS-146): records the replacement Appointment once
+ * per operationId. Only a Case parked on the Resident returns to `assigned` —
+ * that is the recovery from No Access (AC7). A proactive reschedule of a Case
+ * that is already assigned or in progress must leave the status alone: moving
+ * the visit changes nothing about where the work stands.
+ */
+export async function markCaseAppointmentReplacedForOperation(
+  input: MarkCaseAppointmentReplacedInput
+) {
+  return db.transaction(async (tx) => {
+    const [currentCase] = await tx
+      .select()
+      .from(cases)
+      .where(eq(cases.id, input.caseId))
+      .for("update");
+    if (!currentCase) {
+      throw new Error("Case was not found to record a replacement");
+    }
+    if (
+      currentCase.status === "completed" ||
+      currentCase.status === "cancelled"
+    ) {
+      return { outcome: "CASE_TERMINAL" as const };
+    }
+
+    const [insertedOperation] = await tx
+      .insert(caseOperations)
+      .values({ operationId: input.operationId, caseId: input.caseId })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!insertedOperation) {
+      return { outcome: "REPLACED" as const, case: currentCase };
+    }
+
+    const [updatedCase] = await tx
+      .update(cases)
+      .set({
+        status:
+          currentCase.status === "pending_resident_input"
+            ? "assigned"
+            : currentCase.status,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(cases.id, input.caseId))
+      .returning();
+    if (!updatedCase) {
+      throw new Error("Case was not found to record a replacement");
+    }
+
+    await tx.insert(caseHistory).values({
+      caseId: input.caseId,
+      eventType: "CASE_APPOINTMENT_REPLACED",
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      operationId: input.operationId,
+    });
+
+    return { outcome: "REPLACED" as const, case: updatedCase };
   });
 }

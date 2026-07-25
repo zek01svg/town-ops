@@ -36,7 +36,10 @@ export async function setup() {
     const appliedIds = new Set(journal.rows.map((row) => row.id));
     if (
       !appliedIds.has("0000_prs_142_slot_claim_exclusion") ||
-      !appliedIds.has("0001_prs_145_appointment_in_progress")
+      !appliedIds.has("0001_prs_145_appointment_in_progress") ||
+      !appliedIds.has("0002_prs_146_appointment_no_access") ||
+      !appliedIds.has("0003_prs_146_one_live_appointment_per_attempt") ||
+      !appliedIds.has("0004_prs_146_appointment_reason")
     ) {
       throw new Error("Appointment migration journal was not recorded");
     }

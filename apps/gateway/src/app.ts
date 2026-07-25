@@ -16,6 +16,8 @@ import {
   canonicalManualAllocationPayload,
   canonicalAcceptAllocationPayload,
   canonicalOpenCasePayload,
+  canonicalReplaceAppointmentPayload,
+  canonicalReportNoAccessPayload,
   caseWorkflowId,
   MeDtoSchema,
   ManualAllocationInputSchema,
@@ -26,6 +28,10 @@ import {
   OpenCaseResultSchema,
   OperationSchema,
   ORCHESTRATION_TASK_QUEUE,
+  ReplaceAppointmentInputSchema,
+  ReplaceAppointmentResultSchema,
+  ReportNoAccessResultSchema,
+  ResidentAppointmentDtoSchema,
   residentProvisioningWorkflowId,
   ResidentOpenCaseInputSchema,
   StartWorkResultSchema,
@@ -44,6 +50,9 @@ import type {
   OpenCaseInput,
   OpenCaseResult,
   Operation,
+  ReplaceAppointmentResult,
+  ReportNoAccessResult,
+  ResidentAppointmentDto,
   StartWorkResult,
 } from "@townops/orchestration-contract";
 import type { Context, MiddlewareHandler } from "hono";
@@ -219,6 +228,17 @@ function toAppointmentDto(record: unknown): AppointmentDto | null {
   return appointment.success ? appointment.data : null;
 }
 
+/**
+ * Narrows an Appointment to what a Resident may see (PRS-146). Used on both
+ * routes a Resident can reach it through — the Case detail read and the
+ * Reschedule success body — so neither hands back what the other strips.
+ */
+function toResidentAppointmentDto(
+  appointment: AppointmentDto | null
+): ResidentAppointmentDto | null {
+  return appointment ? ResidentAppointmentDtoSchema.parse(appointment) : null;
+}
+
 async function lookupAppointment(
   appointmentAtomUrl: string,
   fetchImpl: typeof fetch,
@@ -235,10 +255,17 @@ async function lookupAppointment(
       await response.json().catch(() => undefined)
     );
     if (!parsed.success) return null;
+    // A rescheduled Case holds several Appointments under one Attempt — the
+    // Assignment and Attempt stay stable across a replacement (PRS-146 AC7) —
+    // and the retired RESCHEDULED/NO_ACCESS rows now survive the DTO parse, so
+    // an unordered `.find()` would return an arbitrary one. The atom already
+    // reads newest-first; ordering here makes "newest wins" this function's
+    // own guarantee rather than a silent dependency on that.
     return (
       parsed.data.appointments
-        .map(toAppointmentDto)
-        .find((appointment) => appointment?.attemptId === attemptId) ?? null
+        .flatMap((record) => toAppointmentDto(record) ?? [])
+        .toSorted((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .find((appointment) => appointment.attemptId === attemptId) ?? null
     );
   } catch {
     return null;
@@ -1073,6 +1100,432 @@ export function createGatewayApp({
     }
   );
 
+  app.put(
+    "/api/cases/:caseId/appointments/:appointmentId/no-access",
+    async (c) => {
+      const actor = resolveActor(c.get("jwtPayload"));
+      if (!actor) {
+        return error(c, 401, {
+          code: "INVALID_TOKEN",
+          message: "Token subject is invalid",
+          retryable: false,
+        });
+      }
+      const contractorId = z.uuid().safeParse(actor.contractorId);
+      if (actor.role !== "CONTRACTOR" || !contractorId.success) {
+        return error(c, 403, {
+          code: "FORBIDDEN",
+          message: "Contractor access is required",
+          retryable: false,
+        });
+      }
+
+      const caseId = z.uuid().safeParse(c.req.param("caseId"));
+      const appointmentId = z.uuid().safeParse(c.req.param("appointmentId"));
+      if (!caseId.success || !appointmentId.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Case ID and Appointment ID must be UUIDs",
+          retryable: false,
+        });
+      }
+      const idempotencyKey = idempotencyKeySchema.safeParse(
+        c.req.header("Idempotency-Key")
+      );
+      if (!idempotencyKey.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Idempotency-Key must be a UUID",
+          retryable: false,
+        });
+      }
+      if (await c.req.text()) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "No Access does not accept a request body",
+          retryable: false,
+        });
+      }
+
+      const currentAppointment = await lookupCurrentAppointment(
+        appointmentAtomUrl,
+        fetchImpl,
+        caseId.data,
+        appointmentId.data
+      );
+      if (
+        !currentAppointment ||
+        currentAppointment.contractorId !== contractorId.data
+      ) {
+        return error(c, 404, {
+          code: "APPOINTMENT_NOT_FOUND",
+          message: "Appointment was not found",
+          retryable: false,
+        });
+      }
+
+      const operation = operationForCase(
+        caseId.data,
+        idempotencyKey.data,
+        canonicalReportNoAccessPayload(caseId.data, appointmentId.data)
+      );
+      const startWorkflowOperation = new WithStartWorkflowOperation(
+        WORKFLOW_NAMES.case,
+        {
+          workflowId: operation.workflowId,
+          taskQueue: ORCHESTRATION_TASK_QUEUE,
+          args: [{ caseId: caseId.data }],
+          workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+        }
+      );
+      const update = workflowClient.executeUpdateWithStart(
+        UPDATE_NAMES.reportNoAccess,
+        {
+          args: [
+            {
+              idempotencyKey: operation.idempotencyKey,
+              payloadHash: operation.updateId.slice(
+                operation.idempotencyKey.length + 1
+              ),
+              operationId: operation.updateId,
+              actorId: actor.accountId,
+              actorRole: "CONTRACTOR",
+              contractorId: contractorId.data,
+              caseId: caseId.data,
+              appointmentId: appointmentId.data,
+              startTime: currentAppointment.startTime,
+              endTime: currentAppointment.endTime,
+            },
+          ],
+          updateId: operation.updateId,
+          startWorkflowOperation,
+        }
+      );
+      void update.catch(() => undefined);
+
+      let result: ReportNoAccessResult;
+      try {
+        result = ReportNoAccessResultSchema.parse(
+          await withTimeout(update, updateTimeoutMs)
+        );
+      } catch (caught) {
+        if (
+          caught instanceof Error &&
+          caught.message === "workflow update timed out"
+        ) {
+          c.header("Retry-After", "2");
+          return error(c, 504, {
+            code: "WORKFLOW_UPDATE_PENDING",
+            message: "No Access is still being processed",
+            retryable: true,
+            operation,
+          });
+        }
+        if (isTemporalUnavailable(caught)) {
+          return error(c, 503, {
+            code: "TEMPORAL_UNAVAILABLE",
+            message: "Case workflow service is unavailable",
+            retryable: true,
+            operation,
+          });
+        }
+        return error(c, 500, {
+          code: "WORKFLOW_UPDATE_FAILED",
+          message: "No Access could not be recorded",
+          retryable: false,
+          operation,
+        });
+      }
+
+      if (result.kind === "SUCCESS") {
+        return c.json({ data: result.data, operation }, 200);
+      }
+      if (result.kind === "IDEMPOTENCY_KEY_REUSED") {
+        return error(c, 409, {
+          code: "IDEMPOTENCY_KEY_REUSED",
+          message: "Idempotency-Key was already used with a different request",
+          retryable: false,
+          operation,
+        });
+      }
+      if (result.kind === "NOT_IN_WINDOW") {
+        return error(c, 409, {
+          code: "APPOINTMENT_NOT_IN_PROGRESS_WINDOW",
+          message: "No Access can only be reported during the Appointment",
+          retryable: false,
+          operation,
+        });
+      }
+      if (
+        result.kind === "WRONG_CONTRACTOR" ||
+        result.kind === "APPOINTMENT_MISMATCH" ||
+        result.kind === "CASE_MISMATCH"
+      ) {
+        return error(c, 404, {
+          code: "APPOINTMENT_NOT_FOUND",
+          message: "Appointment was not found",
+          retryable: false,
+          operation,
+        });
+      }
+      // NOT_SCHEDULED (work already started, or the Appointment was retired)
+      // and CASE_TERMINAL are both clean domain rejections.
+      return error(c, 409, {
+        code: result.kind,
+        message: "No Access could not be reported for this Appointment",
+        retryable: false,
+        operation,
+      });
+    }
+  );
+
+  app.put(
+    "/api/cases/:caseId/appointments/:appointmentId/replacement",
+    async (c) => {
+      const actor = resolveActor(c.get("jwtPayload"));
+      if (!actor) {
+        return error(c, 401, {
+          code: "INVALID_TOKEN",
+          message: "Token subject is invalid",
+          retryable: false,
+        });
+      }
+      // AC8: a Contractor cannot reschedule through the public API — only the
+      // Resident who owns the Case, or an Officer.
+      if (actor.role !== "RESIDENT" && actor.role !== "OFFICER") {
+        return error(c, 403, {
+          code: "FORBIDDEN",
+          message: "Resident or Officer access is required",
+          retryable: false,
+        });
+      }
+
+      const caseId = z.uuid().safeParse(c.req.param("caseId"));
+      const appointmentId = z.uuid().safeParse(c.req.param("appointmentId"));
+      if (!caseId.success || !appointmentId.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Case ID and Appointment ID must be UUIDs",
+          retryable: false,
+        });
+      }
+      const idempotencyKey = idempotencyKeySchema.safeParse(
+        c.req.header("Idempotency-Key")
+      );
+      if (!idempotencyKey.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Idempotency-Key must be a UUID",
+          retryable: false,
+        });
+      }
+      const input = ReplaceAppointmentInputSchema.safeParse(
+        await c.req.json().catch(() => undefined)
+      );
+      if (!input.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Replacement Appointment input is invalid",
+          retryable: false,
+          details: input.error.flatten(),
+        });
+      }
+
+      // AC3: a Resident's authority comes from owning the Case, derived from
+      // the token rather than trusted from the request. A non-owner gets the
+      // same 404 as GET /api/cases/:caseId, so the route never confirms that
+      // somebody else's Case exists.
+      if (actor.role === "RESIDENT") {
+        let caseResponse: Response;
+        try {
+          caseResponse = await fetchImpl(
+            `${caseAtomUrl}/api/cases/${caseId.data}`
+          );
+        } catch {
+          return error(c, 503, {
+            code: "CASE_ATOM_UNAVAILABLE",
+            message: "Case service is unavailable",
+            retryable: true,
+          });
+        }
+        if (!caseResponse.ok) {
+          return error(c, 503, {
+            code: "CASE_ATOM_UNAVAILABLE",
+            message: "Case service is unavailable",
+            retryable: true,
+          });
+        }
+        const parsedCase = caseAtomResponseSchema.safeParse(
+          await caseResponse.json().catch(() => undefined)
+        );
+        if (
+          !parsedCase.success ||
+          parsedCase.data.cases.length === 0 ||
+          toCaseDto(parsedCase.data.cases[0]).residentId !== actor.accountId
+        ) {
+          return error(c, 404, {
+            code: "CASE_NOT_FOUND",
+            message: "Case was not found",
+            retryable: false,
+          });
+        }
+      }
+
+      const currentAppointment = await lookupCurrentAppointment(
+        appointmentAtomUrl,
+        fetchImpl,
+        caseId.data,
+        appointmentId.data
+      );
+      if (!currentAppointment) {
+        return error(c, 404, {
+          code: "APPOINTMENT_NOT_FOUND",
+          message: "Appointment was not found",
+          retryable: false,
+        });
+      }
+
+      // AC4: moving a still-live Appointment must say why. Recovering one that
+      // is already NO_ACCESS (AC5) need not — the Contractor has recorded why
+      // the visit failed. The status is the one the lookup above just derived,
+      // never one the caller sent: a request-supplied status would let any
+      // caller claim NO_ACCESS and skip the reason entirely.
+      if (currentAppointment.status === "SCHEDULED" && !input.data.reason) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "A reason is required to reschedule a live Appointment",
+          retryable: false,
+        });
+      }
+
+      const operation = operationForCase(
+        caseId.data,
+        idempotencyKey.data,
+        canonicalReplaceAppointmentPayload(
+          caseId.data,
+          appointmentId.data,
+          input.data
+        )
+      );
+      const startWorkflowOperation = new WithStartWorkflowOperation(
+        WORKFLOW_NAMES.case,
+        {
+          workflowId: operation.workflowId,
+          taskQueue: ORCHESTRATION_TASK_QUEUE,
+          args: [{ caseId: caseId.data }],
+          workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+        }
+      );
+      const update = workflowClient.executeUpdateWithStart(
+        UPDATE_NAMES.replaceAppointment,
+        {
+          args: [
+            {
+              idempotencyKey: operation.idempotencyKey,
+              payloadHash: operation.updateId.slice(
+                operation.idempotencyKey.length + 1
+              ),
+              operationId: operation.updateId,
+              actorId: actor.accountId,
+              actorRole: actor.role,
+              caseId: caseId.data,
+              appointmentId: appointmentId.data,
+              input: input.data,
+              // The Workflow's AC4 gate needs the Appointment being replaced;
+              // it cannot read it, so the pre-check above supplies it.
+              previousStartTime: currentAppointment.startTime,
+              previousStatus: currentAppointment.status,
+            },
+          ],
+          updateId: operation.updateId,
+          startWorkflowOperation,
+        }
+      );
+      void update.catch(() => undefined);
+
+      let result: ReplaceAppointmentResult;
+      try {
+        result = ReplaceAppointmentResultSchema.parse(
+          await withTimeout(update, updateTimeoutMs)
+        );
+      } catch (caught) {
+        if (
+          caught instanceof Error &&
+          caught.message === "workflow update timed out"
+        ) {
+          c.header("Retry-After", "2");
+          return error(c, 504, {
+            code: "WORKFLOW_UPDATE_PENDING",
+            message: "The reschedule is still being processed",
+            retryable: true,
+            operation,
+          });
+        }
+        if (isTemporalUnavailable(caught)) {
+          return error(c, 503, {
+            code: "TEMPORAL_UNAVAILABLE",
+            message: "Case workflow service is unavailable",
+            retryable: true,
+            operation,
+          });
+        }
+        return error(c, 500, {
+          code: "WORKFLOW_UPDATE_FAILED",
+          message: "The reschedule could not be completed",
+          retryable: false,
+          operation,
+        });
+      }
+
+      if (result.kind === "SUCCESS") {
+        const data =
+          actor.role === "RESIDENT"
+            ? {
+                ...result.data,
+                appointment: toResidentAppointmentDto(result.data.appointment),
+              }
+            : result.data;
+        return c.json({ data, operation }, 200);
+      }
+      if (result.kind === "IDEMPOTENCY_KEY_REUSED") {
+        return error(c, 409, {
+          code: "IDEMPOTENCY_KEY_REUSED",
+          message: "Idempotency-Key was already used with a different request",
+          retryable: false,
+          operation,
+        });
+      }
+      if (result.kind === "APPOINTMENT_CONFLICT") {
+        return error(c, 409, {
+          code: "APPOINTMENT_CONFLICT",
+          message: "The requested appointment slot is unavailable",
+          retryable: false,
+          operation,
+        });
+      }
+      if (
+        result.kind === "APPOINTMENT_MISMATCH" ||
+        result.kind === "CASE_MISMATCH"
+      ) {
+        return error(c, 404, {
+          code: "APPOINTMENT_NOT_FOUND",
+          message: "Appointment was not found",
+          retryable: false,
+          operation,
+        });
+      }
+      // NOT_FUTURE (the new slot, or a still-scheduled old one, is not in the
+      // future), NOT_REPLACEABLE and CASE_TERMINAL are clean domain
+      // rejections.
+      return error(c, 409, {
+        code: result.kind,
+        message: "The Appointment could not be replaced",
+        retryable: false,
+        operation,
+      });
+    }
+  );
+
   app.post("/api/cases/:caseId/allocation-attempts", async (c) => {
     const actor = resolveActor(c.get("jwtPayload"));
     if (!actor) {
@@ -1423,12 +1876,6 @@ export function createGatewayApp({
       });
     }
 
-    // A Resident sees their Case as before — no contractor scores or
-    // internal attention attached.
-    if (actor.role === "RESIDENT") {
-      return c.json({ data: caseDto });
-    }
-
     const caseAssignment = await lookupCaseAssignment(
       assignmentAtomUrl,
       fetchImpl,
@@ -1453,6 +1900,20 @@ export function createGatewayApp({
       caseId.data,
       caseAssignment?.currentAttempt?.id
     );
+
+    // A Resident gets the Appointment flat and narrowed — they need its id and
+    // interval to Reschedule it (PRS-146), and nothing else the Assignment
+    // envelope carries: not its id, not an Attempt they may never see. The
+    // Reschedule route narrows its success body the same way, so neither hands
+    // back what the other strips. Officers and Contractors keep the envelope.
+    if (actor.role === "RESIDENT") {
+      return c.json({
+        data: {
+          ...caseDto,
+          appointment: toResidentAppointmentDto(appointment),
+        },
+      });
+    }
 
     return c.json({
       data: {

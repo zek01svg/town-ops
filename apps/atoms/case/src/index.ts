@@ -1,8 +1,10 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import {
   CreateCaseActivityInputSchema,
+  MarkCaseAppointmentReplacedInputSchema,
   MarkCaseBreachedInputSchema,
   MarkCaseInProgressInputSchema,
+  MarkCaseNoAccessInputSchema,
   RecordAllocationAcceptanceInputSchema,
 } from "@townops/orchestration-contract";
 import {
@@ -272,6 +274,33 @@ const internalCasesRouter = new Hono()
       const body = c.req.valid("json");
       if (body.caseId !== id) return c.json({ error: "Case ID mismatch" }, 400);
       const result = await caseService.markCaseInProgressForOperation(body);
+      if (result.outcome === "CASE_TERMINAL") return c.json(result, 409);
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/:id/no-access",
+    validator("param", z.object({ id: z.uuid() })),
+    validator("json", MarkCaseNoAccessInputSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      if (body.caseId !== id) return c.json({ error: "Case ID mismatch" }, 400);
+      const result = await caseService.markCaseNoAccessForOperation(body);
+      if (result.outcome === "CASE_TERMINAL") return c.json(result, 409);
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/:id/appointment-replaced",
+    validator("param", z.object({ id: z.uuid() })),
+    validator("json", MarkCaseAppointmentReplacedInputSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      if (body.caseId !== id) return c.json({ error: "Case ID mismatch" }, 400);
+      const result =
+        await caseService.markCaseAppointmentReplacedForOperation(body);
       if (result.outcome === "CASE_TERMINAL") return c.json(result, 409);
       return c.json(result, 201);
     }

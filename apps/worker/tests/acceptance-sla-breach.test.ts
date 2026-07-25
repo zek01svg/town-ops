@@ -146,6 +146,7 @@ function acceptSuccessResult(
         startTime: "2030-01-01T09:00:00.000Z",
         endTime: "2030-01-01T10:00:00.000Z",
         status: "SCHEDULED",
+        reason: null,
         operationId: `confirm/${randomUUID()}`,
         createdAt: now,
       },

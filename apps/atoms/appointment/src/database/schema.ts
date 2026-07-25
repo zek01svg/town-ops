@@ -13,6 +13,7 @@ import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 export const appointmentStatus = pgEnum("appointment_status", [
   "scheduled",
   "in_progress",
+  "no_access",
   "rescheduled",
   "cancelled",
   "missed",
@@ -48,6 +49,7 @@ export const appointments = pgTable(
       mode: "string",
     }).notNull(),
     status: appointmentStatus().default("scheduled").notNull(),
+    reason: text("reason"),
     createdAt: timestamp("created_at", {
       withTimezone: true,
       mode: "string",
@@ -64,6 +66,12 @@ export const appointments = pgTable(
     ),
     uniqueIndex("appointments_operation_id_idx").on(table.operationId),
     uniqueIndex("appointments_slot_claim_id_idx").on(table.slotClaimId),
+    // At most one live Appointment per Attempt. A `no_access` row keeps its
+    // status when replaced (AC5), so nothing in the status guard stops it
+    // being replaced twice — this does.
+    uniqueIndex("appointments_one_live_per_attempt")
+      .on(table.attemptId)
+      .where(sql`${table.status} IN ('scheduled', 'in_progress')`),
   ]
 );
 

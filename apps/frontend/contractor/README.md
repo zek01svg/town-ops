@@ -41,7 +41,5 @@ VITE_PROOF_ATOM_URL=http://localhost:5007
 VITE_ALERT_ATOM_URL=http://localhost:5002
 VITE_ACCEPT_JOB_URL=http://localhost:6003
 VITE_CLOSE_CASE_URL=http://localhost:6004
-VITE_RESCHEDULE_JOB_URL=http://localhost:6006
-VITE_HANDLE_NO_ACCESS_URL=http://localhost:6007
 VITE_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
 ```
