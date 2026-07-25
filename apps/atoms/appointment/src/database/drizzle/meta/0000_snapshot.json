@@ -1,5 +1,5 @@
 {
-  "id": "b77812b4-ad94-4914-b79c-f9b906fdccf1",
+  "id": "1b8235b5-2f6d-48cc-a929-0aa677790014",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -13,7 +13,7 @@
           "type": "uuid",
           "primaryKey": true,
           "notNull": true,
-          "default": "uuid_generate_v4()"
+          "default": "gen_random_uuid()"
         },
         "operation_id": {
           "name": "operation_id",
@@ -99,7 +99,7 @@
           "type": "uuid",
           "primaryKey": true,
           "notNull": true,
-          "default": "uuid_generate_v4()"
+          "default": "gen_random_uuid()"
         },
         "case_id": {
           "name": "case_id",

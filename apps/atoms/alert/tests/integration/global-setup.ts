@@ -2,7 +2,6 @@ import { execSync } from "child_process";
 
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { RabbitMQContainer } from "@testcontainers/rabbitmq";
-import { Pool } from "pg";
 
 export async function setup() {
   console.log(
@@ -29,24 +28,14 @@ export async function setup() {
   process.env.DATABASE_URL = dbUrl;
   process.env.RABBITMQ_URL = amqpUrl;
 
-  const pool = new Pool({ connectionString: dbUrl });
-  try {
-    await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
-    console.log("[Integration Setup] Installed 'uuid-ossp' extension.");
-  } catch (err) {
-    console.warn("[Integration Setup] Failed to install extension:", err);
-  } finally {
-    await pool.end();
-  }
-
   console.log("[Integration Setup] Pushing schema with drizzle-kit...");
   try {
-    execSync("bun drizzle-kit push", {
+    execSync("bun drizzle-kit migrate", {
       env: { ...process.env, DATABASE_URL: dbUrl },
       stdio: "pipe",
     });
     console.log("[Integration Setup] Schema setup completed.");
-  } catch (error: any) {
+  } catch (error) {
     await Promise.all([pgContainer.stop(), rabbitContainer.stop()]);
     throw error;
   }

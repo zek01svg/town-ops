@@ -1,7 +1,6 @@
 import { execSync } from "child_process";
 
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
-import { Pool } from "pg";
 
 export async function setup() {
   console.log("\n[Integration Setup] Starting Postgres Testcontainer...");
@@ -21,29 +20,17 @@ export async function setup() {
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
 
-  console.log("[Integration Setup] Applying appointment migration...");
+  console.log("[Integration Setup] Applying appointment migrations...");
 
   try {
-    execSync("bun run src/database/apply-slot-claim-constraint.ts", {
+    // drizzle-kit migrate, not push: the initial migration hand-adds the
+    // btree_gist extension and the slot-claim exclusion constraint, neither of
+    // which lives in schema.ts, so a push would silently omit them.
+    execSync("bun drizzle-kit migrate", {
       env: { ...process.env, DATABASE_URL: dbUrl },
       stdio: "pipe",
     });
-    const pool = new Pool({ connectionString: dbUrl });
-    const journal = await pool.query(
-      "SELECT id FROM townops_migrations.appointment_atom"
-    );
-    await pool.end();
-    const appliedIds = new Set(journal.rows.map((row) => row.id));
-    if (
-      !appliedIds.has("0000_prs_142_slot_claim_exclusion") ||
-      !appliedIds.has("0001_prs_145_appointment_in_progress") ||
-      !appliedIds.has("0002_prs_146_appointment_no_access") ||
-      !appliedIds.has("0003_prs_146_one_live_appointment_per_attempt") ||
-      !appliedIds.has("0004_prs_146_appointment_reason")
-    ) {
-      throw new Error("Appointment migration journal was not recorded");
-    }
-    console.log("[Integration Setup] Appointment migration completed.");
+    console.log("[Integration Setup] Appointment migrations completed.");
   } catch (error) {
     await container.stop();
     throw error;

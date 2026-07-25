@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -13,10 +12,7 @@ import type { z } from "zod/v4";
 export const contractorMetrics = pgTable(
   "contractor_metrics",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     contractorId: uuid("contractor_id").notNull(),
     scoreDelta: integer("score_delta").notNull(),
     reason: text().notNull(),

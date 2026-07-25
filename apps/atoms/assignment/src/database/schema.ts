@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -57,10 +56,7 @@ export const allocationAttemptStatusEnum = z.enum([
 export const assignmentStatusHistory = pgTable(
   "assignment_status_history",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     assignmentId: uuid("assignment_id").notNull(),
     fromStatus: assignmentStatus("from_status"),
     toStatus: assignmentStatus("to_status").notNull(),
@@ -96,10 +92,7 @@ export type AssignmentStatusHistory = z.infer<
 export const assignments = pgTable(
   "assignments",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     caseId: uuid("case_id").notNull(),
     // Relaxed to nullable for PRS-139: the new Allocation model (see
     // allocationAttempts below) carries contractor/SLA/source per Attempt.
@@ -178,10 +171,7 @@ export type AllocationEpoch = z.infer<typeof allocationEpochSelectSchema>;
 export const allocationAttempts = pgTable(
   "allocation_attempts",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     assignmentId: uuid("assignment_id")
       .notNull()
       .references(() => assignments.id),

@@ -28,10 +28,7 @@ export const appointmentSlotClaimStatus = pgEnum(
 export const appointments = pgTable(
   "appointments",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     caseId: uuid("case_id").notNull(),
     assignmentId: uuid("assignment_id").notNull(),
     // These are nullable for the legacy public create route. Internal slot
@@ -78,10 +75,7 @@ export const appointments = pgTable(
 export const appointmentSlotClaims = pgTable(
   "appointment_slot_claims",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     operationId: text("operation_id").notNull(),
     caseId: uuid("case_id").notNull(),
     assignmentId: uuid("assignment_id").notNull(),

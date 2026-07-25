@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import {
   index,
   pgEnum,
-  pgPolicy,
   pgTable,
   text,
   timestamp,
@@ -55,10 +54,7 @@ export const officerAttentionKind = pgEnum("officer_attention_kind", [
 export const cases = pgTable(
   "cases",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     residentId: uuid("resident_id").notNull(),
     category: caseCategory().notNull(),
     priority: casePriority().default("medium").notNull(),
@@ -88,29 +84,6 @@ export const cases = pgTable(
       "btree",
       table.status.asc().nullsLast().op("enum_ops")
     ),
-    pgPolicy("Officers view all cases", {
-      as: "permissive",
-      for: "all",
-      to: ["public"],
-      using: sql`(EXISTS ( SELECT 1
-   FROM profiles
-  WHERE ((profiles.id = auth.uid()) AND (profiles.role = 'officer'::user_role))))`,
-    }),
-    pgPolicy("Contractors view assigned cases", {
-      as: "permissive",
-      for: "select",
-      to: ["public"],
-    }),
-    pgPolicy("Residents create own cases", {
-      as: "permissive",
-      for: "insert",
-      to: ["public"],
-    }),
-    pgPolicy("Residents view own cases", {
-      as: "permissive",
-      for: "select",
-      to: ["public"],
-    }),
   ]
 );
 
@@ -128,10 +101,7 @@ export const caseOperations = pgTable("case_operations", {
 export const caseHistory = pgTable(
   "case_history",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     caseId: uuid("case_id")
       .notNull()
       .references(() => cases.id, { onDelete: "cascade" }),
@@ -157,10 +127,7 @@ export const caseHistory = pgTable(
 export const officerAttention = pgTable(
   "officer_attention",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     caseId: uuid("case_id")
       .notNull()
       .references(() => cases.id, { onDelete: "cascade" }),
