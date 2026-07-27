@@ -5,6 +5,7 @@ import {
 import type {
   ConfirmAppointmentSlotInput,
   ReleaseAppointmentSlotInput,
+  MarkAppointmentMissedInput,
   ReplaceAppointmentSlotInput,
   ReportNoAccessAppointmentInput,
   ReserveAppointmentSlotInput,
@@ -285,6 +286,39 @@ export async function reportNoAccessAppointment(
 }
 
 /**
+ * Workflow-owned expiry transition. The ACTIVE slot claim deliberately stays
+ * put until a replacement releases it, just as it does for No Access.
+ */
+export async function markAppointmentMissed(input: MarkAppointmentMissedInput) {
+  return db.transaction(async (tx) => {
+    const [appointment] = await tx
+      .select()
+      .from(appointments)
+      .where(eq(appointments.id, input.appointmentId))
+      .for("update");
+    if (!appointment) return { outcome: "APPOINTMENT_NOT_FOUND" as const };
+    if (appointment.status === "missed") {
+      return {
+        outcome: "ALREADY_MISSED" as const,
+        appointment: appointmentDto(appointment),
+      };
+    }
+    if (appointment.status !== "scheduled") {
+      return { outcome: "NOT_SCHEDULED" as const };
+    }
+
+    const [updated] = await tx
+      .update(appointments)
+      .set({ status: "missed", updatedAt: new Date().toISOString() })
+      .where(eq(appointments.id, appointment.id))
+      .returning();
+    if (!updated) throw new Error("Appointment update did not return a row");
+
+    return { outcome: "MISSED" as const, appointment: appointmentDto(updated) };
+  });
+}
+
+/**
  * Reschedule Saga step 1 (PRS-146): retires an Appointment and books its
  * replacement in one transaction, so a Case is never left with neither.
  *
@@ -344,7 +378,9 @@ export async function replaceAppointmentSlot(
       // attemptId/contractorId are nullable for legacy public-route rows, and
       // a slot claim cannot be issued without them.
       if (
-        (previous.status !== "scheduled" && previous.status !== "no_access") ||
+        (previous.status !== "scheduled" &&
+          previous.status !== "no_access" &&
+          previous.status !== "missed") ||
         !previous.attemptId ||
         !previous.contractorId
       ) {

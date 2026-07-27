@@ -31,6 +31,8 @@ import type {
   CreateCaseActivityInput,
   ManualAllocationCommand,
   ManualAllocationResult,
+  MarkAppointmentMissedInput,
+  MarkAppointmentMissedResult,
   MarkAssignmentInProgressInput,
   MarkAssignmentInProgressResult,
   MarkCaseAppointmentReplacedInput,
@@ -44,6 +46,7 @@ import type {
   MarkCaseNoAccessResult,
   OpenCaseCommand,
   OpenCaseResult,
+  OfficerAttentionKind,
   PerformanceEntryDto,
   RecordPerformanceEntryInput,
   ReplaceAppointmentCommand,
@@ -104,7 +107,7 @@ const activities = proxyActivities<{
   }): Promise<MarkCaseAssignedResult["outcome"]>;
   raiseOfficerAttention(input: {
     caseId: string;
-    kind: "NO_ELIGIBLE_CONTRACTOR" | "ALLOCATION_FAILED" | "WORK_START_FAILED";
+    kind: OfficerAttentionKind;
     detail: string;
     operationId: string;
   }): Promise<unknown>;
@@ -129,6 +132,9 @@ const activities = proxyActivities<{
   reportNoAccessAppointment(
     input: ReportNoAccessAppointmentInput
   ): Promise<ReportNoAccessAppointmentResult>;
+  markAppointmentMissed(
+    input: MarkAppointmentMissedInput
+  ): Promise<MarkAppointmentMissedResult>;
   markCaseNoAccess(
     input: MarkCaseNoAccessInput
   ): Promise<MarkCaseNoAccessResult>;
@@ -156,6 +162,12 @@ type CommittedAttempt = {
   assignmentId: string;
   contractorId: string;
   deadlineAt: number;
+};
+
+/** The currently scheduled Appointment whose end timer this Workflow owns. */
+type CurrentAppointment = {
+  appointmentId: string;
+  endAt: number;
 };
 
 type AutomaticAllocationRequest = {
@@ -697,6 +709,41 @@ async function runReplaceAppointment(
 }
 
 /**
+ * PRS-149 expiry is intentionally narrow: it changes only the Appointment
+ * and raises attention. Case, Assignment, performance, and allocation stay
+ * untouched until an Officer or Resident replaces the missed visit.
+ */
+async function runMissedAppointment(
+  caseId: string,
+  appointment: CurrentAppointment
+) {
+  const operationId = `${caseId}/missed-appointment/${appointment.appointmentId}`;
+  const result = await activities.markAppointmentMissed({
+    operationId,
+    appointmentId: appointment.appointmentId,
+  });
+
+  if (result.outcome === "MISSED" || result.outcome === "ALREADY_MISSED") {
+    await activities.raiseOfficerAttention({
+      caseId,
+      kind: "MISSED_APPOINTMENT",
+      detail: `Appointment ${appointment.appointmentId} ended at ${new Date(appointment.endAt).toISOString()} without work start, No Access, or Reschedule.`,
+      operationId,
+    });
+    return;
+  }
+
+  if (result.outcome === "APPOINTMENT_NOT_FOUND") {
+    await activities.raiseOfficerAttention({
+      caseId,
+      kind: "MISSED_APPOINTMENT",
+      detail: `Appointment ${appointment.appointmentId} was not found when its ${new Date(appointment.endAt).toISOString()} expiry fired.`,
+      operationId,
+    });
+  }
+}
+
+/**
  * Durable owner of the opening operation for one Case.
  *
  * The workflow remains open for later PRS-81 lifecycle updates. Its first
@@ -729,6 +776,16 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   // cleared on acceptance and on breach.
   let currentAttempt: CommittedAttempt | undefined;
   let accepted = false;
+  let currentAppointment: CurrentAppointment | undefined;
+  // Every lifecycle transition increments this so a timerless Workflow wait
+  // still re-evaluates immediately when an Appointment is armed or cleared.
+  let appointmentStateRevision = 0;
+  // A handler admitted before endAt settles before expiry runs; a handler that
+  // first arrives at endAt fails its window gate and never acquires this guard.
+  let appointmentLifecycleGuard = 0;
+  // A MISSED replacement waits for this Saga to raise attention before it can
+  // resolve that attention through the existing Case replacement write.
+  let missedAppointmentRecovery: string | undefined;
   // Counts acceptAllocation handlers currently running the real Activity.
   // Armed synchronously before the first await so the main loop's breach
   // check can never race a handler that started before the deadline.
@@ -873,6 +930,11 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       if (operation.result.kind === "SUCCESS") {
         accepted = true;
         currentAttempt = undefined;
+        currentAppointment = {
+          appointmentId: operation.result.data.appointment.id,
+          endAt: Date.parse(operation.result.data.appointment.endTime),
+        };
+        appointmentStateRevision++;
       }
       // A semantic conflict (e.g. APPOINTMENT_CONFLICT) leaves `accepted`
       // and `currentAttempt` untouched, so the Attempt still breaches.
@@ -912,17 +974,31 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     if (now < Date.parse(command.startTime)) return { kind: "NOT_IN_WINDOW" };
     if (now >= Date.parse(command.endTime)) return { kind: "NOT_IN_WINDOW" };
 
+    const guardsAppointmentExpiry =
+      currentAppointment?.appointmentId === command.appointmentId;
+    if (guardsAppointmentExpiry) appointmentLifecycleGuard++;
+
     const operation: StartWorkOperation = { payloadHash: command.payloadHash };
     startWorkOperations.set(command.idempotencyKey, operation);
     try {
       operation.pending = runStartWork(command);
       operation.result = await operation.pending;
+      if (
+        currentAppointment?.appointmentId === command.appointmentId &&
+        (operation.result.kind === "SUCCESS" ||
+          operation.result.kind === "WORK_START_FAILED" ||
+          operation.result.kind === "NOT_SCHEDULED")
+      ) {
+        currentAppointment = undefined;
+        appointmentStateRevision++;
+      }
       return operation.result;
     } catch (error) {
       startWorkOperations.delete(command.idempotencyKey);
       throw error;
     } finally {
       delete operation.pending;
+      if (guardsAppointmentExpiry) appointmentLifecycleGuard--;
     }
   });
 
@@ -950,17 +1026,31 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     if (now < Date.parse(command.startTime)) return { kind: "NOT_IN_WINDOW" };
     if (now >= Date.parse(command.endTime)) return { kind: "NOT_IN_WINDOW" };
 
+    const guardsAppointmentExpiry =
+      currentAppointment?.appointmentId === command.appointmentId;
+    if (guardsAppointmentExpiry) appointmentLifecycleGuard++;
+
     const operation: NoAccessOperation = { payloadHash: command.payloadHash };
     noAccessOperations.set(command.idempotencyKey, operation);
     try {
       operation.pending = runNoAccess(command);
       operation.result = await operation.pending;
+      if (
+        currentAppointment?.appointmentId === command.appointmentId &&
+        (operation.result.kind === "SUCCESS" ||
+          operation.result.kind === "CASE_TERMINAL" ||
+          operation.result.kind === "NOT_SCHEDULED")
+      ) {
+        currentAppointment = undefined;
+        appointmentStateRevision++;
+      }
       return operation.result;
     } catch (error) {
       noAccessOperations.delete(command.idempotencyKey);
       throw error;
     } finally {
       delete operation.pending;
+      if (guardsAppointmentExpiry) appointmentLifecycleGuard--;
     }
   });
 
@@ -997,6 +1087,19 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       return { kind: "NOT_FUTURE" };
     }
 
+    if (
+      command.previousStatus === "MISSED" &&
+      missedAppointmentRecovery === command.appointmentId
+    ) {
+      await condition(
+        () => missedAppointmentRecovery !== command.appointmentId
+      );
+    }
+
+    const guardsAppointmentExpiry =
+      currentAppointment?.appointmentId === command.appointmentId;
+    if (guardsAppointmentExpiry) appointmentLifecycleGuard++;
+
     const operation: ReplaceAppointmentOperation = {
       payloadHash: command.payloadHash,
     };
@@ -1004,12 +1107,27 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     try {
       operation.pending = runReplaceAppointment(command);
       operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        currentAppointment = {
+          appointmentId: operation.result.data.appointment.id,
+          endAt: Date.parse(operation.result.data.appointment.endTime),
+        };
+        appointmentStateRevision++;
+      } else if (
+        currentAppointment?.appointmentId === command.appointmentId &&
+        (operation.result.kind === "NOT_REPLACEABLE" ||
+          operation.result.kind === "CASE_TERMINAL")
+      ) {
+        currentAppointment = undefined;
+        appointmentStateRevision++;
+      }
       return operation.result;
     } catch (error) {
       replaceAppointmentOperations.delete(command.idempotencyKey);
       throw error;
     } finally {
       delete operation.pending;
+      if (guardsAppointmentExpiry) appointmentLifecycleGuard--;
     }
   });
 
@@ -1023,13 +1141,17 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     if (allocationQueue.length === 0) {
       const deadlines: number[] = [];
       if (currentAttempt) deadlines.push(currentAttempt.deadlineAt);
+      if (currentAppointment) deadlines.push(currentAppointment.endAt);
       if (!automaticAllocationActive && automaticRetryAt !== undefined) {
         deadlines.push(automaticRetryAt);
       }
 
       if (deadlines.length > 0) {
+        const revisionAtWait = appointmentStateRevision;
         const wokeForRequest = await condition(
-          () => allocationQueue.length > 0,
+          () =>
+            allocationQueue.length > 0 ||
+            appointmentStateRevision !== revisionAtWait,
           Math.max(0, Math.min(...deadlines) - Date.now())
         );
 
@@ -1039,6 +1161,26 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
           // to the breach it should have prevented.
           if (acceptanceGuard > 0) {
             await condition(() => acceptanceGuard === 0);
+          }
+          if (appointmentLifecycleGuard > 0) {
+            await condition(() => appointmentLifecycleGuard === 0);
+          }
+
+          if (currentAppointment && Date.now() >= currentAppointment.endAt) {
+            const expiringAppointment = currentAppointment;
+            missedAppointmentRecovery = expiringAppointment.appointmentId;
+            try {
+              await runMissedAppointment(caseId, expiringAppointment);
+            } finally {
+              if (
+                currentAppointment?.appointmentId ===
+                expiringAppointment.appointmentId
+              ) {
+                currentAppointment = undefined;
+                appointmentStateRevision++;
+              }
+              missedAppointmentRecovery = undefined;
+            }
           }
 
           if (
@@ -1081,7 +1223,12 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
           }
         }
       } else {
-        await condition(() => allocationQueue.length > 0);
+        const revisionAtWait = appointmentStateRevision;
+        await condition(
+          () =>
+            allocationQueue.length > 0 ||
+            appointmentStateRevision !== revisionAtWait
+        );
       }
     }
 

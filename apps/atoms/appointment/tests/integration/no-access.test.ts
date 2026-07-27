@@ -184,6 +184,64 @@ describe("No access and reschedule (PRS-146)", () => {
     });
   });
 
+  describe("markAppointmentMissed outcome table", () => {
+    it("SCHEDULED -> MISSED and leaves the spent slot claim ACTIVE", async () => {
+      const { appointment, claim } = await seedBooking();
+      const command = {
+        operationId: `${appointment.caseId}/missed-appointment/${appointment.id}`,
+        appointmentId: appointment.id,
+      };
+
+      const result = await service.markAppointmentMissed(command);
+      expect(result.outcome).toBe("MISSED");
+      if (result.outcome !== "MISSED") throw new Error("unreachable");
+      expect(result.appointment.status).toBe("MISSED");
+      expect((await appointmentById(appointment.id)).status).toBe("missed");
+      expect((await claimById(claim.id)).status).toBe("ACTIVE");
+
+      const replay = await service.markAppointmentMissed(command);
+      expect(replay.outcome).toBe("ALREADY_MISSED");
+    });
+
+    it("converges concurrent expiry replays and rejects every other status", async () => {
+      const { appointment } = await seedBooking();
+      const command = {
+        operationId: `${appointment.caseId}/missed-appointment/${appointment.id}`,
+        appointmentId: appointment.id,
+      };
+      const outcomes = await Promise.all([
+        service.markAppointmentMissed(command),
+        service.markAppointmentMissed(command),
+      ]);
+      expect(outcomes.map((result) => result.outcome).toSorted()).toEqual([
+        "ALREADY_MISSED",
+        "MISSED",
+      ]);
+
+      for (const status of [
+        "in_progress",
+        "no_access",
+        "rescheduled",
+        "cancelled",
+        "completed",
+      ] as const) {
+        const booking = await seedBooking({ status });
+        await expect(
+          service.markAppointmentMissed({
+            operationId: `${booking.caseId}/missed-appointment/${booking.appointment.id}`,
+            appointmentId: booking.appointment.id,
+          })
+        ).resolves.toEqual({ outcome: "NOT_SCHEDULED" });
+      }
+      await expect(
+        service.markAppointmentMissed({
+          operationId: `${crypto.randomUUID()}/missed`,
+          appointmentId: crypto.randomUUID(),
+        })
+      ).resolves.toEqual({ outcome: "APPOINTMENT_NOT_FOUND" });
+    });
+  });
+
   describe("replaceAppointmentSlot outcome table", () => {
     it("retires a scheduled Appointment and books its replacement", async () => {
       const { appointment, claim, caseId, contractorId } = await seedBooking();
@@ -243,6 +301,23 @@ describe("No access and reschedule (PRS-146)", () => {
       expect((await appointmentById(result.appointment.id)).status).toBe(
         "scheduled"
       );
+    });
+
+    it("keeps a missed Appointment missed while booking its recovery", async () => {
+      const { appointment, claim, caseId } = await seedBooking({
+        status: "missed",
+      });
+      const result = await service.replaceAppointmentSlot({
+        operationId: `${crypto.randomUUID()}/replace`,
+        caseId,
+        appointmentId: appointment.id,
+        startTime: at(24),
+        endTime: at(25),
+      });
+
+      expect(result.outcome).toBe("REPLACED");
+      expect((await appointmentById(appointment.id)).status).toBe("missed");
+      expect((await claimById(claim.id)).status).toBe("RELEASED");
     });
 
     // The release precedes the insert precisely so this is legal.
@@ -345,6 +420,7 @@ describe("No access and reschedule (PRS-146)", () => {
     it.each([
       { label: "scheduled", seedStatus: "scheduled" as const },
       { label: "no_access", seedStatus: "no_access" as const },
+      { label: "missed", seedStatus: "missed" as const },
     ])(
       "is idempotent under concurrent replay of a $label source",
       async ({ seedStatus }) => {
@@ -441,7 +517,7 @@ describe("No access and reschedule (PRS-146)", () => {
       expect(activeClaims).toHaveLength(1);
     });
 
-    it("refuses an Appointment that is neither scheduled nor no_access", async () => {
+    it("refuses an Appointment that is not replaceable", async () => {
       const { appointment, caseId } = await seedBooking({
         status: "in_progress",
       });
@@ -527,13 +603,22 @@ describe("No access and reschedule (PRS-146)", () => {
       });
     }
 
-    it("requires the Worker service token on both routes", async () => {
+    it("requires the Worker service token on every recovery route", async () => {
       const { appointment, caseId, contractorId } = await seedBooking();
       expect(
         (
           await post(
             "no-access",
             { operationId: "x", appointmentId: appointment.id, contractorId },
+            false
+          )
+        ).status
+      ).toBe(401);
+      expect(
+        (
+          await post(
+            "missed",
+            { operationId: "x", appointmentId: appointment.id },
             false
           )
         ).status
@@ -584,6 +669,34 @@ describe("No access and reschedule (PRS-146)", () => {
         appointmentId: crypto.randomUUID(),
       });
       expect(missing.status).toBe(404);
+    });
+
+    it("maps missed outcomes onto 201/409/404", async () => {
+      const { appointment } = await seedBooking();
+      const body = {
+        operationId: `${appointment.caseId}/missed-appointment/${appointment.id}`,
+        appointmentId: appointment.id,
+      };
+
+      expect((await post("missed", body)).status).toBe(201);
+      expect((await post("missed", body)).status).toBe(201);
+      const notScheduled = await seedBooking({ status: "cancelled" });
+      expect(
+        (
+          await post("missed", {
+            operationId: `${notScheduled.caseId}/missed-appointment/${notScheduled.appointment.id}`,
+            appointmentId: notScheduled.appointment.id,
+          })
+        ).status
+      ).toBe(409);
+      expect(
+        (
+          await post("missed", {
+            operationId: `${crypto.randomUUID()}/missed`,
+            appointmentId: crypto.randomUUID(),
+          })
+        ).status
+      ).toBe(404);
     });
 
     it("maps replacement outcomes onto 201/409/404", async () => {

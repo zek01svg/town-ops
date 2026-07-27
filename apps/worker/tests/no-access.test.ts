@@ -789,8 +789,8 @@ describe("No access and reschedule Updates (PRS-146)", () => {
       const client = new Client({ connection: env.nativeConnection });
 
       await worker.runUntil(async () => {
-        // newStartOffsetMs 0: the new slot starts at the submission instant,
-        // so the handler's clock has already reached it.
+        // Keep a small negative margin: the time-skipping server clock can
+        // advance between building the command and dispatching its handler.
         const atNow = await startWorkflowAndCall(
           client,
           UPDATE_NAMES.replaceAppointment,
@@ -800,7 +800,7 @@ describe("No access and reschedule Updates (PRS-146)", () => {
           replaceCommand({
             caseId,
             appointmentId: randomUUID(),
-            newStartOffsetMs: 0,
+            newStartOffsetMs: -2_000,
             newEndOffsetMs: 3_600_000,
             previousStartOffsetMs: 86_400_000,
             previousStatus: "SCHEDULED",

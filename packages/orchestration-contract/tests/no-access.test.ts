@@ -5,7 +5,10 @@ import {
   canonicalReplaceAppointmentPayload,
   canonicalReportNoAccessPayload,
   MarkCaseAppointmentReplacedInputSchema,
+  MarkAppointmentMissedInputSchema,
+  MarkAppointmentMissedResultSchema,
   MarkCaseNoAccessInputSchema,
+  OfficerAttentionKindSchema,
   ReplaceAppointmentInputSchema,
   ReplaceAppointmentSlotInputSchema,
   ReplaceAppointmentSlotResultSchema,
@@ -31,6 +34,7 @@ describe("no-access and reschedule contract (PRS-146)", () => {
       "IN_PROGRESS",
       "NO_ACCESS",
       "RESCHEDULED",
+      "MISSED",
     ]) {
       expect(AppointmentStatusSchema.safeParse(status).success).toBe(true);
     }
@@ -163,6 +167,33 @@ describe("no-access and reschedule contract (PRS-146)", () => {
     expect(
       ReplaceAppointmentSlotResultSchema.safeParse({ outcome: "REPLACED" })
         .success
+    ).toBe(false);
+  });
+
+  it("parses the workflow-owned missed transition and its attention kind", () => {
+    const missedInput = {
+      operationId: `${caseId}/missed-appointment/${appointmentId}`,
+      appointmentId,
+    };
+    expect(
+      MarkAppointmentMissedInputSchema.safeParse(missedInput).success
+    ).toBe(true);
+    expect(
+      MarkAppointmentMissedInputSchema.safeParse({
+        ...missedInput,
+        extra: true,
+      }).success
+    ).toBe(false);
+    expect(
+      OfficerAttentionKindSchema.safeParse("MISSED_APPOINTMENT").success
+    ).toBe(true);
+    for (const outcome of ["NOT_SCHEDULED", "APPOINTMENT_NOT_FOUND"]) {
+      expect(
+        MarkAppointmentMissedResultSchema.safeParse({ outcome }).success
+      ).toBe(true);
+    }
+    expect(
+      MarkAppointmentMissedResultSchema.safeParse({ outcome: "MISSED" }).success
     ).toBe(false);
   });
 });

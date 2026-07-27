@@ -145,6 +145,7 @@ export const OfficerAttentionKindSchema = z.enum([
   "ALLOCATION_FAILED",
   "ACCEPTANCE_SLA_BREACH",
   "WORK_START_FAILED",
+  "MISSED_APPOINTMENT",
 ]);
 export type OfficerAttentionKind = z.infer<typeof OfficerAttentionKindSchema>;
 
@@ -344,6 +345,7 @@ export const AppointmentStatusSchema = z.enum([
   "IN_PROGRESS",
   "NO_ACCESS",
   "RESCHEDULED",
+  "MISSED",
 ]);
 export type AppointmentStatus = z.infer<typeof AppointmentStatusSchema>;
 
@@ -962,6 +964,36 @@ export const ReportNoAccessAppointmentResultSchema = z.discriminatedUnion(
 );
 export type ReportNoAccessAppointmentResult = z.infer<
   typeof ReportNoAccessAppointmentResultSchema
+>;
+
+/** Workflow-owned expiry of an unattended scheduled Appointment. */
+export const MarkAppointmentMissedInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    appointmentId: z.uuid(),
+  })
+  .strict();
+export type MarkAppointmentMissedInput = z.infer<
+  typeof MarkAppointmentMissedInputSchema
+>;
+
+export const MarkAppointmentMissedResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({
+      outcome: z.literal("MISSED"),
+      appointment: AppointmentDtoSchema,
+    }),
+    z.object({
+      outcome: z.literal("ALREADY_MISSED"),
+      appointment: AppointmentDtoSchema,
+    }),
+    z.object({ outcome: z.literal("NOT_SCHEDULED") }),
+    z.object({ outcome: z.literal("APPOINTMENT_NOT_FOUND") }),
+  ]
+);
+export type MarkAppointmentMissedResult = z.infer<
+  typeof MarkAppointmentMissedResultSchema
 >;
 
 export const ReplaceAppointmentSlotInputSchema = z

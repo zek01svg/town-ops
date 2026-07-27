@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { ApplicationFailure } from "@temporalio/activity";
 import type {
   MarkCaseAppointmentReplacedInput,
+  MarkAppointmentMissedInput,
   MarkCaseNoAccessInput,
   ReplaceAppointmentSlotInput,
   ReportNoAccessAppointmentInput,
@@ -80,7 +81,9 @@ describe("reportNoAccessAppointment activity", () => {
 
     await expect(
       dependencies(fetchImpl).reportNoAccessAppointment(input)
-    ).resolves.toMatchObject({ outcome: "NO_ACCESS" });
+    ).resolves.toMatchObject({
+      outcome: "NO_ACCESS",
+    });
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://appointment-atom:5003/internal/appointment-slots/no-access",
       expect.objectContaining({
@@ -103,7 +106,9 @@ describe("reportNoAccessAppointment activity", () => {
 
     await expect(
       dependencies(fetchImpl).reportNoAccessAppointment(input)
-    ).resolves.toEqual({ outcome: "NOT_SCHEDULED" });
+    ).resolves.toEqual({
+      outcome: "NOT_SCHEDULED",
+    });
   });
 
   it("parses a 404 APPOINTMENT_NOT_FOUND domain outcome rather than throwing", async () => {
@@ -115,7 +120,9 @@ describe("reportNoAccessAppointment activity", () => {
 
     await expect(
       dependencies(fetchImpl).reportNoAccessAppointment(input)
-    ).resolves.toEqual({ outcome: "APPOINTMENT_NOT_FOUND" });
+    ).resolves.toEqual({
+      outcome: "APPOINTMENT_NOT_FOUND",
+    });
   });
 
   it("throws a non-retryable ApplicationFailure on an unrecognized 4xx", async () => {
@@ -143,6 +150,87 @@ describe("reportNoAccessAppointment activity", () => {
 
     await expect(
       dependencies(fetchImpl).reportNoAccessAppointment(input)
+    ).rejects.toThrow(/failed with 503/);
+  });
+});
+
+describe("markAppointmentMissed activity", () => {
+  const input: MarkAppointmentMissedInput = {
+    operationId: `${randomUUID()}/missed-appointment/${randomUUID()}`,
+    appointmentId: randomUUID(),
+  };
+
+  it("parses a 201 MISSED response and posts to the appointment atom", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      Response.json(
+        {
+          outcome: "MISSED",
+          appointment: appointmentRow({
+            id: input.appointmentId,
+            status: "MISSED",
+            operationId: input.operationId,
+          }),
+        },
+        { status: 201 }
+      )
+    );
+
+    await expect(
+      dependencies(fetchImpl).markAppointmentMissed(input)
+    ).resolves.toMatchObject({
+      outcome: "MISSED",
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://appointment-atom:5003/internal/appointment-slots/missed",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${workerServiceToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(input),
+      })
+    );
+  });
+
+  it("parses every known expiry outcome rather than throwing", async () => {
+    for (const [body, status] of [
+      [
+        {
+          outcome: "ALREADY_MISSED",
+          appointment: appointmentRow({ status: "MISSED" }),
+        },
+        201,
+      ],
+      [{ outcome: "NOT_SCHEDULED" }, 409],
+      [{ outcome: "APPOINTMENT_NOT_FOUND" }, 404],
+    ] as const) {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(Response.json(body, { status }));
+      await expect(
+        dependencies(fetchImpl).markAppointmentMissed(input)
+      ).resolves.toMatchObject(body);
+    }
+  });
+
+  it("classifies an unexpected 4xx as non-retryable and a 5xx as retryable", async () => {
+    const rejected = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ error: "bad" }, { status: 400 }));
+    const failure = await dependencies(rejected)
+      .markAppointmentMissed(input)
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ApplicationFailure);
+    if (!(failure instanceof ApplicationFailure))
+      throw new Error("unreachable");
+    expect(failure.type).toBe("APPOINTMENT_MISSED_REJECTED");
+
+    const failed = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("boom", { status: 503 }));
+    await expect(
+      dependencies(failed).markAppointmentMissed(input)
     ).rejects.toThrow(/failed with 503/);
   });
 });
@@ -191,7 +279,9 @@ describe("markCaseNoAccess activity", () => {
 
     await expect(
       dependencies(fetchImpl).markCaseNoAccess(input)
-    ).resolves.toEqual({ outcome: "CASE_TERMINAL" });
+    ).resolves.toEqual({
+      outcome: "CASE_TERMINAL",
+    });
   });
 
   it("throws a non-retryable ApplicationFailure on an unrecognized 4xx", async () => {
@@ -247,7 +337,9 @@ describe("replaceAppointmentSlot activity", () => {
 
     await expect(
       dependencies(fetchImpl).replaceAppointmentSlot(input)
-    ).resolves.toMatchObject({ outcome: "REPLACED" });
+    ).resolves.toMatchObject({
+      outcome: "REPLACED",
+    });
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://appointment-atom:5003/internal/appointment-slots/replacements",
       expect.objectContaining({
@@ -266,7 +358,9 @@ describe("replaceAppointmentSlot activity", () => {
 
     await expect(
       dependencies(fetchImpl).replaceAppointmentSlot(input)
-    ).resolves.toEqual({ outcome: "CONFLICT" });
+    ).resolves.toEqual({
+      outcome: "CONFLICT",
+    });
   });
 
   it("parses a 404 APPOINTMENT_NOT_FOUND domain outcome rather than throwing", async () => {
@@ -278,7 +372,9 @@ describe("replaceAppointmentSlot activity", () => {
 
     await expect(
       dependencies(fetchImpl).replaceAppointmentSlot(input)
-    ).resolves.toEqual({ outcome: "APPOINTMENT_NOT_FOUND" });
+    ).resolves.toEqual({
+      outcome: "APPOINTMENT_NOT_FOUND",
+    });
   });
 
   it("throws a non-retryable ApplicationFailure on an unrecognized 4xx", async () => {
@@ -371,7 +467,9 @@ describe("markCaseAppointmentReplaced activity", () => {
 
     await expect(
       dependencies(fetchImpl).markCaseAppointmentReplaced(input)
-    ).resolves.toEqual({ outcome: "CASE_TERMINAL" });
+    ).resolves.toEqual({
+      outcome: "CASE_TERMINAL",
+    });
   });
 
   it("throws a non-retryable ApplicationFailure on an unrecognized 4xx", async () => {

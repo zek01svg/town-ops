@@ -2,6 +2,8 @@ import { ApplicationFailure } from "@temporalio/activity";
 import {
   MarkCaseAppointmentReplacedInputSchema,
   MarkCaseAppointmentReplacedResultSchema,
+  MarkAppointmentMissedInputSchema,
+  MarkAppointmentMissedResultSchema,
   MarkCaseNoAccessInputSchema,
   MarkCaseNoAccessResultSchema,
   ReplaceAppointmentSlotInputSchema,
@@ -12,6 +14,8 @@ import {
 import type {
   MarkCaseAppointmentReplacedInput,
   MarkCaseAppointmentReplacedResult,
+  MarkAppointmentMissedInput,
+  MarkAppointmentMissedResult,
   MarkCaseNoAccessInput,
   MarkCaseNoAccessResult,
   ReplaceAppointmentSlotInput,
@@ -82,6 +86,34 @@ export function createAppointmentRecoveryActivities({
       throw nonRetryable(
         "Appointment atom rejected the no-access operation",
         "APPOINTMENT_NO_ACCESS_REJECTED"
+      );
+    }
+    throw new Error(`Appointment atom request failed with ${response.status}`);
+  }
+
+  async function markAppointmentMissed(
+    input: MarkAppointmentMissedInput
+  ): Promise<MarkAppointmentMissedResult> {
+    const command = MarkAppointmentMissedInputSchema.parse(input);
+    const response = await fetchImpl(
+      `${appointmentAtomUrl}/internal/appointment-slots/missed`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(workerServiceToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(command),
+      }
+    );
+
+    if (response.ok || response.status === 404 || response.status === 409) {
+      return MarkAppointmentMissedResultSchema.parse(await response.json());
+    }
+    if (response.status >= 400 && response.status < 500) {
+      throw nonRetryable(
+        "Appointment atom rejected the missed-appointment operation",
+        "APPOINTMENT_MISSED_REJECTED"
       );
     }
     throw new Error(`Appointment atom request failed with ${response.status}`);
@@ -216,6 +248,7 @@ export function createAppointmentRecoveryActivities({
 
   return {
     reportNoAccessAppointment,
+    markAppointmentMissed,
     markCaseNoAccess,
     replaceAppointmentSlot,
     markCaseAppointmentReplaced,

@@ -1,6 +1,6 @@
 # Case lifecycle
 
-This document describes the implemented Temporal Case path through PRS-144.
+This document describes the implemented Temporal Case path through PRS-149.
 Future lifecycle work remains specified in the Temporal orchestration plan.
 
 ## Implemented path
@@ -11,11 +11,14 @@ stateDiagram-v2
     PENDING --> ASSIGNED : Allocation Attempt committed
     ASSIGNED --> ASSIGNED : Current Attempt accepted and Appointment scheduled
     ASSIGNED --> PENDING : Acceptance SLA breach
+    ASSIGNED --> PENDING_RESIDENT_INPUT : No Access
+    PENDING_RESIDENT_INPUT --> ASSIGNED : Appointment replaced
+    ASSIGNED --> ASSIGNED : Appointment replaced proactively or after MISSED
 ```
 
 Case status remains `ASSIGNED` after an Allocation Attempt is accepted. Work
-start, No Access, rescheduling, and completion are separate follow-up
-behaviours; acceptance does not start work.
+start, No Access, rescheduling, missed-Appointment recovery, and completion
+are separate follow-up behaviours; acceptance does not start work.
 
 An Attempt that is not accepted before its Acceptance SLA deadline breaches:
 the Case returns to `PENDING`, one unresolved Officer Attention item is raised,
@@ -52,3 +55,11 @@ The Appointment atom owns the public `SCHEDULED` Appointment and its internal
 slot claim. A claim passes from `HELD` to `ACTIVE` when confirmation succeeds,
 or to `RELEASED` when a permanent acceptance failure is compensated. PostgreSQL
 prevents overlapping active intervals for one Contractor.
+
+The CaseWorkflow durably tracks each SCHEDULED Appointment's end time. At its
+end, an unattended Appointment becomes `MISSED` and raises one
+`MISSED_APPOINTMENT` Officer Attention item. This changes neither the Case nor
+its Assignment and records no performance entry or reallocation. An Officer
+or the Resident recovers it through the ordinary Reschedule path: the old
+Appointment remains `MISSED`, its active claim is released, a new `SCHEDULED`
+Appointment is booked, and the attention resolves.

@@ -29,6 +29,7 @@ export const raiseOfficerAttentionSchema = z
       "NO_ELIGIBLE_CONTRACTOR",
       "ALLOCATION_FAILED",
       "WORK_START_FAILED",
+      "MISSED_APPOINTMENT",
     ]),
     detail: z.string().trim().min(1).max(10_000),
     operationId: z.string().min(1),

@@ -49,6 +49,7 @@ export const officerAttentionKind = pgEnum("officer_attention_kind", [
   "ALLOCATION_FAILED",
   "ACCEPTANCE_SLA_BREACH",
   "WORK_START_FAILED",
+  "MISSED_APPOINTMENT",
 ]);
 
 export const cases = pgTable(

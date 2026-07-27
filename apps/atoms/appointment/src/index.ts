@@ -2,6 +2,7 @@ import { Scalar } from "@scalar/hono-api-reference";
 import {
   ConfirmAppointmentSlotInputSchema,
   ReleaseAppointmentSlotInputSchema,
+  MarkAppointmentMissedInputSchema,
   ReplaceAppointmentSlotInputSchema,
   ReportNoAccessAppointmentInputSchema,
   ReserveAppointmentSlotInputSchema,
@@ -144,6 +145,22 @@ const appointmentSlotRoutes = new Hono()
         result.outcome === "NOT_SCHEDULED" ||
         result.outcome === "WRONG_CONTRACTOR"
       ) {
+        return c.json(result, 409);
+      }
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/missed",
+    validator("json", MarkAppointmentMissedInputSchema),
+    async (c) => {
+      const result = await appointmentService.markAppointmentMissed(
+        c.req.valid("json")
+      );
+      if (result.outcome === "APPOINTMENT_NOT_FOUND") {
+        return c.json(result, 404);
+      }
+      if (result.outcome === "NOT_SCHEDULED") {
         return c.json(result, 409);
       }
       return c.json(result, 201);

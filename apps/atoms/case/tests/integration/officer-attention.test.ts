@@ -62,6 +62,15 @@ describe("Officer Attention persistence", () => {
     });
   }
 
+  async function raiseMissedAppointmentAttention(operationId: string) {
+    await caseService.raiseOfficerAttention({
+      caseId: CASE_ID,
+      kind: "MISSED_APPOINTMENT",
+      detail: "Appointment ended without work start, No Access, or Reschedule.",
+      operationId,
+    });
+  }
+
   async function findAttention() {
     return db
       .select()
@@ -98,14 +107,15 @@ describe("Officer Attention persistence", () => {
     expect(record.resolvedAt).toEqual(expect.any(String));
   });
 
-  it("resolves every allocation attention when the Case reaches a terminal status", async () => {
+  it("resolves every operational attention when the Case reaches a terminal status", async () => {
     await raiseNoEligibleContractorAttention("case/attention/no-candidate/1");
     await raiseAllocationFailedAttention("case/attention/allocation-failed/1");
+    await raiseMissedAppointmentAttention("case/attention/missed/1");
 
     await caseService.updateCaseStatus(CASE_ID, "completed");
 
     const records = await findAttention();
-    expect(records).toHaveLength(2);
+    expect(records).toHaveLength(3);
     expect(records.every((record) => record.resolvedAt)).toBe(true);
   });
 
@@ -125,6 +135,75 @@ describe("Officer Attention persistence", () => {
       .from(cases)
       .where(eq(cases.id, CASE_ID));
     expect(caseRecord.status).toBe("cancelled");
+  });
+
+  describe("Missed Appointment recovery (PRS-149)", () => {
+    function replacementInput(operationId: string) {
+      return {
+        caseId: CASE_ID,
+        operationId,
+        actorId: ACTOR_ID,
+        actorRole: "RESIDENT" as const,
+      };
+    }
+
+    it("converges repeated missed attentions and resolves the open record on replacement", async () => {
+      await raiseMissedAppointmentAttention(
+        `${CASE_ID}/missed-appointment/one`
+      );
+      await raiseMissedAppointmentAttention(
+        `${CASE_ID}/missed-appointment/two`
+      );
+      expect(await findAttention()).toHaveLength(1);
+
+      const operationId = `${CASE_ID}/replace-missed`;
+      await caseService.markCaseAppointmentReplacedForOperation(
+        replacementInput(operationId)
+      );
+
+      const [attention] = await findAttention();
+      expect(attention).toMatchObject({
+        kind: "MISSED_APPOINTMENT",
+        resolvedAt: expect.any(String),
+        resolvedByOperationId: operationId,
+      });
+    });
+
+    it("an idempotent replacement replay resolves attention raised after its first write", async () => {
+      const operationId = `${CASE_ID}/replace-missed-replay`;
+      await caseService.markCaseAppointmentReplacedForOperation(
+        replacementInput(operationId)
+      );
+      await raiseMissedAppointmentAttention(
+        `${CASE_ID}/missed-appointment/one`
+      );
+
+      await caseService.markCaseAppointmentReplacedForOperation(
+        replacementInput(operationId)
+      );
+
+      const [attention] = await findAttention();
+      expect(attention.resolvedAt).toEqual(expect.any(String));
+      expect(attention.resolvedByOperationId).toBe(operationId);
+    });
+
+    it("allows a later missed Appointment to open a new attention after recovery", async () => {
+      await raiseMissedAppointmentAttention(
+        `${CASE_ID}/missed-appointment/one`
+      );
+      await caseService.markCaseAppointmentReplacedForOperation(
+        replacementInput(`${CASE_ID}/replace-missed`)
+      );
+      await raiseMissedAppointmentAttention(
+        `${CASE_ID}/missed-appointment/two`
+      );
+
+      const records = await findAttention();
+      expect(records).toHaveLength(2);
+      expect(
+        records.filter((record) => record.resolvedAt === null)
+      ).toHaveLength(1);
+    });
   });
 
   /**

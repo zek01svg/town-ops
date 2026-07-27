@@ -143,6 +143,40 @@ describe("Gateway Appointment replacement (PRS-146)", () => {
     );
   });
 
+  it.each([
+    ["Officer", officerAuth],
+    ["owning Resident", residentAuth],
+  ] as const)(
+    "lets a %s recover a MISSED Appointment without a proactive-reschedule reason",
+    async (_actor, authenticate) => {
+      const executeUpdateWithStart = vi
+        .fn()
+        .mockResolvedValue(replacementSuccess);
+      const fetchImpl = recoveryFetch({
+        caseRecord: ownedCaseRecord,
+        appointments: [
+          { ...scheduledRecoveryAppointment, status: "MISSED" as const },
+        ],
+      });
+      const { app } = createApp(executeUpdateWithStart, fetchImpl, {
+        authenticate,
+      });
+
+      const response = await app.request(
+        replacementRoute(recoveryCaseId, recoveryAppointmentId),
+        putJson({
+          startTime: replacementBody.startTime,
+          endTime: replacementBody.endTime,
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(executeUpdateWithStart.mock.calls[0][1].args[0]).toMatchObject({
+        previousStatus: "MISSED",
+      });
+    }
+  );
+
   it("hides another Resident's Case behind a 404 without reaching Temporal", async () => {
     const executeUpdateWithStart = vi.fn();
     const fetchImpl = recoveryFetch({
@@ -245,7 +279,10 @@ describe("Gateway Appointment replacement (PRS-146)", () => {
     );
     const noBody = await app.request(
       replacementRoute(recoveryCaseId, recoveryAppointmentId),
-      { method: "PUT", headers: { "Idempotency-Key": randomUUID() } }
+      {
+        method: "PUT",
+        headers: { "Idempotency-Key": randomUUID() },
+      }
     );
 
     expect(noReason.status).toBe(400);
@@ -397,7 +434,9 @@ describe("Gateway Appointment replacement (PRS-146)", () => {
     const { app } = createApp(
       vi.fn().mockRejectedValue(unavailable),
       fetchImpl,
-      { authenticate: officerAuth }
+      {
+        authenticate: officerAuth,
+      }
     );
 
     const response = await app.request(

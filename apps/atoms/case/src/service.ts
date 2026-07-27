@@ -35,7 +35,8 @@ type OfficerAttentionKind =
   | "NO_ELIGIBLE_CONTRACTOR"
   | "ALLOCATION_FAILED"
   | "ACCEPTANCE_SLA_BREACH"
-  | "WORK_START_FAILED";
+  | "WORK_START_FAILED"
+  | "MISSED_APPOINTMENT";
 
 const allocationAttentionKinds: OfficerAttentionKind[] = [
   "NO_ELIGIBLE_CONTRACTOR",
@@ -53,6 +54,7 @@ const terminalResolvedAttentionKinds: OfficerAttentionKind[] = [
   ...allocationAttentionKinds,
   "ACCEPTANCE_SLA_BREACH",
   "WORK_START_FAILED",
+  "MISSED_APPOINTMENT",
 ];
 
 /**
@@ -572,33 +574,47 @@ export async function markCaseAppointmentReplacedForOperation(
       .onConflictDoNothing()
       .returning();
 
-    if (!insertedOperation) {
-      return { outcome: "REPLACED" as const, case: currentCase };
+    let resultCase = currentCase;
+    if (insertedOperation) {
+      const [updatedCase] = await tx
+        .update(cases)
+        .set({
+          status:
+            currentCase.status === "pending_resident_input"
+              ? "assigned"
+              : currentCase.status,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(cases.id, input.caseId))
+        .returning();
+      if (!updatedCase) {
+        throw new Error("Case was not found to record a replacement");
+      }
+      resultCase = updatedCase;
+
+      await tx.insert(caseHistory).values({
+        caseId: input.caseId,
+        eventType: "CASE_APPOINTMENT_REPLACED",
+        actorId: input.actorId,
+        actorRole: input.actorRole,
+        operationId: input.operationId,
+      });
     }
 
-    const [updatedCase] = await tx
-      .update(cases)
+    await tx
+      .update(officerAttention)
       .set({
-        status:
-          currentCase.status === "pending_resident_input"
-            ? "assigned"
-            : currentCase.status,
-        updatedAt: new Date().toISOString(),
+        resolvedAt: new Date().toISOString(),
+        resolvedByOperationId: input.operationId,
       })
-      .where(eq(cases.id, input.caseId))
-      .returning();
-    if (!updatedCase) {
-      throw new Error("Case was not found to record a replacement");
-    }
+      .where(
+        and(
+          eq(officerAttention.caseId, input.caseId),
+          eq(officerAttention.kind, "MISSED_APPOINTMENT"),
+          isNull(officerAttention.resolvedAt)
+        )
+      );
 
-    await tx.insert(caseHistory).values({
-      caseId: input.caseId,
-      eventType: "CASE_APPOINTMENT_REPLACED",
-      actorId: input.actorId,
-      actorRole: input.actorRole,
-      operationId: input.operationId,
-    });
-
-    return { outcome: "REPLACED" as const, case: updatedCase };
+    return { outcome: "REPLACED" as const, case: resultCase };
   });
 }
