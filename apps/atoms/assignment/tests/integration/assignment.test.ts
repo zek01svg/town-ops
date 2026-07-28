@@ -1,16 +1,22 @@
+import type { Context, Next } from "hono";
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 
 vi.mock("hono/jwk", () => ({
-  jwk: () => async (_c: any, next: any) => await next(),
+  jwk: () => async (_c: Context, next: Next) => next(),
 }));
 
+type AssignmentDb = (typeof import("../../src/database/db"))["default"];
+type AssignmentSchema = typeof import("../../src/database/schema");
+type AssignmentApp = (typeof import("../../src/index"))["app"];
+type DrizzleEq = (typeof import("drizzle-orm"))["eq"];
+
 describe("Assignment Atom Integration Tests", () => {
-  let db: any;
-  let assignments: any;
-  let allocationAttempts: any;
-  let assignmentStatusHistory: any;
-  let app: any;
-  let eq: any;
+  let db: AssignmentDb;
+  let assignments: AssignmentSchema["assignments"];
+  let allocationAttempts: AssignmentSchema["allocationAttempts"];
+  let assignmentStatusHistory: AssignmentSchema["assignmentStatusHistory"];
+  let app: AssignmentApp;
+  let eq: DrizzleEq;
 
   beforeAll(async () => {
     const dbModule = await import("../../src/database/db");
@@ -265,5 +271,81 @@ describe("Assignment Atom Integration Tests", () => {
         .from(assignmentStatusHistory)
         .where(eq(assignmentStatusHistory.assignmentId, assignment.id))
     ).toHaveLength(0);
+  });
+
+  it("records Assignment completion once, retains its operation identity, and rejects a different operation", async () => {
+    const caseId = crypto.randomUUID();
+    const operationId = `complete/${crypto.randomUUID()}/assignment`;
+    const [assignment] = await db
+      .insert(assignments)
+      .values({ caseId, status: "IN_PROGRESS" })
+      .returning();
+    const complete = (
+      completionOperationId = operationId,
+      token = "a".repeat(32)
+    ) =>
+      app.request("/internal/assignments/complete", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          assignmentId: assignment.id,
+          changedBy: crypto.randomUUID(),
+          operationId: completionOperationId,
+        }),
+      });
+
+    const first = await complete();
+    expect(first.status).toBe(201);
+    expect(await first.json()).toMatchObject({ outcome: "COMPLETED" });
+    const history = await db
+      .select()
+      .from(assignmentStatusHistory)
+      .where(eq(assignmentStatusHistory.assignmentId, assignment.id));
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      fromStatus: "IN_PROGRESS",
+      toStatus: "COMPLETED",
+      reason: "ASSIGNMENT_COMPLETED",
+    });
+
+    const replay = await complete();
+    expect(replay.status).toBe(201);
+    expect(await replay.json()).toMatchObject({ outcome: "ALREADY_COMPLETED" });
+    expect(
+      await db
+        .select()
+        .from(assignmentStatusHistory)
+        .where(eq(assignmentStatusHistory.assignmentId, assignment.id))
+    ).toHaveLength(1);
+
+    const conflict = await complete(
+      `complete/${crypto.randomUUID()}/assignment`
+    );
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toEqual({
+      outcome: "COMPLETION_OPERATION_CONFLICT",
+    });
+
+    const unauthorizedIdentity = await app.request(
+      `/internal/assignments/completion-operation/${assignment.id}`
+    );
+    expect(unauthorizedIdentity.status).toBe(401);
+    const identity = await app.request(
+      `/internal/assignments/completion-operation/${assignment.id}`,
+      { headers: { Authorization: `Bearer ${"a".repeat(32)}` } }
+    );
+    expect(identity.status).toBe(200);
+    expect(await identity.json()).toEqual({
+      completionOperationId: operationId,
+    });
+
+    const publicRead = await app.request(`/api/assignments/${caseId}`);
+    expect(publicRead.status).toBe(200);
+    expect((await publicRead.json()).assignments).not.toHaveProperty(
+      "completionOperationId"
+    );
   });
 });

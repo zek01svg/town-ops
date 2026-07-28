@@ -146,6 +146,7 @@ export const OfficerAttentionKindSchema = z.enum([
   "ACCEPTANCE_SLA_BREACH",
   "WORK_START_FAILED",
   "MISSED_APPOINTMENT",
+  "COMPLETION_FAILED",
 ]);
 export type OfficerAttentionKind = z.infer<typeof OfficerAttentionKindSchema>;
 
@@ -221,6 +222,7 @@ export const UPDATE_NAMES = {
   startWork: "startWork",
   reportNoAccess: "reportNoAccess",
   replaceAppointment: "replaceAppointment",
+  completeCase: "completeCase",
 } as const;
 export const ORCHESTRATION_TASK_QUEUE = "townops-orchestration";
 
@@ -346,6 +348,7 @@ export const AppointmentStatusSchema = z.enum([
   "NO_ACCESS",
   "RESCHEDULED",
   "MISSED",
+  "COMPLETED",
 ]);
 export type AppointmentStatus = z.infer<typeof AppointmentStatusSchema>;
 
@@ -832,6 +835,181 @@ export function canonicalStartWorkPayload(
   return JSON.stringify({
     caseId,
     appointmentId,
+  });
+}
+
+// ─── Contractor completion (PRS-147) ──────────────────────────────────────
+
+export const ProofItemTypeSchema = z.enum(["BEFORE", "AFTER", "SIGNATURE"]);
+export type ProofItemType = z.infer<typeof ProofItemTypeSchema>;
+
+export const ProofItemDtoSchema = z.object({
+  id: z.uuid(),
+  caseId: z.uuid(),
+  contractorId: z.uuid().nullable(),
+  mediaUrl: z.string(),
+  type: ProofItemTypeSchema,
+  remarks: z.string().nullable(),
+  checksum: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .nullable(),
+  ready: z.boolean(),
+  createdAt: z.string().nullable(),
+});
+export type ProofItemDto = z.infer<typeof ProofItemDtoSchema>;
+
+export const UploadProofItemInputSchema = z
+  .object({
+    proofItemId: z.uuid(),
+    caseId: z.uuid(),
+    contractorId: z.uuid(),
+    type: ProofItemTypeSchema,
+    remarks: z.string().trim().max(10_000).optional(),
+  })
+  .strict();
+export type UploadProofItemInput = z.infer<typeof UploadProofItemInputSchema>;
+
+export const CompletionInputSchema = z
+  .object({
+    report: z.string().trim().min(1).max(10_000),
+    proofItemIds: z.array(z.uuid()).min(1),
+  })
+  .strict()
+  .transform((input) => ({
+    ...input,
+    proofItemIds: [...new Set(input.proofItemIds)].toSorted(),
+  }));
+export type CompletionInput = z.infer<typeof CompletionInputSchema>;
+
+export const CompleteCaseCommandSchema = z.object({
+  idempotencyKey: z.uuid(),
+  payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+  operationId: z.string().min(1),
+  actorId: z.uuid(),
+  actorRole: z.literal("CONTRACTOR"),
+  contractorId: z.uuid(),
+  caseId: z.uuid(),
+  assignmentId: z.uuid(),
+  appointmentId: z.uuid(),
+  input: CompletionInputSchema,
+});
+export type CompleteCaseCommand = z.infer<typeof CompleteCaseCommandSchema>;
+
+export const CompleteCaseDataSchema = z.object({
+  appointment: AppointmentDtoSchema,
+  assignment: AssignmentDtoSchema,
+  case: CaseDtoSchema,
+});
+export type CompleteCaseData = z.infer<typeof CompleteCaseDataSchema>;
+
+export const CompleteCaseResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SUCCESS"), data: CompleteCaseDataSchema }),
+  z.object({ kind: z.literal("IDEMPOTENCY_KEY_REUSED") }),
+  z.object({ kind: z.literal("CASE_MISMATCH") }),
+  z.object({ kind: z.literal("APPOINTMENT_MISMATCH") }),
+  z.object({ kind: z.literal("NOT_IN_PROGRESS") }),
+  z.object({ kind: z.literal("WRONG_CONTRACTOR") }),
+  z.object({ kind: z.literal("COMPLETION_INVALID") }),
+  z.object({ kind: z.literal("COMPLETION_FAILED") }),
+]);
+export type CompleteCaseResult = z.infer<typeof CompleteCaseResultSchema>;
+
+export const CompleteAppointmentInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    appointmentId: z.uuid(),
+    contractorId: z.uuid(),
+  })
+  .strict();
+export type CompleteAppointmentInput = z.infer<
+  typeof CompleteAppointmentInputSchema
+>;
+
+export const CompleteAppointmentResultSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("COMPLETED"),
+    appointment: AppointmentDtoSchema,
+  }),
+  z.object({
+    outcome: z.literal("ALREADY_COMPLETED"),
+    appointment: AppointmentDtoSchema,
+  }),
+  z.object({ outcome: z.literal("COMPLETION_OPERATION_CONFLICT") }),
+  z.object({ outcome: z.literal("NOT_IN_PROGRESS") }),
+  z.object({ outcome: z.literal("WRONG_CONTRACTOR") }),
+  z.object({ outcome: z.literal("APPOINTMENT_NOT_FOUND") }),
+]);
+export type CompleteAppointmentResult = z.infer<
+  typeof CompleteAppointmentResultSchema
+>;
+
+export const CompleteAssignmentInputSchema = z
+  .object({
+    operationId: z.string().min(1),
+    assignmentId: z.uuid(),
+    changedBy: z.string().min(1),
+  })
+  .strict();
+export type CompleteAssignmentInput = z.infer<
+  typeof CompleteAssignmentInputSchema
+>;
+
+export const CompleteAssignmentResultSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("COMPLETED"),
+    assignment: AssignmentDtoSchema,
+  }),
+  z.object({
+    outcome: z.literal("ALREADY_COMPLETED"),
+    assignment: AssignmentDtoSchema,
+  }),
+  z.object({ outcome: z.literal("COMPLETION_OPERATION_CONFLICT") }),
+  z.object({ outcome: z.literal("NOT_IN_PROGRESS") }),
+  z.object({ outcome: z.literal("ASSIGNMENT_NOT_FOUND") }),
+]);
+export type CompleteAssignmentResult = z.infer<
+  typeof CompleteAssignmentResultSchema
+>;
+
+export const CompleteCaseTransitionInputSchema = z
+  .object({
+    caseId: z.uuid(),
+    operationId: z.string().min(1),
+    actorId: z.uuid(),
+    actorRole: z.literal("CONTRACTOR"),
+    report: z.string().trim().min(1).max(10_000),
+    proofItemIds: z.array(z.uuid()).min(1),
+  })
+  .strict();
+export type CompleteCaseTransitionInput = z.infer<
+  typeof CompleteCaseTransitionInputSchema
+>;
+
+export const CompleteCaseTransitionResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({ outcome: z.literal("COMPLETED"), case: CaseDtoSchema }),
+    z.object({ outcome: z.literal("ALREADY_COMPLETED"), case: CaseDtoSchema }),
+    z.object({ outcome: z.literal("CASE_TERMINAL") }),
+    z.object({ outcome: z.literal("NOT_IN_PROGRESS") }),
+  ]
+);
+export type CompleteCaseTransitionResult = z.infer<
+  typeof CompleteCaseTransitionResultSchema
+>;
+
+/** Reward applied once when a Contractor completes an Assignment. */
+export const ASSIGNMENT_COMPLETED_SCORE_DELTA = 10;
+
+export function canonicalCompletionPayload(
+  caseId: string,
+  input: CompletionInput
+) {
+  return JSON.stringify({
+    caseId,
+    report: input.report.trim(),
+    proofItemIds: [...new Set(input.proofItemIds)].toSorted(),
   });
 }
 

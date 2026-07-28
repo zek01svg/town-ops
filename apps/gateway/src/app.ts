@@ -13,7 +13,10 @@ import {
   AppointmentDtoSchema,
   AssignmentDtoSchema,
   CaseDtoSchema,
+  CompleteCaseResultSchema,
+  CompletionInputSchema,
   canonicalManualAllocationPayload,
+  canonicalCompletionPayload,
   canonicalAcceptAllocationPayload,
   canonicalOpenCasePayload,
   canonicalReplaceAppointmentPayload,
@@ -32,6 +35,7 @@ import {
   ReplaceAppointmentResultSchema,
   ReportNoAccessResultSchema,
   ResidentAppointmentDtoSchema,
+  ProofItemDtoSchema,
   residentProvisioningWorkflowId,
   ResidentOpenCaseInputSchema,
   StartWorkResultSchema,
@@ -46,6 +50,7 @@ import type {
   ApiError,
   AssignmentDto,
   CaseDto,
+  CompleteCaseResult,
   ManualAllocationResult,
   OpenCaseInput,
   OpenCaseResult,
@@ -57,10 +62,44 @@ import type {
 } from "@townops/orchestration-contract";
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod/v4";
 
 const idempotencyKeySchema = z.uuid();
+const MAX_PROOF_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_PROOF_BODY_BYTES = MAX_PROOF_FILE_BYTES + 64 * 1024;
+
+function isSupportedProofImage(file: File, bytes: Uint8Array) {
+  switch (file.type.toLowerCase()) {
+    case "image/jpeg":
+      return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    case "image/png":
+      return (
+        bytes[0] === 0x89 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x4e &&
+        bytes[3] === 0x47 &&
+        bytes[4] === 0x0d &&
+        bytes[5] === 0x0a &&
+        bytes[6] === 0x1a &&
+        bytes[7] === 0x0a
+      );
+    case "image/webp":
+      return (
+        bytes[0] === 0x52 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x46 &&
+        bytes[8] === 0x57 &&
+        bytes[9] === 0x45 &&
+        bytes[10] === 0x42 &&
+        bytes[11] === 0x50
+      );
+    default:
+      return false;
+  }
+}
 const caseAtomResponseSchema = z.object({ cases: z.array(z.unknown()) });
 const residentAtomResponseSchema = z.object({
   residents: z.array(z.unknown()),
@@ -71,6 +110,10 @@ const assignmentAtomResponseSchema = z.object({
 });
 const appointmentAtomResponseSchema = z.object({
   appointments: z.array(z.unknown()),
+});
+const proofAtomResponseSchema = z.object({ proof: ProofItemDtoSchema });
+const proofAtomListResponseSchema = z.object({
+  proof: z.array(ProofItemDtoSchema),
 });
 const officerAttentionAtomResponseSchema = z.object({
   attentions: z.array(OfficerAttentionDtoSchema),
@@ -111,6 +154,8 @@ type GatewayDependencies = {
   authAtomUrl: string;
   assignmentAtomUrl?: string;
   appointmentAtomUrl?: string;
+  proofAtomUrl?: string;
+  workerServiceToken?: string;
   authenticate?: MiddlewareHandler;
   fetchImpl?: typeof fetch;
   updateTimeoutMs?: number;
@@ -143,7 +188,7 @@ function deterministicUuid(value: string) {
 
 function error(
   c: Context<GatewayEnv>,
-  status: 400 | 401 | 403 | 404 | 409 | 500 | 503 | 504,
+  status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 500 | 503 | 504,
   value: ApiError["error"]
 ) {
   return c.json({ error: value }, status);
@@ -439,6 +484,8 @@ export function createGatewayApp({
   authAtomUrl,
   assignmentAtomUrl = "http://localhost:5004",
   appointmentAtomUrl = "http://localhost:5003",
+  proofAtomUrl = "http://localhost:5007",
+  workerServiceToken = "",
   authenticate,
   fetchImpl = fetch,
   updateTimeoutMs = 20_000,
@@ -1808,6 +1855,450 @@ export function createGatewayApp({
       });
     }
     return c.json({ data: { items: parsed.data.attentions, ...query.data } });
+  });
+
+  app.get("/api/cases/:caseId/proof-items", async (c) => {
+    const actor = resolveActor(c.get("jwtPayload"));
+    const contractorId = z.uuid().safeParse(actor?.contractorId);
+    const caseId = z.uuid().safeParse(c.req.param("caseId"));
+    if (!actor) {
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
+        retryable: false,
+      });
+    }
+    if (actor.role !== "CONTRACTOR" || !contractorId.success) {
+      return error(c, 403, {
+        code: "FORBIDDEN",
+        message: "Contractor access is required",
+        retryable: false,
+      });
+    }
+    if (!caseId.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Case ID must be a UUID",
+        retryable: false,
+      });
+    }
+    const assignment = await lookupCaseAssignment(
+      assignmentAtomUrl,
+      fetchImpl,
+      caseId.data
+    );
+    if (assignment?.currentAttempt?.contractorId !== contractorId.data) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+      });
+    }
+    let response: Response;
+    try {
+      response = await fetchImpl(
+        `${proofAtomUrl}/internal/proof-items/${caseId.data}?${new URLSearchParams({ contractorId: contractorId.data })}`,
+        { headers: { Authorization: `Bearer ${workerServiceToken}` } }
+      );
+    } catch {
+      return error(c, 503, {
+        code: "PROOF_ATOM_UNAVAILABLE",
+        message: "Proof service is unavailable",
+        retryable: true,
+      });
+    }
+    if (!response.ok) {
+      return error(c, 503, {
+        code: "PROOF_ATOM_UNAVAILABLE",
+        message: "Proof service is unavailable",
+        retryable: true,
+      });
+    }
+    const body = proofAtomListResponseSchema.safeParse(
+      await response.json().catch(() => undefined)
+    );
+    if (!body.success) {
+      return error(c, 503, {
+        code: "PROOF_ATOM_UNAVAILABLE",
+        message: "Proof service returned an invalid response",
+        retryable: true,
+      });
+    }
+    return c.json({ data: body.data.proof });
+  });
+
+  app.post(
+    "/api/cases/:caseId/proof-items",
+    bodyLimit({
+      maxSize: MAX_PROOF_BODY_BYTES,
+      onError: (c) =>
+        error(c, 413, {
+          code: "PROOF_FILE_TOO_LARGE",
+          message: "Proof uploads must be 10 MiB or smaller",
+          retryable: false,
+        }),
+    }),
+    async (c) => {
+      const actor = resolveActor(c.get("jwtPayload"));
+      const contractorId = z.uuid().safeParse(actor?.contractorId);
+      const caseId = z.uuid().safeParse(c.req.param("caseId"));
+      const idempotencyKey = idempotencyKeySchema.safeParse(
+        c.req.header("Idempotency-Key")
+      );
+      if (!actor) {
+        return error(c, 401, {
+          code: "INVALID_TOKEN",
+          message: "Token subject is invalid",
+          retryable: false,
+        });
+      }
+      if (actor.role !== "CONTRACTOR" || !contractorId.success) {
+        return error(c, 403, {
+          code: "FORBIDDEN",
+          message: "Contractor access is required",
+          retryable: false,
+        });
+      }
+      if (!caseId.success || !idempotencyKey.success) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Case ID and Idempotency-Key must be UUIDs",
+          retryable: false,
+        });
+      }
+      const form = await c.req.formData().catch(() => undefined);
+      const file = form?.get("file");
+      const type = z.enum(["BEFORE", "AFTER"]).safeParse(form?.get("type"));
+      if (
+        !form ||
+        !(file instanceof File) ||
+        !type.success ||
+        [...form.keys()].some((key) => key !== "file" && key !== "type")
+      ) {
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Proof upload requires only a file and BEFORE or AFTER type",
+          retryable: false,
+        });
+      }
+      if (file.size > MAX_PROOF_FILE_BYTES) {
+        return error(c, 413, {
+          code: "PROOF_FILE_TOO_LARGE",
+          message: "Proof uploads must be 10 MiB or smaller",
+          retryable: false,
+        });
+      }
+      const header = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+      if (!isSupportedProofImage(file, header)) {
+        return error(c, 415, {
+          code: "UNSUPPORTED_PROOF_IMAGE",
+          message: "Proof uploads must be JPEG, PNG, or WebP images",
+          retryable: false,
+        });
+      }
+      const [assignment, caseResponse] = await Promise.all([
+        lookupCaseAssignment(assignmentAtomUrl, fetchImpl, caseId.data),
+        fetchImpl(`${caseAtomUrl}/api/cases/${caseId.data}`).catch(
+          () => undefined
+        ),
+      ]);
+      if (!caseResponse || !caseResponse.ok) {
+        return error(c, 503, {
+          code: "CASE_ATOM_UNAVAILABLE",
+          message: "Case service is unavailable",
+          retryable: true,
+        });
+      }
+      const parsedCase = caseAtomResponseSchema.safeParse(
+        await caseResponse.json().catch(() => undefined)
+      );
+      if (!parsedCase.success || parsedCase.data.cases.length === 0) {
+        return error(c, 404, {
+          code: "CASE_NOT_FOUND",
+          message: "Case was not found",
+          retryable: false,
+        });
+      }
+      const caseDto = toCaseDto(parsedCase.data.cases[0]);
+      const appointment = await lookupAppointment(
+        appointmentAtomUrl,
+        fetchImpl,
+        caseId.data,
+        assignment?.currentAttempt?.id
+      );
+      if (
+        !assignment ||
+        assignment.currentAttempt?.contractorId !== contractorId.data ||
+        !appointment ||
+        appointment.contractorId !== contractorId.data ||
+        appointment.assignmentId !== assignment.assignment.id
+      ) {
+        return error(c, 404, {
+          code: "CASE_NOT_FOUND",
+          message: "Case was not found",
+          retryable: false,
+        });
+      }
+      if (
+        caseDto.status !== "IN_PROGRESS" ||
+        appointment.status !== "IN_PROGRESS"
+      ) {
+        return error(c, 409, {
+          code: "NOT_IN_PROGRESS",
+          message:
+            "Case and Appointment must both be in progress to upload proof",
+          retryable: false,
+        });
+      }
+      const operation = operationForCase(
+        caseId.data,
+        idempotencyKey.data,
+        JSON.stringify({ caseId: caseId.data, type: type.data })
+      );
+      const proofForm = new FormData();
+      proofForm.append("file", file);
+      proofForm.append("proofItemId", idempotencyKey.data);
+      proofForm.append("caseId", caseId.data);
+      proofForm.append("contractorId", contractorId.data);
+      proofForm.append("type", type.data);
+
+      let response: Response;
+      try {
+        response = await fetchImpl(`${proofAtomUrl}/internal/proof-items`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${workerServiceToken}`,
+            "Idempotency-Key": idempotencyKey.data,
+          },
+          body: proofForm,
+        });
+      } catch {
+        return error(c, 503, {
+          code: "PROOF_ATOM_UNAVAILABLE",
+          message: "Proof service is unavailable",
+          retryable: true,
+          operation,
+        });
+      }
+      if (response.ok) {
+        const body = proofAtomResponseSchema.safeParse(await response.json());
+        if (body.success)
+          return c.json({ data: body.data.proof, operation }, 201);
+      }
+      const upstream = z
+        .object({ error: z.object({ code: z.string() }).optional() })
+        .safeParse(await response.json().catch(() => undefined));
+      const code = upstream.success ? upstream.data.error?.code : undefined;
+      if (
+        code === "IDEMPOTENCY_KEY_REUSED" ||
+        code === "PROOF_CONTENT_MISMATCH"
+      ) {
+        return error(c, 409, {
+          code,
+          message: "Proof upload conflicts with the existing immutable item",
+          retryable: false,
+          operation,
+        });
+      }
+      return error(c, 503, {
+        code: "PROOF_ATOM_UNAVAILABLE",
+        message: "Proof service is unavailable",
+        retryable: true,
+        operation,
+      });
+    }
+  );
+
+  app.put("/api/cases/:caseId/completion", async (c) => {
+    const actor = resolveActor(c.get("jwtPayload"));
+    const contractorId = z.uuid().safeParse(actor?.contractorId);
+    const caseId = z.uuid().safeParse(c.req.param("caseId"));
+    const idempotencyKey = idempotencyKeySchema.safeParse(
+      c.req.header("Idempotency-Key")
+    );
+    if (!actor) {
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
+        retryable: false,
+      });
+    }
+    if (actor.role !== "CONTRACTOR" || !contractorId.success) {
+      return error(c, 403, {
+        code: "FORBIDDEN",
+        message: "Contractor access is required",
+        retryable: false,
+      });
+    }
+    if (!caseId.success || !idempotencyKey.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Case ID and Idempotency-Key must be UUIDs",
+        retryable: false,
+      });
+    }
+    const input = CompletionInputSchema.safeParse(
+      await c.req.json().catch(() => undefined)
+    );
+    if (!input.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Completion report and proof selection are invalid",
+        retryable: false,
+        details: input.error.flatten(),
+      });
+    }
+    const [assignment, caseResponse] = await Promise.all([
+      lookupCaseAssignment(assignmentAtomUrl, fetchImpl, caseId.data),
+      fetchImpl(`${caseAtomUrl}/api/cases/${caseId.data}`).catch(
+        () => undefined
+      ),
+    ]);
+    if (!caseResponse || !caseResponse.ok) {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    const parsedCase = caseAtomResponseSchema.safeParse(
+      await caseResponse.json().catch(() => undefined)
+    );
+    if (!parsedCase.success || parsedCase.data.cases.length === 0) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+      });
+    }
+    const caseDto = toCaseDto(parsedCase.data.cases[0]);
+    const appointment = await lookupAppointment(
+      appointmentAtomUrl,
+      fetchImpl,
+      caseId.data,
+      assignment?.currentAttempt?.id
+    );
+    if (
+      !assignment ||
+      assignment.currentAttempt?.contractorId !== contractorId.data ||
+      !appointment ||
+      appointment.contractorId !== contractorId.data
+    ) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+      });
+    }
+    if (
+      (caseDto.status !== "IN_PROGRESS" && caseDto.status !== "COMPLETED") ||
+      (appointment.status !== "IN_PROGRESS" &&
+        appointment.status !== "COMPLETED")
+    ) {
+      return error(c, 409, {
+        code: "NOT_IN_PROGRESS",
+        message: "Case and Appointment must both be in progress",
+        retryable: false,
+      });
+    }
+    const operation = operationForCase(
+      caseId.data,
+      idempotencyKey.data,
+      canonicalCompletionPayload(caseId.data, input.data)
+    );
+    const startWorkflowOperation = new WithStartWorkflowOperation(
+      WORKFLOW_NAMES.case,
+      {
+        workflowId: operation.workflowId,
+        taskQueue: ORCHESTRATION_TASK_QUEUE,
+        args: [{ caseId: caseId.data }],
+        workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+      }
+    );
+    const update = workflowClient.executeUpdateWithStart(
+      UPDATE_NAMES.completeCase,
+      {
+        args: [
+          {
+            idempotencyKey: operation.idempotencyKey,
+            payloadHash: operation.updateId.slice(
+              operation.idempotencyKey.length + 1
+            ),
+            operationId: operation.updateId,
+            actorId: actor.accountId,
+            actorRole: "CONTRACTOR",
+            contractorId: contractorId.data,
+            caseId: caseId.data,
+            assignmentId: assignment.assignment.id,
+            appointmentId: appointment.id,
+            input: input.data,
+          },
+        ],
+        updateId: `${operation.updateId}/delivery/${crypto.randomUUID()}`,
+        startWorkflowOperation,
+      }
+    );
+    void update.catch(() => undefined);
+    let result: CompleteCaseResult;
+    try {
+      result = CompleteCaseResultSchema.parse(
+        await withTimeout(update, updateTimeoutMs)
+      );
+    } catch (caught) {
+      if (
+        caught instanceof Error &&
+        caught.message === "workflow update timed out"
+      ) {
+        c.header("Retry-After", "2");
+        return error(c, 504, {
+          code: "WORKFLOW_UPDATE_PENDING",
+          message: "Completion is still being processed",
+          retryable: true,
+          operation,
+        });
+      }
+      if (isTemporalUnavailable(caught)) {
+        return error(c, 503, {
+          code: "TEMPORAL_UNAVAILABLE",
+          message: "Case workflow service is unavailable",
+          retryable: true,
+          operation,
+        });
+      }
+      return error(c, 500, {
+        code: "WORKFLOW_UPDATE_FAILED",
+        message: "Completion could not be completed",
+        retryable: false,
+        operation,
+      });
+    }
+    if (result.kind === "SUCCESS")
+      return c.json({ data: result.data, operation }, 200);
+    if (result.kind === "IDEMPOTENCY_KEY_REUSED") {
+      return error(c, 409, {
+        code: result.kind,
+        message: "Idempotency-Key was already used with a different request",
+        retryable: false,
+        operation,
+      });
+    }
+    if (
+      result.kind === "CASE_MISMATCH" ||
+      result.kind === "APPOINTMENT_MISMATCH"
+    ) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+        operation,
+      });
+    }
+    return error(c, 409, {
+      code: result.kind,
+      message: "Case completion is not available",
+      retryable: false,
+      operation,
+    });
   });
 
   app.get("/api/cases/:caseId", async (c) => {

@@ -1,6 +1,7 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import {
   ConfirmAppointmentSlotInputSchema,
+  CompleteAppointmentInputSchema,
   ReleaseAppointmentSlotInputSchema,
   MarkAppointmentMissedInputSchema,
   ReplaceAppointmentSlotInputSchema,
@@ -20,6 +21,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, openAPIRouteHandler, validator } from "hono-openapi";
 import { cors } from "hono/cors";
+import { z } from "zod/v4";
 
 import { appointmentInsertSchema } from "./database/schema";
 import { env } from "./env";
@@ -58,6 +60,20 @@ app.use("*", honoLogger());
 
 const appointmentSlotRoutes = new Hono()
   .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
+  .get(
+    "/completion-operation/:appointmentId",
+    validator("param", z.object({ appointmentId: z.uuid() })),
+    async (c) => {
+      const identity =
+        await appointmentService.getAppointmentCompletionOperation(
+          c.req.valid("param").appointmentId
+        );
+      if (!identity) {
+        return c.json({ error: "Appointment was not found" }, 404);
+      }
+      return c.json(identity, 200);
+    }
+  )
   .post(
     "/reservations",
     validator("json", ReserveAppointmentSlotInputSchema),
@@ -125,6 +141,26 @@ const appointmentSlotRoutes = new Hono()
       if (
         result.outcome === "NOT_SCHEDULED" ||
         result.outcome === "WRONG_CONTRACTOR"
+      ) {
+        return c.json(result, 409);
+      }
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/complete",
+    validator("json", CompleteAppointmentInputSchema),
+    async (c) => {
+      const result = await appointmentService.completeAppointment(
+        c.req.valid("json")
+      );
+      if (result.outcome === "APPOINTMENT_NOT_FOUND") {
+        return c.json(result, 404);
+      }
+      if (
+        result.outcome === "NOT_IN_PROGRESS" ||
+        result.outcome === "WRONG_CONTRACTOR" ||
+        result.outcome === "COMPLETION_OPERATION_CONFLICT"
       ) {
         return c.json(result, 409);
       }

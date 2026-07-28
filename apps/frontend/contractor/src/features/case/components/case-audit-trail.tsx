@@ -177,6 +177,10 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
     Date.now() >= Date.parse(appointment.startTime) &&
     Date.now() < Date.parse(appointment.endTime);
   const noAccessBlockedFor = noAccessBlocker(appointment, myContractorId);
+  const canComplete =
+    caseData?.status === "in_progress" &&
+    appointment?.status === "IN_PROGRESS" &&
+    appointment.contractorId === myContractorId;
 
   function handleAccept() {
     if (!attempt || !isValidAppointment) return;
@@ -242,6 +246,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
         open={closeJobOpen}
         onOpenChange={setCloseJobOpen}
         caseId={caseId}
+        canComplete={canComplete}
       />
       <div className="flex flex-col gap-6">
         {caseData && (
@@ -400,11 +405,11 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               )}
               <Button
                 onClick={() => setCloseJobOpen(true)}
-                disabled={isAwaitingResident}
+                disabled={!canComplete}
                 className="rounded-none uppercase text-[10px] font-label tracking-widest w-full bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 <CheckCircle className="h-3.5 w-3.5 mr-2" />
-                Close Job &amp; Submit Report
+                Complete Job &amp; Submit Report
               </Button>
               <Button
                 onClick={handleNoAccess}

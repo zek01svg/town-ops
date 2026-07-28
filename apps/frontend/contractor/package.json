@@ -30,7 +30,6 @@
     "@townops/assign-job-composite": "workspace:*",
     "@townops/assignment-atom": "workspace:*",
     "@townops/case-atom": "workspace:*",
-    "@townops/close-case-composite": "workspace:*",
     "@townops/handle-breach-composite": "workspace:*",
     "@townops/open-case-composite": "workspace:*",
     "@townops/shared-ts": "workspace:*",

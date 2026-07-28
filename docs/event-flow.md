@@ -2,8 +2,8 @@
 
 ## Current Temporal Case orchestration
 
-Case opening, Contractor allocation, Contractor acceptance, and Acceptance SLA
-enforcement run through Temporal rather than the AMQP chain below.
+Case opening, Contractor allocation, Contractor acceptance, completion, and
+Acceptance SLA enforcement run through Temporal rather than the AMQP chain below.
 
 1. A browser sends a request to the Gateway with a user JWT and idempotency
    key.
@@ -14,6 +14,12 @@ enforcement run through Temporal rather than the AMQP chain below.
    the current Allocation Attempt, and confirms the Appointment.
 5. A permanent rejection after reservation releases the held slot; transient
    activity failures retry forward.
+
+Completion validates every selected ready Proof Item before writing, then runs
+Appointment -> Assignment -> Case -> Metrics. The Metrics effect id is
+`<assignmentId>/completion`, so retries record the `+10` reward once. A
+permanent invariant failure after a committed transition raises Officer
+Attention; it is not compensated through AMQP.
 
 An overlap or invalid future interval creates no public Appointment and leaves
 the Allocation Attempt pending.

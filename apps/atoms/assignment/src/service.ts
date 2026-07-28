@@ -1,6 +1,7 @@
 import type {
   AcceptAllocationAttemptInput,
   BreachAllocationAttemptInput,
+  CompleteAssignmentInput,
   CommitAllocationInput,
   MarkAssignmentInProgressInput,
 } from "@townops/orchestration-contract";
@@ -16,6 +17,11 @@ import {
 
 type AssignmentStatus = (typeof assignments.$inferSelect)["status"];
 
+function publicAssignment(assignment: typeof assignments.$inferSelect) {
+  const { completionOperationId: _, ...result } = assignment;
+  return result;
+}
+
 /**
  * Create a new assignment.
  */
@@ -24,25 +30,36 @@ export async function createAssignment(
 ) {
   const [assignment] = await db.insert(assignments).values(values).returning();
   if (!assignment) throw new Error("Assignment insert did not return a row");
-  return assignment;
+  return publicAssignment(assignment);
 }
 
 /**
  * Get all assignments for a contractor.
  */
 export async function getAssignmentsByContractorId(contractorId: string) {
-  return db.query.assignments.findMany({
+  const assignmentsForContractor = await db.query.assignments.findMany({
     where: eq(assignments.contractorId, contractorId),
   });
+  return assignmentsForContractor.map(publicAssignment);
 }
 
 /**
  * Find the first assignment matching the given Case ID.
  */
 export async function getAssignmentByCaseId(caseId: string) {
-  return db.query.assignments.findFirst({
+  const assignment = await db.query.assignments.findFirst({
     where: eq(assignments.caseId, caseId),
   });
+  if (!assignment) return undefined;
+  return publicAssignment(assignment);
+}
+
+export async function getAssignmentCompletionOperation(assignmentId: string) {
+  const [assignment] = await db
+    .select({ completionOperationId: assignments.completionOperationId })
+    .from(assignments)
+    .where(eq(assignments.id, assignmentId));
+  return assignment ?? null;
 }
 
 /**
@@ -97,7 +114,7 @@ export async function updateAssignmentStatus(
       reason,
     });
 
-    return updated;
+    return updated ? publicAssignment(updated) : updated;
   });
 }
 
@@ -145,7 +162,7 @@ export async function reassignAssignment(
       reason,
     });
 
-    return updated;
+    return updated ? publicAssignment(updated) : updated;
   });
 }
 
@@ -173,7 +190,10 @@ export async function getAssignmentWithCurrentAttempt(caseId: string) {
     .orderBy(desc(allocationAttempts.createdAt))
     .limit(1);
 
-  return { assignment, currentAttempt: currentAttempt ?? null };
+  return {
+    assignment: publicAssignment(assignment),
+    currentAttempt: currentAttempt ?? null,
+  };
 }
 
 /**
@@ -355,6 +375,46 @@ export async function markAssignmentInProgress(
     });
 
     return { outcome: "IN_PROGRESS" as const, assignment: updated };
+  });
+}
+
+/** Completion is status-idempotent and records one terminal history row. */
+export async function completeAssignment(input: CompleteAssignmentInput) {
+  return db.transaction(async (tx) => {
+    const [assignment] = await tx
+      .select()
+      .from(assignments)
+      .where(eq(assignments.id, input.assignmentId))
+      .for("update");
+    if (!assignment) return { outcome: "ASSIGNMENT_NOT_FOUND" as const };
+    if (assignment.status === "COMPLETED") {
+      if (assignment.completionOperationId !== input.operationId) {
+        return { outcome: "COMPLETION_OPERATION_CONFLICT" as const };
+      }
+      return { outcome: "ALREADY_COMPLETED" as const, assignment };
+    }
+    if (assignment.status !== "IN_PROGRESS") {
+      return { outcome: "NOT_IN_PROGRESS" as const };
+    }
+    const [updated] = await tx
+      .update(assignments)
+      .set({
+        status: "COMPLETED",
+        completionOperationId: input.operationId,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(assignments.id, assignment.id))
+      .returning();
+    if (!updated)
+      throw new Error("Assignment completion update did not return a row");
+    await tx.insert(assignmentStatusHistory).values({
+      assignmentId: assignment.id,
+      fromStatus: "IN_PROGRESS",
+      toStatus: "COMPLETED",
+      changedBy: input.changedBy,
+      reason: "ASSIGNMENT_COMPLETED",
+    });
+    return { outcome: "COMPLETED" as const, assignment: updated };
   });
 }
 

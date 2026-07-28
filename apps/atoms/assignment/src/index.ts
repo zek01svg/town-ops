@@ -2,6 +2,7 @@ import { Scalar } from "@scalar/hono-api-reference";
 import {
   AcceptAllocationAttemptInputSchema,
   BreachAllocationAttemptInputSchema,
+  CompleteAssignmentInputSchema,
   CommitAllocationInputSchema,
   MarkAssignmentInProgressInputSchema,
 } from "@townops/orchestration-contract";
@@ -382,6 +383,20 @@ const assignmentsRouter = new Hono()
 const internalAssignmentsRouter = new Hono()
   .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
   .get(
+    "/completion-operation/:assignmentId",
+    describeRoute({ description: "Read an Assignment completion operation" }),
+    validator("param", z.object({ assignmentId: z.uuid() })),
+    async (c) => {
+      const identity = await assignmentService.getAssignmentCompletionOperation(
+        c.req.valid("param").assignmentId
+      );
+      if (!identity) {
+        return c.json({ error: "Assignment not found" }, 404);
+      }
+      return c.json(identity, 200);
+    }
+  )
+  .get(
     "/allocation-snapshot",
     describeRoute({
       description:
@@ -463,6 +478,26 @@ const internalAssignmentsRouter = new Hono()
         return c.json(result, 404);
       }
       if (result.outcome === "NOT_ACCEPTED") return c.json(result, 409);
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/complete",
+    describeRoute({ description: "Complete an in-progress Assignment" }),
+    validator("json", CompleteAssignmentInputSchema),
+    async (c) => {
+      const result = await assignmentService.completeAssignment(
+        c.req.valid("json")
+      );
+      if (result.outcome === "ASSIGNMENT_NOT_FOUND") {
+        return c.json(result, 404);
+      }
+      if (result.outcome === "NOT_IN_PROGRESS") {
+        return c.json(result, 409);
+      }
+      if (result.outcome === "COMPLETION_OPERATION_CONFLICT") {
+        return c.json(result, 409);
+      }
       return c.json(result, 201);
     }
   );

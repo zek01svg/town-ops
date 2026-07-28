@@ -4,6 +4,7 @@ import {
 } from "@townops/orchestration-contract";
 import type {
   ConfirmAppointmentSlotInput,
+  CompleteAppointmentInput,
   ReleaseAppointmentSlotInput,
   MarkAppointmentMissedInput,
   ReplaceAppointmentSlotInput,
@@ -14,7 +15,11 @@ import type {
 import { desc, eq } from "drizzle-orm";
 
 import db from "./database/db";
-import { appointmentSlotClaims, appointments } from "./database/schema";
+import {
+  appointmentSlotClaims,
+  appointments,
+  appointmentStatusHistory,
+} from "./database/schema";
 
 /** Reads a Postgres error code off an unknown thrown value without an unsafe cast. */
 function pgErrorCode(error: unknown): string | undefined {
@@ -57,11 +62,22 @@ function pgConstraintName(error: unknown): string | undefined {
  * @param caseId The UUID of the case.
  */
 export async function getAppointmentsByCaseId(caseId: string) {
-  return db
+  const rows = await db
     .select()
     .from(appointments)
     .where(eq(appointments.caseId, caseId))
     .orderBy(desc(appointments.createdAt));
+  return rows.map(
+    ({ completionOperationId: _, ...appointment }) => appointment
+  );
+}
+
+export async function getAppointmentCompletionOperation(appointmentId: string) {
+  const [appointment] = await db
+    .select({ completionOperationId: appointments.completionOperationId })
+    .from(appointments)
+    .where(eq(appointments.id, appointmentId));
+  return appointment ?? null;
 }
 
 /**
@@ -72,7 +88,10 @@ export async function createAppointment(
   values: typeof appointments.$inferInsert
 ) {
   const rows = await db.insert(appointments).values(values).returning();
-  return rows[0];
+  const appointment = rows[0];
+  if (!appointment) return undefined;
+  const { completionOperationId: _, ...publicAppointment } = appointment;
+  return publicAppointment;
 }
 
 function claimDto(claim: typeof appointmentSlotClaims.$inferSelect) {
@@ -230,6 +249,55 @@ export async function startWorkAppointment(input: StartWorkAppointmentInput) {
 
     return {
       outcome: "STARTED" as const,
+      appointment: appointmentDto(updated),
+    };
+  });
+}
+
+/** Completion keeps the active slot claim: the historical visit remains owned. */
+export async function completeAppointment(input: CompleteAppointmentInput) {
+  return db.transaction(async (tx) => {
+    const [appointment] = await tx
+      .select()
+      .from(appointments)
+      .where(eq(appointments.id, input.appointmentId))
+      .for("update");
+    if (!appointment) return { outcome: "APPOINTMENT_NOT_FOUND" as const };
+    if (appointment.contractorId !== input.contractorId) {
+      return { outcome: "WRONG_CONTRACTOR" as const };
+    }
+    if (appointment.status === "completed") {
+      if (appointment.completionOperationId !== input.operationId) {
+        return { outcome: "COMPLETION_OPERATION_CONFLICT" as const };
+      }
+      return {
+        outcome: "ALREADY_COMPLETED" as const,
+        appointment: appointmentDto(appointment),
+      };
+    }
+    if (appointment.status !== "in_progress") {
+      return { outcome: "NOT_IN_PROGRESS" as const };
+    }
+    const [updated] = await tx
+      .update(appointments)
+      .set({
+        status: "completed",
+        completionOperationId: input.operationId,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(appointments.id, appointment.id))
+      .returning();
+    if (!updated)
+      throw new Error("Appointment completion update did not return a row");
+    await tx.insert(appointmentStatusHistory).values({
+      appointmentId: appointment.id,
+      fromStatus: "in_progress",
+      toStatus: "completed",
+      changedBy: input.contractorId,
+      operationId: input.operationId,
+    });
+    return {
+      outcome: "COMPLETED" as const,
       appointment: appointmentDto(updated),
     };
   });

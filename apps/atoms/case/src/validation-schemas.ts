@@ -30,6 +30,7 @@ export const raiseOfficerAttentionSchema = z
       "ALLOCATION_FAILED",
       "WORK_START_FAILED",
       "MISSED_APPOINTMENT",
+      "COMPLETION_FAILED",
     ]),
     detail: z.string().trim().min(1).max(10_000),
     operationId: z.string().min(1),

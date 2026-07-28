@@ -36,6 +36,7 @@ export const appointments = pgTable(
     attemptId: uuid("attempt_id"),
     contractorId: uuid("contractor_id"),
     operationId: text("operation_id"),
+    completionOperationId: text("completion_operation_id"),
     slotClaimId: uuid("slot_claim_id"),
     startTime: timestamp("start_time", {
       withTimezone: true,
@@ -69,6 +70,31 @@ export const appointments = pgTable(
     uniqueIndex("appointments_one_live_per_attempt")
       .on(table.attemptId)
       .where(sql`${table.status} IN ('scheduled', 'in_progress')`),
+  ]
+);
+
+export const appointmentStatusHistory = pgTable(
+  "appointment_status_history",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    appointmentId: uuid("appointment_id")
+      .notNull()
+      .references(() => appointments.id),
+    fromStatus: appointmentStatus("from_status"),
+    toStatus: appointmentStatus("to_status").notNull(),
+    changedAt: timestamp("changed_at", {
+      withTimezone: true,
+      mode: "string",
+    })
+      .defaultNow()
+      .notNull(),
+    changedBy: text("changed_by").notNull(),
+    operationId: text("operation_id").notNull(),
+  },
+  (table) => [
+    uniqueIndex("appointment_status_history_appointment_id_idx").on(
+      table.appointmentId
+    ),
   ]
 );
 

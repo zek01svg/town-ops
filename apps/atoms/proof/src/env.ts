@@ -11,6 +11,7 @@ export const env = createEnv({
     S3_SECRET_ACCESS_KEY: z.string(),
     S3_BUCKET: z.string().default("proofs"),
     S3_REGION: z.string().default("us-east-1"),
+    WORKER_SERVICE_TOKEN: z.string().min(32),
   },
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
@@ -21,6 +22,7 @@ export const env = createEnv({
     S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
     S3_BUCKET: process.env.S3_BUCKET,
     S3_REGION: process.env.S3_REGION,
+    WORKER_SERVICE_TOKEN: process.env.WORKER_SERVICE_TOKEN,
   },
   skipValidation: process.env.npm_lifecycle_event === "lint",
 });

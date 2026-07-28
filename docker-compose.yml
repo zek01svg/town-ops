@@ -292,6 +292,7 @@ services:
       S3_SECRET_ACCESS_KEY: townopssecret
       S3_BUCKET: proofs
       S3_REGION: us-east-1
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
       OTEL_EXPORTER_OTLP_ENDPOINT: ""
       OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
@@ -362,6 +363,8 @@ services:
         condition: service_started
       assignment-atom:
         condition: service_started
+      proof-atom:
+        condition: service_started
       temporal-namespace:
         condition: service_completed_successfully
     environment:
@@ -374,6 +377,8 @@ services:
       AUTH_ATOM_URL: http://auth-atom:5001
       ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
       APPOINTMENT_ATOM_URL: http://appointment-atom:5003
+      PROOF_ATOM_URL: http://proof-atom:5007
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
     ports:
       - "6010:6010"
 
@@ -393,6 +398,8 @@ services:
         condition: service_started
       assignment-atom:
         condition: service_started
+      proof-atom:
+        condition: service_started
       temporal-namespace:
         condition: service_completed_successfully
     environment:
@@ -404,6 +411,7 @@ services:
       METRICS_ATOM_URL: http://metrics-atom:5006
       ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
       APPOINTMENT_ATOM_URL: http://appointment-atom:5003
+      PROOF_ATOM_URL: http://proof-atom:5007
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
 
   assign-job-composite:

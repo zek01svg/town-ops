@@ -15,6 +15,7 @@ const { mockDb, mockWrite } = vi.hoisted(() => {
   process.env.S3_SECRET_ACCESS_KEY = "test";
   process.env.S3_BUCKET = "proofs";
   process.env.S3_REGION = "us-east-1";
+  process.env.WORKER_SERVICE_TOKEN = "test-worker-token-000000000000000000";
 
   const mockReturning = vi.fn();
   const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });

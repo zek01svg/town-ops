@@ -728,6 +728,9 @@ importers:
       '@t3-oss/env-core':
         specifier: 'catalog:'
         version: 0.13.11(typescript@7.0.2)(zod@4.4.3)
+      '@townops/orchestration-contract':
+        specifier: workspace:*
+        version: link:../../../packages/orchestration-contract
       '@townops/shared-ts':
         specifier: workspace:*
         version: link:../../../packages/shared-ts
@@ -1193,9 +1196,6 @@ importers:
       '@townops/case-atom':
         specifier: workspace:*
         version: link:../../atoms/case
-      '@townops/close-case-composite':
-        specifier: workspace:*
-        version: link:../../composites/close-case
       '@townops/handle-breach-composite':
         specifier: workspace:*
         version: link:../../composites/handle-breach

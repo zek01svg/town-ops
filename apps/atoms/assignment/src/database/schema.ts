@@ -99,6 +99,7 @@ export const assignments = pgTable(
     // Legacy rows still populate these directly.
     contractorId: uuid("contractor_id"),
     status: assignmentStatus().default("PENDING_ACCEPTANCE").notNull(),
+    completionOperationId: text("completion_operation_id"),
     assignedAt: timestamp("assigned_at", { withTimezone: true, mode: "string" })
       .defaultNow()
       .notNull(),

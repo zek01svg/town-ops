@@ -1,6 +1,7 @@
 # Case lifecycle
 
-This document describes the implemented Temporal Case path through PRS-149.
+This document describes the implemented Temporal Case path through PRS-147 and
+PRS-149.
 Future lifecycle work remains specified in the Temporal orchestration plan.
 
 ## Implemented path
@@ -14,11 +15,19 @@ stateDiagram-v2
     ASSIGNED --> PENDING_RESIDENT_INPUT : No Access
     PENDING_RESIDENT_INPUT --> ASSIGNED : Appointment replaced
     ASSIGNED --> ASSIGNED : Appointment replaced proactively or after MISSED
+    IN_PROGRESS --> COMPLETED : Contractor completion with ready BEFORE/AFTER proof
 ```
 
 Case status remains `ASSIGNED` after an Allocation Attempt is accepted. Work
 start, No Access, rescheduling, missed-Appointment recovery, and completion
 are separate follow-up behaviours; acceptance does not start work.
+
+Completion is a forward-only Temporal Saga. It resolves selected ready Proof
+Items that belong to the active Contractor and Case, requires at least one
+`BEFORE` and one `AFTER` item, then transitions Appointment, Assignment, and
+Case to `COMPLETED` before recording the idempotent `+10` performance entry.
+An invariant failure after a prior transition commits raises
+`COMPLETION_FAILED` Officer Attention; no completed transition is compensated.
 
 An Attempt that is not accepted before its Acceptance SLA deadline breaches:
 the Case returns to `PENDING`, one unresolved Officer Attention item is raised,

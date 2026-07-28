@@ -1,4 +1,6 @@
 import {
+  ActivityFailure,
+  ApplicationFailure,
   condition,
   defineUpdate,
   log,
@@ -7,7 +9,9 @@ import {
 } from "@temporalio/workflow";
 import {
   ACCEPTANCE_SLA_BREACH_SCORE_DELTA,
+  ASSIGNMENT_COMPLETED_SCORE_DELTA,
   AcceptAllocationCommandSchema,
+  CompleteCaseCommandSchema,
   DEFAULT_ACCEPTANCE_SLA_MS,
   ManualAllocationCommandSchema,
   OpenCaseCommandSchema,
@@ -28,6 +32,14 @@ import type {
   CaseDto,
   CommitAllocationInput,
   CommitAllocationResult,
+  CompleteAppointmentInput,
+  CompleteAppointmentResult,
+  CompleteAssignmentInput,
+  CompleteAssignmentResult,
+  CompleteCaseCommand,
+  CompleteCaseResult,
+  CompleteCaseTransitionInput,
+  CompleteCaseTransitionResult,
   CreateCaseActivityInput,
   ManualAllocationCommand,
   ManualAllocationResult,
@@ -85,6 +97,10 @@ export const replaceAppointment = defineUpdate<
   ReplaceAppointmentResult,
   [ReplaceAppointmentCommand]
 >(UPDATE_NAMES.replaceAppointment);
+export const completeCase = defineUpdate<
+  CompleteCaseResult,
+  [CompleteCaseCommand]
+>(UPDATE_NAMES.completeCase);
 
 const activities = proxyActivities<{
   isCaseTerminal(input: { caseId: string }): Promise<boolean>;
@@ -144,6 +160,31 @@ const activities = proxyActivities<{
   markCaseAppointmentReplaced(
     input: MarkCaseAppointmentReplacedInput
   ): Promise<MarkCaseAppointmentReplacedResult>;
+  validateCompletion(
+    input: CompleteCaseCommand
+  ): Promise<
+    | { outcome: "READY" }
+    | { outcome: "ALREADY_COMPLETED"; case: CaseDto }
+    | { outcome: "NOT_IN_PROGRESS" }
+    | { outcome: "COMPLETION_INVALID" }
+    | { outcome: "APPOINTMENT_MISMATCH" }
+    | { outcome: "WRONG_CONTRACTOR" }
+  >;
+  completeAppointment(
+    input: CompleteAppointmentInput
+  ): Promise<CompleteAppointmentResult>;
+  completeAssignment(
+    input: CompleteAssignmentInput
+  ): Promise<CompleteAssignmentResult>;
+  completeCase(
+    input: CompleteCaseTransitionInput
+  ): Promise<CompleteCaseTransitionResult>;
+  recordCompletionPerformance(input: {
+    effectId: string;
+    contractorId: string;
+    scoreDelta: number;
+    reason: string;
+  }): Promise<PerformanceEntryDto>;
 }>({ startToCloseTimeout: "10 seconds" });
 
 type Operation = {
@@ -211,6 +252,11 @@ type ReplaceAppointmentOperation = {
   payloadHash: string;
   result?: ReplaceAppointmentResult;
   pending?: Promise<ReplaceAppointmentResult>;
+};
+type CompletionOperation = {
+  payloadHash: string;
+  result?: CompleteCaseResult;
+  pending?: Promise<CompleteCaseResult>;
 };
 
 /**
@@ -609,6 +655,128 @@ async function runStartWork(
   };
 }
 
+function isPermanentPerformanceFailure(error: unknown) {
+  return (
+    error instanceof ActivityFailure &&
+    error.cause instanceof ApplicationFailure &&
+    error.cause.nonRetryable === true &&
+    error.cause.type === "PERFORMANCE_ENTRY_REJECTED"
+  );
+}
+
+/**
+ * Forward-only completion: validate all immutable proof before writes, then
+ * Appointment -> Assignment -> Case -> performance. Once any transition has
+ * committed, a permanent downstream invariant failure becomes Officer
+ * Attention rather than a misleading clean rejection.
+ */
+async function runCompletion(
+  command: CompleteCaseCommand
+): Promise<CompleteCaseResult> {
+  const validation = await activities.validateCompletion(command);
+  if (validation.outcome === "COMPLETION_INVALID") {
+    return { kind: "COMPLETION_INVALID" };
+  }
+  if (validation.outcome === "NOT_IN_PROGRESS") {
+    return { kind: "NOT_IN_PROGRESS" };
+  }
+  if (validation.outcome === "APPOINTMENT_MISMATCH") {
+    return { kind: "APPOINTMENT_MISMATCH" };
+  }
+  if (validation.outcome === "WRONG_CONTRACTOR") {
+    return { kind: "WRONG_CONTRACTOR" };
+  }
+
+  const op = command.operationId;
+  const appointmentResult = await activities.completeAppointment({
+    operationId: `${op}/appointment`,
+    appointmentId: command.appointmentId,
+    contractorId: command.contractorId,
+  });
+  if (appointmentResult.outcome === "APPOINTMENT_NOT_FOUND") {
+    return { kind: "APPOINTMENT_MISMATCH" };
+  }
+  if (appointmentResult.outcome === "WRONG_CONTRACTOR") {
+    return { kind: "WRONG_CONTRACTOR" };
+  }
+  if (
+    appointmentResult.outcome === "NOT_IN_PROGRESS" ||
+    appointmentResult.outcome === "COMPLETION_OPERATION_CONFLICT"
+  ) {
+    return { kind: "NOT_IN_PROGRESS" };
+  }
+
+  const assignmentResult = await activities.completeAssignment({
+    operationId: `${op}/assignment`,
+    assignmentId: command.assignmentId,
+    changedBy: command.actorId,
+  });
+  if (assignmentResult.outcome === "COMPLETION_OPERATION_CONFLICT") {
+    return { kind: "NOT_IN_PROGRESS" };
+  }
+  if (
+    assignmentResult.outcome !== "COMPLETED" &&
+    assignmentResult.outcome !== "ALREADY_COMPLETED"
+  ) {
+    await activities.raiseOfficerAttention({
+      caseId: command.caseId,
+      kind: "COMPLETION_FAILED",
+      detail: `Assignment could not complete (${assignmentResult.outcome}) after the Appointment completed.`,
+      operationId: `${op}/completion-failed`,
+    });
+    return { kind: "COMPLETION_FAILED" };
+  }
+
+  const caseResult = await activities.completeCase({
+    caseId: command.caseId,
+    operationId: `${op}/case`,
+    actorId: command.actorId,
+    actorRole: command.actorRole,
+    report: command.input.report,
+    proofItemIds: command.input.proofItemIds,
+  });
+  if (
+    caseResult.outcome !== "COMPLETED" &&
+    caseResult.outcome !== "ALREADY_COMPLETED"
+  ) {
+    await activities.raiseOfficerAttention({
+      caseId: command.caseId,
+      kind: "COMPLETION_FAILED",
+      detail: `Case could not complete (${caseResult.outcome}) after the Appointment and Assignment completed.`,
+      operationId: `${op}/completion-failed`,
+    });
+    return { kind: "COMPLETION_FAILED" };
+  }
+
+  try {
+    await activities.recordCompletionPerformance({
+      effectId: `${command.assignmentId}/completion`,
+      contractorId: command.contractorId,
+      scoreDelta: ASSIGNMENT_COMPLETED_SCORE_DELTA,
+      reason: "ASSIGNMENT_COMPLETED",
+    });
+  } catch (error) {
+    if (!isPermanentPerformanceFailure(error)) throw error;
+
+    await activities.raiseOfficerAttention({
+      caseId: command.caseId,
+      kind: "COMPLETION_FAILED",
+      detail:
+        "Metrics could not record completion performance after the Appointment, Assignment, and Case completed.",
+      operationId: `${op}/completion-failed`,
+    });
+    return { kind: "COMPLETION_FAILED" };
+  }
+  return {
+    kind: "SUCCESS",
+    data: {
+      appointment: appointmentResult.appointment,
+      assignment: assignmentResult.assignment,
+      case: caseResult.case,
+    },
+  };
+}
+
 /**
  * The No-Access Saga (PRS-146 AC1), forward-only: Appointment SCHEDULED ->
  * NO_ACCESS, then the Case parked on the Resident.
@@ -759,6 +927,8 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     string,
     ReplaceAppointmentOperation
   >();
+  const completionOperations = new Map<string, CompletionOperation>();
+  let closeAfterCompletion = false;
   // In-Workflow only — never exposed as a Query/read model. Tracks which
   // Contractors this Workflow already committed or attempted, across
   // allocation passes for this Case's whole lifetime.
@@ -1131,6 +1301,38 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     }
   });
 
+  setHandler(completeCase, async (unparsedCommand) => {
+    const command = CompleteCaseCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    const existing = completionOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error("Completion operation has no result or pending activity");
+    }
+
+    const operation: CompletionOperation = { payloadHash: command.payloadHash };
+    completionOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = runCompletion(command);
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") closeAfterCompletion = true;
+      if (operation.result.kind === "COMPLETION_FAILED") {
+        completionOperations.delete(command.idempotencyKey);
+      }
+      return operation.result;
+    } catch (error) {
+      completionOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
+  });
+
   // Allocation runs here, never inside an Update handler. PRS-141 extends this
   // loop with a lossless intent queue. A timed automatic poll never blocks an
   // Officer Update: `condition` wakes as soon as the queue receives a manual
@@ -1138,6 +1340,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   // second timer on the same wait — the current Attempt's acceptance
   // deadline — so an unaccepted offer breaches without a manual poll.
   while (true) {
+    if (closeAfterCompletion) return;
     if (allocationQueue.length === 0) {
       const deadlines: number[] = [];
       if (currentAttempt) deadlines.push(currentAttempt.deadlineAt);
@@ -1150,6 +1353,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
         const revisionAtWait = appointmentStateRevision;
         const wokeForRequest = await condition(
           () =>
+            closeAfterCompletion ||
             allocationQueue.length > 0 ||
             appointmentStateRevision !== revisionAtWait,
           Math.max(0, Math.min(...deadlines) - Date.now())
@@ -1226,11 +1430,14 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
         const revisionAtWait = appointmentStateRevision;
         await condition(
           () =>
+            closeAfterCompletion ||
             allocationQueue.length > 0 ||
             appointmentStateRevision !== revisionAtWait
         );
       }
     }
+
+    if (closeAfterCompletion) return;
 
     const request = allocationQueue.shift();
     if (!request) continue;

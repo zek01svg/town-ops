@@ -1,5 +1,6 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import {
+  CompleteCaseTransitionInputSchema,
   CreateCaseActivityInputSchema,
   MarkCaseAppointmentReplacedInputSchema,
   MarkCaseBreachedInputSchema,
@@ -38,6 +39,22 @@ import {
 } from "./validation-schemas";
 
 const app = new Hono();
+
+function publicCase<
+  T extends {
+    completionOperationId?: unknown;
+    completionReport?: unknown;
+    completionProofItemIds?: unknown;
+  },
+>(record: T) {
+  const {
+    completionOperationId: _completionOperationId,
+    completionReport: _completionReport,
+    completionProofItemIds: _completionProofItemIds,
+    ...value
+  } = record;
+  return value;
+}
 
 initSentry({ serviceName: "case-atom" });
 
@@ -90,7 +107,7 @@ const casesRouter = new Hono()
         { route: "/api/cases", rowCount: caseRows.length },
         "Retrieved all cases"
       );
-      return c.json({ cases: caseRows }, 200);
+      return c.json({ cases: caseRows.map(publicCase) }, 200);
     }
   )
   .get(
@@ -128,7 +145,7 @@ const casesRouter = new Hono()
         { route: "/api/cases/:id", caseId: id, found: caseRows.length > 0 },
         "Case lookup executed"
       );
-      return c.json({ cases: caseRows }, 200);
+      return c.json({ cases: caseRows.map(publicCase) }, 200);
     }
   )
   .put(
@@ -163,7 +180,10 @@ const casesRouter = new Hono()
         },
         "Case status updated"
       );
-      return c.json({ cases: updatedCase }, 200);
+      return c.json(
+        { cases: updatedCase ? publicCase(updatedCase) : null },
+        200
+      );
     }
   )
   .post(
@@ -195,7 +215,7 @@ const casesRouter = new Hono()
         },
         "New case created successfully"
       );
-      return c.json({ cases: newCase }, 201);
+      return c.json({ cases: publicCase(newCase) }, 201);
     }
   );
 
@@ -302,6 +322,24 @@ const internalCasesRouter = new Hono()
       const result =
         await caseService.markCaseAppointmentReplacedForOperation(body);
       if (result.outcome === "CASE_TERMINAL") return c.json(result, 409);
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/:id/complete",
+    validator("param", z.object({ id: z.uuid() })),
+    validator("json", CompleteCaseTransitionInputSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      if (body.caseId !== id) return c.json({ error: "Case ID mismatch" }, 400);
+      const result = await caseService.completeCaseForOperation(body);
+      if (
+        result.outcome === "CASE_TERMINAL" ||
+        result.outcome === "NOT_IN_PROGRESS"
+      ) {
+        return c.json(result, 409);
+      }
       return c.json(result, 201);
     }
   );

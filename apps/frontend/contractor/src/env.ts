@@ -41,10 +41,6 @@ export const env: Env = {
     runtimeEnv?.VITE_ACCEPT_JOB_URL ??
     import.meta.env.VITE_ACCEPT_JOB_URL ??
     "http://localhost:6003",
-  VITE_CLOSE_CASE_URL:
-    runtimeEnv?.VITE_CLOSE_CASE_URL ??
-    import.meta.env.VITE_CLOSE_CASE_URL ??
-    "http://localhost:6004",
   VITE_GOOGLE_MAPS_API_KEY:
     runtimeEnv?.VITE_GOOGLE_MAPS_API_KEY ??
     import.meta.env.VITE_GOOGLE_MAPS_API_KEY ??

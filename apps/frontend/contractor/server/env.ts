@@ -12,7 +12,6 @@ export const env = createEnv({
     VITE_ALERT_ATOM_URL: z.url(),
     VITE_PROOF_ATOM_URL: z.url(),
     VITE_ACCEPT_JOB_URL: z.url(),
-    VITE_CLOSE_CASE_URL: z.url(),
     VITE_GOOGLE_MAPS_API_KEY: z.string().min(1),
   },
   server: {
@@ -36,8 +35,6 @@ export const env = createEnv({
       process.env.VITE_PROOF_ATOM_URL ?? `http://localhost:5005`,
     VITE_ACCEPT_JOB_URL:
       process.env.VITE_ACCEPT_JOB_URL ?? `http://localhost:6003`,
-    VITE_CLOSE_CASE_URL:
-      process.env.VITE_CLOSE_CASE_URL ?? `http://localhost:6004`,
     VITE_GOOGLE_MAPS_API_KEY: process.env.VITE_GOOGLE_MAPS_API_KEY ?? "",
   },
   skipValidation:

@@ -20,12 +20,12 @@ topology.
 
 ## Temporal orchestration
 
-| Service     | Port | Responsibility                                       |
-| :---------- | ---: | :--------------------------------------------------- |
-| Gateway     | 6010 | Browser API for Temporal Case queries and Updates    |
-| Worker      |    — | Runs the `townops-orchestration` Temporal task queue |
-| Temporal    | 7233 | Workflow server                                      |
-| Temporal UI | 8080 | Local Workflow inspection                            |
+| Service     | Port | Responsibility                                                           |
+| :---------- | ---: | :----------------------------------------------------------------------- |
+| Gateway     | 6010 | Browser API for Temporal Case queries, proof, and Updates                |
+| Worker      |    — | Runs the `townops-orchestration` Temporal task queue and completion Saga |
+| Temporal    | 7233 | Workflow server                                                          |
+| Temporal UI | 8080 | Local Workflow inspection                                                |
 
 The current Case path is Gateway → Temporal → Worker → atoms. The Worker has
 no public HTTP port.

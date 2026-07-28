@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   index,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -50,6 +51,7 @@ export const officerAttentionKind = pgEnum("officer_attention_kind", [
   "ACCEPTANCE_SLA_BREACH",
   "WORK_START_FAILED",
   "MISSED_APPOINTMENT",
+  "COMPLETION_FAILED",
 ]);
 
 export const cases = pgTable(
@@ -63,6 +65,13 @@ export const cases = pgTable(
     description: text(),
     addressDetails: text("address_details"),
     postalCode: text("postal_code"),
+    // Nullable for legacy rows. These are workflow persistence fields, not
+    // part of the public Case DTO.
+    completionOperationId: text("completion_operation_id"),
+    completionReport: text("completion_report"),
+    completionProofItemIds: jsonb("completion_proof_item_ids").$type<
+      string[]
+    >(),
     createdAt: timestamp("created_at", {
       withTimezone: true,
       mode: "string",

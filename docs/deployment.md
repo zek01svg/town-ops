@@ -24,30 +24,31 @@ Copy a service's `.env.example` when it has one. Never commit `.env` files.
 All atoms need `PORT` and `DATABASE_URL`. The Worker-authenticated atoms also
 need the same `WORKER_SERVICE_TOKEN` value as the Worker.
 
-| Service     | Port | Additional required configuration       |
-| :---------- | ---: | :-------------------------------------- |
-| Auth        | 5001 | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` |
-| Alert       | 5002 | `RABBITMQ_URL`, `RESEND_API_KEY`        |
-| Appointment | 5003 | `WORKER_SERVICE_TOKEN`                  |
-| Assignment  | 5004 | `JWKS_URI`, `WORKER_SERVICE_TOKEN`      |
-| Case        | 5005 | `WORKER_SERVICE_TOKEN`                  |
-| Metrics     | 5006 | `WORKER_SERVICE_TOKEN`                  |
-| Proof       | 5007 | `SUPABASE_URL`, `SUPABASE_KEY`          |
-| Resident    | 5008 | `WORKER_SERVICE_TOKEN`                  |
-| Contractor  | 5009 | `WORKER_SERVICE_TOKEN`                  |
+| Service     | Port | Additional required configuration                                                                                  |
+| :---------- | ---: | :----------------------------------------------------------------------------------------------------------------- |
+| Auth        | 5001 | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`                                                                            |
+| Alert       | 5002 | `RABBITMQ_URL`, `RESEND_API_KEY`                                                                                   |
+| Appointment | 5003 | `WORKER_SERVICE_TOKEN`                                                                                             |
+| Assignment  | 5004 | `JWKS_URI`, `WORKER_SERVICE_TOKEN`                                                                                 |
+| Case        | 5005 | `WORKER_SERVICE_TOKEN`                                                                                             |
+| Metrics     | 5006 | `WORKER_SERVICE_TOKEN`                                                                                             |
+| Proof       | 5007 | `DATABASE_URL`, `S3_ENDPOINT`, `S3_PUBLIC_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `WORKER_SERVICE_TOKEN` |
+| Resident    | 5008 | `WORKER_SERVICE_TOKEN`                                                                                             |
+| Contractor  | 5009 | `WORKER_SERVICE_TOKEN`                                                                                             |
 
 ### Temporal orchestration
 
-| Service     | Port | Required configuration                                                                                                                               |
-| :---------- | ---: | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Gateway     | 6010 | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `JWKS_URI`, and the Case, Resident, Auth, Assignment, and Appointment atom URLs                            |
-| Worker      |    — | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `WORKER_SERVICE_TOKEN`, and the Resident, Case, Contractor, Metrics, Assignment, and Appointment atom URLs |
-| Temporal    | 7233 | Managed by Compose                                                                                                                                   |
-| Temporal UI | 8080 | Managed by Compose                                                                                                                                   |
+| Service     | Port | Required configuration                                                                                                                                                 |
+| :---------- | ---: | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gateway     | 6010 | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `JWKS_URI`, `WORKER_SERVICE_TOKEN`, and the Case, Resident, Auth, Assignment, Appointment, and `PROOF_ATOM_URL` atom URLs    |
+| Worker      |    — | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `WORKER_SERVICE_TOKEN`, and the Resident, Case, Contractor, Metrics, Assignment, Appointment, and `PROOF_ATOM_URL` atom URLs |
+| Temporal    | 7233 | Managed by Compose                                                                                                                                                     |
+| Temporal UI | 8080 | Managed by Compose                                                                                                                                                     |
 
 For Compose, the Gateway uses `http://auth-atom:5001/api/auth/jwks`,
 `http://case-atom:5005`, `http://resident-atom:5008`,
-`http://assignment-atom:5004`, and `http://appointment-atom:5003`.
+`http://assignment-atom:5004`, `http://appointment-atom:5003`, and
+`http://proof-atom:5007`.
 
 ### Frontends
 
@@ -64,7 +65,6 @@ Contractor's allocation-acceptance request uses the Gateway.
 | `VITE_ALERT_ATOM_URL`       | `http://localhost:5002` |
 | `VITE_PROOF_ATOM_URL`       | `http://localhost:5007` |
 | `VITE_ACCEPT_JOB_URL`       | `http://localhost:6003` |
-| `VITE_CLOSE_CASE_URL`       | `http://localhost:6004` |
 | `VITE_RESCHEDULE_JOB_URL`   | `http://localhost:6006` |
 | `VITE_HANDLE_NO_ACCESS_URL` | `http://localhost:6007` |
 

@@ -2,8 +2,8 @@
 
 The operational dashboard for Contractors. Contractors can view assigned work
 and accept their current Allocation Attempt with a future Appointment through
-the Gateway. Existing proof, closure, and No Access screens retain their
-current service integrations.
+the Gateway. Proof upload and completion use the Gateway's Temporal Case
+routes; No Access retains its existing flow.
 
 Runs at `http://localhost:3002` (docker-compose) or `http://localhost:5173` (dev server).
 
@@ -40,6 +40,5 @@ VITE_APPOINTMENT_ATOM_URL=http://localhost:5003
 VITE_PROOF_ATOM_URL=http://localhost:5007
 VITE_ALERT_ATOM_URL=http://localhost:5002
 VITE_ACCEPT_JOB_URL=http://localhost:6003
-VITE_CLOSE_CASE_URL=http://localhost:6004
 VITE_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
 ```

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 let db: typeof import("../../src/database/db").default;
 let cases: typeof import("../../src/database/schema").cases;
 let caseHistory: typeof import("../../src/database/schema").caseHistory;
+let officerAttention: typeof import("../../src/database/schema").officerAttention;
 let app: typeof import("../../src/index").app;
 
 vi.mock("hono/jwk", () => ({
@@ -24,6 +25,7 @@ describe("Case Atom Integration Tests", () => {
     db = dbModule.default;
     cases = schemaModule.cases;
     caseHistory = schemaModule.caseHistory;
+    officerAttention = schemaModule.officerAttention;
     app = appModule.app;
   });
 
@@ -123,5 +125,67 @@ describe("Case Atom Integration Tests", () => {
       actorRole: "CONTRACTOR",
       operationId: body.operationId,
     });
+  });
+
+  it("resolves a post-terminal COMPLETION_FAILED attention when the same completion operation recovers", async () => {
+    const [caseRecord] = await db
+      .insert(cases)
+      .values({
+        residentId: crypto.randomUUID(),
+        category: "LE",
+        description: "Completion recovery test",
+        status: "in_progress",
+      })
+      .returning();
+    const operationId = `completion/${crypto.randomUUID()}`;
+    const completeBody = {
+      caseId: caseRecord.id,
+      operationId,
+      actorId: crypto.randomUUID(),
+      actorRole: "CONTRACTOR",
+      report: "Completed after metrics recovery.",
+      proofItemIds: [crypto.randomUUID(), crypto.randomUUID()],
+    };
+    const complete = () =>
+      app.request(`/internal/cases/${caseRecord.id}/complete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${"a".repeat(32)}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(completeBody),
+      });
+
+    expect((await complete()).status).toBe(201);
+    const attentionResponse = await app.request(
+      `/internal/cases/${caseRecord.id}/officer-attention`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${"a".repeat(32)}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          kind: "COMPLETION_FAILED",
+          detail: "Metrics atom rejected the completion reward.",
+          operationId: `${operationId}/completion-failed`,
+        }),
+      }
+    );
+    expect(attentionResponse.status).toBe(201);
+
+    const replay = await complete();
+    expect(replay.status).toBe(201);
+    expect(await replay.json()).toMatchObject({
+      outcome: "ALREADY_COMPLETED",
+    });
+
+    const [attention] = await db
+      .select()
+      .from(officerAttention)
+      .where(eq(officerAttention.caseId, caseRecord.id));
+    expect(attention).toMatchObject({ kind: "COMPLETION_FAILED" });
+    expect(attention.resolvedAt).not.toBeNull();
+    expect(attention.resolvedByOperationId).toBe(operationId);
   });
 });

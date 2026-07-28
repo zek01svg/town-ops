@@ -1,4 +1,5 @@
 import type {
+  CompleteCaseTransitionInput,
   CreateCaseActivityInput,
   MarkCaseAppointmentReplacedInput,
   MarkCaseBreachedInput,
@@ -36,7 +37,8 @@ type OfficerAttentionKind =
   | "ALLOCATION_FAILED"
   | "ACCEPTANCE_SLA_BREACH"
   | "WORK_START_FAILED"
-  | "MISSED_APPOINTMENT";
+  | "MISSED_APPOINTMENT"
+  | "COMPLETION_FAILED";
 
 const allocationAttentionKinds: OfficerAttentionKind[] = [
   "NO_ELIGIBLE_CONTRACTOR",
@@ -55,6 +57,7 @@ const terminalResolvedAttentionKinds: OfficerAttentionKind[] = [
   "ACCEPTANCE_SLA_BREACH",
   "WORK_START_FAILED",
   "MISSED_APPOINTMENT",
+  "COMPLETION_FAILED",
 ];
 
 /**
@@ -616,5 +619,85 @@ export async function markCaseAppointmentReplacedForOperation(
       );
 
     return { outcome: "REPLACED" as const, case: resultCase };
+  });
+}
+
+/**
+ * Completion Saga final step: only the active Case may become terminal. The
+ * stored operation identity makes a retry reconstruct success while a second
+ * terminal operation remains a conflict instead of silently changing report
+ * or evidence selection.
+ */
+export async function completeCaseForOperation(
+  input: CompleteCaseTransitionInput
+) {
+  return db.transaction(async (tx) => {
+    const [currentCase] = await tx
+      .select()
+      .from(cases)
+      .where(eq(cases.id, input.caseId))
+      .for("update");
+    if (!currentCase) throw new Error("Case was not found to complete");
+
+    if (currentCase.status === "completed") {
+      if (currentCase.completionOperationId === input.operationId) {
+        await tx
+          .update(officerAttention)
+          .set({
+            resolvedAt: new Date().toISOString(),
+            resolvedByOperationId: input.operationId,
+          })
+          .where(
+            and(
+              eq(officerAttention.caseId, input.caseId),
+              eq(officerAttention.kind, "COMPLETION_FAILED"),
+              isNull(officerAttention.resolvedAt)
+            )
+          );
+        return { outcome: "ALREADY_COMPLETED" as const, case: currentCase };
+      }
+      return { outcome: "CASE_TERMINAL" as const };
+    }
+    if (currentCase.status === "cancelled") {
+      return { outcome: "CASE_TERMINAL" as const };
+    }
+    if (currentCase.status !== "in_progress") {
+      return { outcome: "NOT_IN_PROGRESS" as const };
+    }
+
+    const now = new Date().toISOString();
+    const [completed] = await tx
+      .update(cases)
+      .set({
+        status: "completed",
+        completionOperationId: input.operationId,
+        completionReport: input.report.trim(),
+        completionProofItemIds: [...new Set(input.proofItemIds)].toSorted(),
+        updatedAt: now,
+      })
+      .where(eq(cases.id, input.caseId))
+      .returning();
+    if (!completed)
+      throw new Error("Case completion update did not return a row");
+
+    await tx.insert(caseHistory).values({
+      caseId: input.caseId,
+      eventType: "CASE_COMPLETED",
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      operationId: input.operationId,
+    });
+    await tx
+      .update(officerAttention)
+      .set({ resolvedAt: now, resolvedByOperationId: input.operationId })
+      .where(
+        and(
+          eq(officerAttention.caseId, input.caseId),
+          inArray(officerAttention.kind, terminalResolvedAttentionKinds),
+          isNull(officerAttention.resolvedAt)
+        )
+      );
+
+    return { outcome: "COMPLETED" as const, case: completed };
   });
 }

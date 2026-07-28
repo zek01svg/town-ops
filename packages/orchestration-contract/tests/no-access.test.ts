@@ -39,7 +39,7 @@ describe("no-access and reschedule contract (PRS-146)", () => {
       expect(AppointmentStatusSchema.safeParse(status).success).toBe(true);
     }
     expect(AppointmentStatusSchema.safeParse("no_access").success).toBe(false);
-    expect(AppointmentStatusSchema.safeParse("COMPLETED").success).toBe(false);
+    expect(AppointmentStatusSchema.safeParse("COMPLETED").success).toBe(true);
   });
 
   it("canonicalizes both retry payloads with a fixed key order", () => {
