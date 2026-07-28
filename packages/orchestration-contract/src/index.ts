@@ -223,6 +223,7 @@ export const UPDATE_NAMES = {
   reportNoAccess: "reportNoAccess",
   replaceAppointment: "replaceAppointment",
   completeCase: "completeCase",
+  cancelCase: "cancelCase",
 } as const;
 export const ORCHESTRATION_TASK_QUEUE = "townops-orchestration";
 
@@ -347,6 +348,7 @@ export const AppointmentStatusSchema = z.enum([
   "IN_PROGRESS",
   "NO_ACCESS",
   "RESCHEDULED",
+  "CANCELLED",
   "MISSED",
   "COMPLETED",
 ]);
@@ -1011,6 +1013,120 @@ export function canonicalCompletionPayload(
     report: input.report.trim(),
     proofItemIds: [...new Set(input.proofItemIds)].toSorted(),
   });
+}
+
+// ─── Cancel Case (PRS-148) ────────────────────────────────────────────────
+
+export const CancelCaseInputSchema = z
+  .object({
+    reason: z.string().trim().min(1).max(1_000),
+  })
+  .strict();
+export type CancelCaseInput = z.infer<typeof CancelCaseInputSchema>;
+
+export const CancelCaseCommandSchema = z.object({
+  idempotencyKey: z.uuid(),
+  payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+  operationId: z.string().min(1),
+  actorId: z.uuid(),
+  actorRole: ActorRoleSchema,
+  caseId: z.uuid(),
+  input: CancelCaseInputSchema,
+});
+export type CancelCaseCommand = z.infer<typeof CancelCaseCommandSchema>;
+
+export const CancelCaseDataSchema = z.object({ case: CaseDtoSchema });
+export type CancelCaseData = z.infer<typeof CancelCaseDataSchema>;
+
+export const CancelCaseResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SUCCESS"), data: CancelCaseDataSchema }),
+  z.object({ kind: z.literal("IDEMPOTENCY_KEY_REUSED") }),
+  z.object({ kind: z.literal("CASE_MISMATCH") }),
+  z.object({ kind: z.literal("NOT_CANCELLABLE") }),
+]);
+export type CancelCaseResult = z.infer<typeof CancelCaseResultSchema>;
+
+export const CancelAppointmentInputSchema = z
+  .object({
+    caseId: z.uuid(),
+    operationId: z.string().min(1),
+    changedBy: z.uuid(),
+  })
+  .strict();
+export type CancelAppointmentInput = z.infer<
+  typeof CancelAppointmentInputSchema
+>;
+
+export const CancelAppointmentResultSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("CANCELLED"),
+    appointment: AppointmentDtoSchema,
+  }),
+  z.object({
+    outcome: z.literal("ALREADY_CANCELLED"),
+    appointment: AppointmentDtoSchema,
+  }),
+  z.object({ outcome: z.literal("NO_SCHEDULED_APPOINTMENT") }),
+  z.object({ outcome: z.literal("IN_PROGRESS") }),
+]);
+export type CancelAppointmentResult = z.infer<
+  typeof CancelAppointmentResultSchema
+>;
+
+export const CancelAssignmentInputSchema = z
+  .object({
+    caseId: z.uuid(),
+    operationId: z.string().min(1),
+    changedBy: z.uuid(),
+    reason: CancelCaseInputSchema.shape.reason,
+  })
+  .strict();
+export type CancelAssignmentInput = z.infer<typeof CancelAssignmentInputSchema>;
+
+export const CancelAssignmentResultSchema = z.discriminatedUnion("outcome", [
+  z.object({ outcome: z.literal("CANCELLED") }),
+  z.object({ outcome: z.literal("ALREADY_CANCELLED") }),
+  z.object({ outcome: z.literal("NO_ASSIGNMENT") }),
+  z.object({ outcome: z.literal("IN_PROGRESS") }),
+  z.object({ outcome: z.literal("NOT_CANCELLABLE") }),
+]);
+export type CancelAssignmentResult = z.infer<
+  typeof CancelAssignmentResultSchema
+>;
+
+export const CancelCaseTransitionInputSchema = z
+  .object({
+    caseId: z.uuid(),
+    operationId: z.string().min(1),
+    actorId: z.uuid(),
+    actorRole: ActorRoleSchema,
+    reason: CancelCaseInputSchema.shape.reason,
+  })
+  .strict();
+export type CancelCaseTransitionInput = z.infer<
+  typeof CancelCaseTransitionInputSchema
+>;
+
+export const CancelCaseTransitionResultSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({ outcome: z.literal("CANCELLED"), case: CaseDtoSchema }),
+    z.object({
+      outcome: z.literal("ALREADY_CANCELLED"),
+      case: CaseDtoSchema,
+    }),
+    z.object({ outcome: z.literal("NOT_CANCELLABLE") }),
+  ]
+);
+export type CancelCaseTransitionResult = z.infer<
+  typeof CancelCaseTransitionResultSchema
+>;
+
+export function canonicalCancelCasePayload(
+  caseId: string,
+  input: CancelCaseInput
+) {
+  return JSON.stringify({ caseId, reason: input.reason.trim() });
 }
 
 // ─── Handle No Access and rescheduling (PRS-146) ───────────────────────────

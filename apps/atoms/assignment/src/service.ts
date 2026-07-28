@@ -1,4 +1,5 @@
 import type {
+  CancelAssignmentInput,
   AcceptAllocationAttemptInput,
   BreachAllocationAttemptInput,
   CompleteAssignmentInput,
@@ -415,6 +416,57 @@ export async function completeAssignment(input: CompleteAssignmentInput) {
       reason: "ASSIGNMENT_COMPLETED",
     });
     return { outcome: "COMPLETED" as const, assignment: updated };
+  });
+}
+
+/**
+ * Cancels the Case's stable pre-work Assignment. A pending offer is withdrawn
+ * before the Assignment goes terminal; accepted and breached Assignments are
+ * cancelled without touching contractor performance.
+ */
+export async function cancelAssignmentForCase(input: CancelAssignmentInput) {
+  return db.transaction(async (tx) => {
+    const [assignment] = await tx
+      .select()
+      .from(assignments)
+      .where(eq(assignments.caseId, input.caseId))
+      .for("update");
+    if (!assignment) return { outcome: "NO_ASSIGNMENT" as const };
+    if (assignment.status === "CANCELLED") {
+      return { outcome: "ALREADY_CANCELLED" as const };
+    }
+    if (assignment.status === "IN_PROGRESS") {
+      return { outcome: "IN_PROGRESS" as const };
+    }
+    if (assignment.status === "COMPLETED") {
+      return { outcome: "NOT_CANCELLABLE" as const };
+    }
+
+    await tx
+      .update(allocationAttempts)
+      .set({ status: "WITHDRAWN" })
+      .where(
+        and(
+          eq(allocationAttempts.assignmentId, assignment.id),
+          eq(allocationAttempts.status, "PENDING_ACCEPTANCE")
+        )
+      );
+    const [cancelled] = await tx
+      .update(assignments)
+      .set({ status: "CANCELLED", updatedAt: new Date().toISOString() })
+      .where(eq(assignments.id, assignment.id))
+      .returning();
+    if (!cancelled)
+      throw new Error("Assignment cancellation update did not return a row");
+
+    await tx.insert(assignmentStatusHistory).values({
+      assignmentId: assignment.id,
+      fromStatus: assignment.status,
+      toStatus: "CANCELLED",
+      changedBy: input.changedBy,
+      reason: input.reason,
+    });
+    return { outcome: "CANCELLED" as const };
   });
 }
 

@@ -118,6 +118,7 @@ export const caseHistory = pgTable(
     eventType: text("event_type").notNull(),
     actorId: uuid("actor_id").notNull(),
     actorRole: text("actor_role").notNull(),
+    reason: text("reason"),
     operationId: text("operation_id").notNull(),
     createdAt: timestamp("created_at", {
       withTimezone: true,

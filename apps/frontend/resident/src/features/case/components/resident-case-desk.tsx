@@ -5,7 +5,9 @@ import {
   ResidentOpenCaseInputSchema,
 } from "@townops/orchestration-contract";
 import type { CaseDto } from "@townops/orchestration-contract";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import type { FormEvent } from "react";
+import { z } from "zod/v4";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,11 +15,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getCase, getMe, openCase } from "@/libr/gateway";
 
+import { useCancelCaseMutation } from "../api/mutations";
+
 const priorities = ["LOW", "MEDIUM", "HIGH", "EMERGENCY"] as const;
 
 export function ResidentCaseDesk() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [openedCaseId, setOpenedCaseId] = useState<string | null>(null);
+  const [caseIdToLoad, setCaseIdToLoad] = useState("");
+  const [lookupError, setLookupError] = useState<string | null>(null);
 
   const me = useQuery({
     queryKey: ["me"],
@@ -30,7 +36,10 @@ export function ResidentCaseDesk() {
 
   const openedCase = useQuery({
     queryKey: ["case", openedCaseId],
-    queryFn: () => getCase(openedCaseId as string),
+    queryFn: () => {
+      if (!openedCaseId) throw new Error("Case ID is required.");
+      return getCase(openedCaseId);
+    },
     enabled: openedCaseId !== null,
   });
 
@@ -56,6 +65,7 @@ export function ResidentCaseDesk() {
     },
     onSubmit: async ({ value }) => {
       setSubmitError(null);
+      setLookupError(null);
       setOpenedCaseId(null);
       try {
         const result = await mutation.mutateAsync(
@@ -63,13 +73,28 @@ export function ResidentCaseDesk() {
         );
         setOpenedCaseId(result.data.id);
         form.reset();
-      } catch (caught: any) {
-        setSubmitError(caught?.message ?? "Could not open the Case.");
+      } catch (caught: unknown) {
+        setSubmitError(
+          caught instanceof Error ? caught.message : "Could not open the Case."
+        );
       }
     },
   });
 
   const isProvisioning = me.data?.provisioningState === "PROVISIONING";
+  const loadedCaseError =
+    lookupError ?? (openedCase.isError ? openedCase.error.message : null);
+
+  function handleLoadCase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const caseId = z.uuid().safeParse(caseIdToLoad.trim());
+    if (!caseId.success) {
+      setLookupError("Case ID must be a UUID.");
+      return;
+    }
+    setLookupError(null);
+    setOpenedCaseId(caseId.data);
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -84,7 +109,7 @@ export function ResidentCaseDesk() {
 
       {me.isError && (
         <p className="text-xs text-destructive uppercase tracking-widest">
-          {(me.error).message}
+          {me.error.message}
         </p>
       )}
 
@@ -103,6 +128,37 @@ export function ResidentCaseDesk() {
       <Card className="bg-surface-container border border-border rounded-none">
         <CardHeader>
           <CardTitle className="text-sm font-label uppercase tracking-widest text-primary">
+            Find Existing Case
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleLoadCase} className="flex gap-2">
+            <Input
+              value={caseIdToLoad}
+              onChange={(event) => setCaseIdToLoad(event.target.value)}
+              placeholder="Case UUID"
+              aria-label="Case ID"
+              className="rounded-none border-border bg-surface-container"
+            />
+            <Button
+              type="submit"
+              disabled={openedCase.isFetching}
+              className="rounded-none uppercase font-label"
+            >
+              {openedCase.isFetching ? "Loading..." : "Load"}
+            </Button>
+          </form>
+          {loadedCaseError && (
+            <p className="mt-3 text-xs text-destructive uppercase tracking-widest">
+              {loadedCaseError}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-surface-container border border-border rounded-none">
+        <CardHeader>
+          <CardTitle className="text-sm font-label uppercase tracking-widest text-primary">
             New Case
           </CardTitle>
         </CardHeader>
@@ -111,7 +167,7 @@ export function ResidentCaseDesk() {
             onSubmit={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              form.handleSubmit();
+              void form.handleSubmit();
             }}
             className="space-y-5"
           >
@@ -231,7 +287,31 @@ export function ResidentCaseDesk() {
   );
 }
 
+export function isResidentCaseCancellable(status: CaseDto["status"]) {
+  return !["IN_PROGRESS", "COMPLETED", "CANCELLED"].includes(status);
+}
+
 function OpenedCase({ record }: { record: CaseDto }) {
+  const cancelCase = useCancelCaseMutation();
+  const cancellationKey = useRef<string | undefined>(undefined);
+  const [reason, setReason] = useState("");
+  const cancellable = isResidentCaseCancellable(record.status);
+
+  function handleCancel() {
+    if (!reason.trim()) return;
+    const idempotencyKey = cancellationKey.current ?? crypto.randomUUID();
+    cancellationKey.current = idempotencyKey;
+    cancelCase.mutate(
+      { caseId: record.id, input: { reason }, idempotencyKey },
+      {
+        onSuccess: () => {
+          cancellationKey.current = undefined;
+          setReason("");
+        },
+      }
+    );
+  }
+
   return (
     <Card className="bg-surface-container border border-emerald-500/40 rounded-none">
       <CardHeader className="flex flex-row items-center justify-between">
@@ -248,6 +328,33 @@ function OpenedCase({ record }: { record: CaseDto }) {
           {record.category} · {record.priority} · {record.postalCode}
         </p>
         <p>{record.description}</p>
+        {cancellable && (
+          <div className="mt-4 space-y-2 border-t border-border pt-3">
+            <label className="block text-[10px] font-label uppercase tracking-widest text-muted-foreground">
+              Cancellation reason
+              <textarea
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                maxLength={1000}
+                rows={2}
+                className="mt-1 w-full border border-border bg-background px-2 py-1 text-xs text-foreground normal-case tracking-normal"
+              />
+            </label>
+            <Button
+              onClick={handleCancel}
+              disabled={cancelCase.isPending || !reason.trim()}
+              variant="outline"
+              className="w-full rounded-none text-[10px] font-label uppercase tracking-widest"
+            >
+              {cancelCase.isPending ? "Cancelling…" : "Cancel Case"}
+            </Button>
+            {cancelCase.isError && (
+              <p className="text-[10px] text-destructive uppercase">
+                {cancelCase.error.message}
+              </p>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

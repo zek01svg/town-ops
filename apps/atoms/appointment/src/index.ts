@@ -1,5 +1,6 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import {
+  CancelAppointmentInputSchema,
   ConfirmAppointmentSlotInputSchema,
   CompleteAppointmentInputSchema,
   ReleaseAppointmentSlotInputSchema,
@@ -144,6 +145,17 @@ const appointmentSlotRoutes = new Hono()
       ) {
         return c.json(result, 409);
       }
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/cancel",
+    validator("json", CancelAppointmentInputSchema),
+    async (c) => {
+      const result = await appointmentService.cancelScheduledAppointment(
+        c.req.valid("json")
+      );
+      if (result.outcome === "IN_PROGRESS") return c.json(result, 409);
       return c.json(result, 201);
     }
   )

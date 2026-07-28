@@ -1,7 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ReplaceAppointmentInput } from "@townops/orchestration-contract";
+import type {
+  CancelCaseInput,
+  ReplaceAppointmentInput,
+} from "@townops/orchestration-contract";
 
-import { replaceAppointment } from "@/libr/gateway";
+import { cancelCase, replaceAppointment } from "@/libr/gateway";
 
 export type ReplaceAppointmentVariables = {
   caseId: string;
@@ -25,6 +28,22 @@ export function useReplaceAppointmentMutation() {
         variables.input,
         variables.idempotencyKey
       ),
+    onSuccess: (_, variables) =>
+      qc.invalidateQueries({ queryKey: ["case", variables.caseId] }),
+  });
+}
+
+export type CancelCaseVariables = {
+  caseId: string;
+  input: CancelCaseInput;
+  idempotencyKey: string;
+};
+
+export function useCancelCaseMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (variables: CancelCaseVariables) =>
+      cancelCase(variables.caseId, variables.input, variables.idempotencyKey),
     onSuccess: (_, variables) =>
       qc.invalidateQueries({ queryKey: ["case", variables.caseId] }),
   });

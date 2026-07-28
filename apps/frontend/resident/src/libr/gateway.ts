@@ -1,11 +1,13 @@
 import {
   CaseDtoSchema,
+  CancelCaseDataSchema,
   MeDtoSchema,
   OperationSchema,
   ResidentAppointmentDtoSchema,
 } from "@townops/orchestration-contract";
 import type {
   CaseDto,
+  CancelCaseInput,
   Operation,
   ReplaceAppointmentInput,
   ResidentAppointmentDto,
@@ -131,5 +133,17 @@ export function replaceAppointment(
     `/api/cases/${caseId}/appointments/${appointmentId}/replacement`,
     { method: "PUT", body: JSON.stringify(input), idempotencyKey },
     replacementDataSchema
+  );
+}
+
+export function cancelCase(
+  caseId: string,
+  input: CancelCaseInput,
+  idempotencyKey: string
+) {
+  return request(
+    `/api/cases/${caseId}/cancel`,
+    { method: "PUT", body: JSON.stringify(input), idempotencyKey },
+    CancelCaseDataSchema
   );
 }

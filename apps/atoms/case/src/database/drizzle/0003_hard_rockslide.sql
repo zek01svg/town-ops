@@ -1,0 +1,1 @@
+ALTER TABLE "case_history" ADD COLUMN "reason" text;

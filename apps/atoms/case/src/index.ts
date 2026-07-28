@@ -1,5 +1,6 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import {
+  CancelCaseTransitionInputSchema,
   CompleteCaseTransitionInputSchema,
   CreateCaseActivityInputSchema,
   MarkCaseAppointmentReplacedInputSchema,
@@ -322,6 +323,19 @@ const internalCasesRouter = new Hono()
       const result =
         await caseService.markCaseAppointmentReplacedForOperation(body);
       if (result.outcome === "CASE_TERMINAL") return c.json(result, 409);
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/:id/cancel",
+    validator("param", z.object({ id: z.uuid() })),
+    validator("json", CancelCaseTransitionInputSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      if (body.caseId !== id) return c.json({ error: "Case ID mismatch" }, 400);
+      const result = await caseService.cancelCaseForOperation(body);
+      if (result.outcome === "NOT_CANCELLABLE") return c.json(result, 409);
       return c.json(result, 201);
     }
   )

@@ -1,4 +1,5 @@
 import type {
+  CancelCaseTransitionInput,
   CompleteCaseTransitionInput,
   CreateCaseActivityInput,
   MarkCaseAppointmentReplacedInput,
@@ -699,5 +700,72 @@ export async function completeCaseForOperation(
       );
 
     return { outcome: "COMPLETED" as const, case: completed };
+  });
+}
+
+/**
+ * Cancellation is the final step of the PRS-148 forward-only Saga. The
+ * Worker reaches this only after Appointment and Assignment have converged;
+ * this row lock keeps a retry from appending a second terminal history row.
+ */
+export async function cancelCaseForOperation(input: CancelCaseTransitionInput) {
+  return db.transaction(async (tx) => {
+    const [currentCase] = await tx
+      .select()
+      .from(cases)
+      .where(eq(cases.id, input.caseId))
+      .for("update");
+    if (!currentCase) throw new Error("Case was not found to cancel");
+
+    if (currentCase.status === "cancelled") {
+      return { outcome: "ALREADY_CANCELLED" as const, case: currentCase };
+    }
+    if (
+      currentCase.status === "completed" ||
+      currentCase.status === "in_progress"
+    ) {
+      return { outcome: "NOT_CANCELLABLE" as const };
+    }
+
+    const [insertedOperation] = await tx
+      .insert(caseOperations)
+      .values({ operationId: input.operationId, caseId: input.caseId })
+      .onConflictDoNothing()
+      .returning();
+    if (!insertedOperation) {
+      throw new Error(
+        "Case cancellation operation was not found after conflict"
+      );
+    }
+
+    const now = new Date().toISOString();
+    const [cancelled] = await tx
+      .update(cases)
+      .set({ status: "cancelled", updatedAt: now })
+      .where(eq(cases.id, input.caseId))
+      .returning();
+    if (!cancelled)
+      throw new Error("Case cancellation update did not return a row");
+
+    await tx.insert(caseHistory).values({
+      caseId: input.caseId,
+      eventType: "CASE_CANCELLED",
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      reason: input.reason,
+      operationId: input.operationId,
+    });
+    await tx
+      .update(officerAttention)
+      .set({ resolvedAt: now, resolvedByOperationId: input.operationId })
+      .where(
+        and(
+          eq(officerAttention.caseId, input.caseId),
+          inArray(officerAttention.kind, terminalResolvedAttentionKinds),
+          isNull(officerAttention.resolvedAt)
+        )
+      );
+
+    return { outcome: "CANCELLED" as const, case: cancelled };
   });
 }

@@ -1,5 +1,6 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import {
+  CancelAssignmentInputSchema,
   AcceptAllocationAttemptInputSchema,
   BreachAllocationAttemptInputSchema,
   CompleteAssignmentInputSchema,
@@ -478,6 +479,23 @@ const internalAssignmentsRouter = new Hono()
         return c.json(result, 404);
       }
       if (result.outcome === "NOT_ACCEPTED") return c.json(result, 409);
+      return c.json(result, 201);
+    }
+  )
+  .post(
+    "/cancel",
+    describeRoute({ description: "Cancel a pre-work Assignment for a Case" }),
+    validator("json", CancelAssignmentInputSchema),
+    async (c) => {
+      const result = await assignmentService.cancelAssignmentForCase(
+        c.req.valid("json")
+      );
+      if (
+        result.outcome === "IN_PROGRESS" ||
+        result.outcome === "NOT_CANCELLABLE"
+      ) {
+        return c.json(result, 409);
+      }
       return c.json(result, 201);
     }
   )

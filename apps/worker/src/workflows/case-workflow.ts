@@ -11,6 +11,7 @@ import {
   ACCEPTANCE_SLA_BREACH_SCORE_DELTA,
   ASSIGNMENT_COMPLETED_SCORE_DELTA,
   AcceptAllocationCommandSchema,
+  CancelCaseCommandSchema,
   CompleteCaseCommandSchema,
   DEFAULT_ACCEPTANCE_SLA_MS,
   ManualAllocationCommandSchema,
@@ -30,6 +31,14 @@ import type {
   BreachAllocationAttemptInput,
   BreachAllocationAttemptResult,
   CaseDto,
+  CancelAppointmentInput,
+  CancelAppointmentResult,
+  CancelAssignmentInput,
+  CancelAssignmentResult,
+  CancelCaseCommand,
+  CancelCaseResult,
+  CancelCaseTransitionInput,
+  CancelCaseTransitionResult,
   CommitAllocationInput,
   CommitAllocationResult,
   CompleteAppointmentInput,
@@ -101,6 +110,9 @@ export const completeCase = defineUpdate<
   CompleteCaseResult,
   [CompleteCaseCommand]
 >(UPDATE_NAMES.completeCase);
+export const cancelCase = defineUpdate<CancelCaseResult, [CancelCaseCommand]>(
+  UPDATE_NAMES.cancelCase
+);
 
 const activities = proxyActivities<{
   isCaseTerminal(input: { caseId: string }): Promise<boolean>;
@@ -179,6 +191,15 @@ const activities = proxyActivities<{
   completeCase(
     input: CompleteCaseTransitionInput
   ): Promise<CompleteCaseTransitionResult>;
+  cancelScheduledAppointment(
+    input: CancelAppointmentInput
+  ): Promise<CancelAppointmentResult>;
+  cancelAssignmentForCase(
+    input: CancelAssignmentInput
+  ): Promise<CancelAssignmentResult>;
+  cancelCase(
+    input: CancelCaseTransitionInput
+  ): Promise<CancelCaseTransitionResult>;
   recordCompletionPerformance(input: {
     effectId: string;
     contractorId: string;
@@ -257,6 +278,11 @@ type CompletionOperation = {
   payloadHash: string;
   result?: CompleteCaseResult;
   pending?: Promise<CompleteCaseResult>;
+};
+type CancellationOperation = {
+  payloadHash: string;
+  result?: CancelCaseResult;
+  pending?: Promise<CancelCaseResult>;
 };
 
 /**
@@ -778,6 +804,52 @@ async function runCompletion(
 }
 
 /**
+ * Forward-only cancellation: a live appointment releases its slot, the stable
+ * pre-work Assignment is cancelled, and only then does the Case go terminal.
+ * Domain rejections are returned to the caller; transport failures escape so
+ * Temporal retries the convergent sequence from its first step.
+ */
+async function runCancellation(
+  command: CancelCaseCommand
+): Promise<CancelCaseResult> {
+  const op = command.operationId;
+  const appointment = await activities.cancelScheduledAppointment({
+    caseId: command.caseId,
+    operationId: `${op}/appointment`,
+    changedBy: command.actorId,
+  });
+  if (appointment.outcome === "IN_PROGRESS") {
+    return { kind: "NOT_CANCELLABLE" };
+  }
+
+  const assignment = await activities.cancelAssignmentForCase({
+    caseId: command.caseId,
+    operationId: `${op}/assignment`,
+    changedBy: command.actorId,
+    reason: command.input.reason,
+  });
+  if (
+    assignment.outcome === "IN_PROGRESS" ||
+    assignment.outcome === "NOT_CANCELLABLE"
+  ) {
+    return { kind: "NOT_CANCELLABLE" };
+  }
+
+  const caseResult = await activities.cancelCase({
+    caseId: command.caseId,
+    operationId: `${op}/case`,
+    actorId: command.actorId,
+    actorRole: command.actorRole,
+    reason: command.input.reason,
+  });
+  if (caseResult.outcome === "NOT_CANCELLABLE") {
+    return { kind: "NOT_CANCELLABLE" };
+  }
+
+  return { kind: "SUCCESS", data: { case: caseResult.case } };
+}
+
+/**
  * The No-Access Saga (PRS-146 AC1), forward-only: Appointment SCHEDULED ->
  * NO_ACCESS, then the Case parked on the Resident.
  *
@@ -928,7 +1000,9 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     ReplaceAppointmentOperation
   >();
   const completionOperations = new Map<string, CompletionOperation>();
+  const cancellationOperations = new Map<string, CancellationOperation>();
   let closeAfterCompletion = false;
+  let cancellationStarted = false;
   // In-Workflow only — never exposed as a Query/read model. Tracks which
   // Contractors this Workflow already committed or attempted, across
   // allocation passes for this Case's whole lifetime.
@@ -938,6 +1012,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   let automaticRetryAt: number | undefined;
   let automaticRetryDelayMs = INITIAL_ALLOCATION_RETRY_MS;
   let automaticAllocationActive = false;
+  let allocationMutationGuard = 0;
   let automaticAllocationSource: "AUTO_ASSIGN" | "BREACH_REASSIGN" =
     "AUTO_ASSIGN";
   let allocationContext: AllocationContext | undefined;
@@ -960,6 +1035,8 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   // Armed synchronously before the first await so the main loop's breach
   // check can never race a handler that started before the deadline.
   let acceptanceGuard = 0;
+  let completionGuard = 0;
+  let appointmentExpiryGuard = 0;
 
   setHandler(openCase, async (unparsedCommand) => {
     const command = OpenCaseCommandSchema.parse(unparsedCommand);
@@ -1043,6 +1120,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
         "Manual allocation operation has no result or pending allocation"
       );
     }
+    if (cancellationStarted) return { kind: "CASE_TERMINAL" };
 
     const operation: ManualOperation = { payloadHash: command.payloadHash };
     manualOperations.set(command.idempotencyKey, operation);
@@ -1072,6 +1150,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       if (existing.pending) return await existing.pending;
       throw new Error("Acceptance operation has no result or pending activity");
     }
+    if (cancellationStarted) return { kind: "ATTEMPT_NOT_PENDING" };
 
     // A new, unseen acceptance that lands after this Attempt's own deadline
     // is rejected outright, without calling the atom — this closes the
@@ -1131,6 +1210,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       if (existing.pending) return await existing.pending;
       throw new Error("Start-work operation has no result or pending activity");
     }
+    if (cancellationStarted) return { kind: "CASE_TERMINAL" };
 
     // The window gate runs before the cache below is populated — load-
     // bearing. A before-window NOT_IN_WINDOW is non-terminal (the window
@@ -1188,6 +1268,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       if (existing.pending) return await existing.pending;
       throw new Error("No-access operation has no result or pending activity");
     }
+    if (cancellationStarted) return { kind: "CASE_TERMINAL" };
 
     // Half-open [startTime, endTime), same gate as start-work: No Access is a
     // report about an attended visit, so it is only truthful while the
@@ -1241,6 +1322,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
         "Replace-appointment operation has no result or pending activity"
       );
     }
+    if (cancellationStarted) return { kind: "CASE_TERMINAL" };
 
     const now = Date.now();
     if (Date.parse(command.input.startTime) <= now) {
@@ -1301,6 +1383,68 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     }
   });
 
+  setHandler(cancelCase, async (unparsedCommand) => {
+    const command = CancelCaseCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    const existing = cancellationOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error(
+        "Cancellation operation has no result or pending activity"
+      );
+    }
+    if (cancellationStarted) return { kind: "NOT_CANCELLABLE" };
+
+    cancellationStarted = true;
+    while (allocationQueue.length > 0) {
+      const request = allocationQueue.shift();
+      if (request?.kind === "MANUAL") {
+        request.complete({ kind: "CASE_TERMINAL" });
+      }
+    }
+
+    const operation: CancellationOperation = {
+      payloadHash: command.payloadHash,
+    };
+    cancellationOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = (async () => {
+        await condition(
+          () =>
+            allocationMutationGuard === 0 &&
+            acceptanceGuard === 0 &&
+            appointmentLifecycleGuard === 0 &&
+            appointmentExpiryGuard === 0 &&
+            completionGuard === 0
+        );
+        return runCancellation(command);
+      })();
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        currentAttempt = undefined;
+        currentAppointment = undefined;
+        appointmentStateRevision++;
+        automaticAllocationActive = true;
+        automaticRetryAt = undefined;
+        closeAfterCompletion = true;
+      } else {
+        cancellationStarted = false;
+      }
+      return operation.result;
+    } catch (error) {
+      cancellationOperations.delete(command.idempotencyKey);
+      cancellationStarted = false;
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
+  });
+
   setHandler(completeCase, async (unparsedCommand) => {
     const command = CompleteCaseCommandSchema.parse(unparsedCommand);
     if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
@@ -1314,10 +1458,12 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       if (existing.pending) return await existing.pending;
       throw new Error("Completion operation has no result or pending activity");
     }
+    if (cancellationStarted) return { kind: "NOT_IN_PROGRESS" };
 
     const operation: CompletionOperation = { payloadHash: command.payloadHash };
     completionOperations.set(command.idempotencyKey, operation);
     try {
+      completionGuard++;
       operation.pending = runCompletion(command);
       operation.result = await operation.pending;
       if (operation.result.kind === "SUCCESS") closeAfterCompletion = true;
@@ -1330,6 +1476,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       throw error;
     } finally {
       delete operation.pending;
+      completionGuard--;
     }
   });
 
@@ -1341,6 +1488,10 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   // deadline — so an unaccepted offer breaches without a manual poll.
   while (true) {
     if (closeAfterCompletion) return;
+    if (cancellationStarted) {
+      await condition(() => !cancellationStarted || closeAfterCompletion);
+      continue;
+    }
     if (allocationQueue.length === 0) {
       const deadlines: number[] = [];
       if (currentAttempt) deadlines.push(currentAttempt.deadlineAt);
@@ -1370,12 +1521,16 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
             await condition(() => appointmentLifecycleGuard === 0);
           }
 
+          if (cancellationStarted) continue;
+
           if (currentAppointment && Date.now() >= currentAppointment.endAt) {
             const expiringAppointment = currentAppointment;
             missedAppointmentRecovery = expiringAppointment.appointmentId;
             try {
+              appointmentExpiryGuard++;
               await runMissedAppointment(caseId, expiringAppointment);
             } finally {
+              appointmentExpiryGuard--;
               if (
                 currentAppointment?.appointmentId ===
                 expiringAppointment.appointmentId
@@ -1393,7 +1548,13 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
             Date.now() >= currentAttempt.deadlineAt
           ) {
             const breached = currentAttempt;
-            const outcome = await runBreach(caseId, breached);
+            let outcome: BreachOutcome;
+            allocationMutationGuard++;
+            try {
+              outcome = await runBreach(caseId, breached);
+            } finally {
+              allocationMutationGuard--;
+            }
             currentAttempt = undefined;
             if (outcome.status === "REPLACED") {
               automaticAllocationActive = false;
@@ -1442,8 +1603,16 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     const request = allocationQueue.shift();
     if (!request) continue;
 
+    if (cancellationStarted) {
+      if (request.kind === "MANUAL") {
+        request.complete({ kind: "CASE_TERMINAL" });
+      }
+      continue;
+    }
+
     if (request.kind === "MANUAL") {
       let outcome: ManualAllocationOutcome;
+      allocationMutationGuard++;
       try {
         outcome = await runManualAllocation(
           request.command,
@@ -1456,6 +1625,8 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
             reason: error instanceof Error ? error.message : String(error),
           },
         };
+      } finally {
+        allocationMutationGuard--;
       }
       const result = outcome.result;
 
@@ -1493,6 +1664,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     if (automaticAllocationActive) continue;
 
     automaticAllocationSource = request.source;
+    allocationMutationGuard++;
     try {
       allocation = await runAllocation(
         caseId,
@@ -1509,6 +1681,8 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
         status: "FAILED",
         reason: error instanceof Error ? error.message : String(error),
       };
+    } finally {
+      allocationMutationGuard--;
     }
 
     if (allocation.status === "ALLOCATED") {

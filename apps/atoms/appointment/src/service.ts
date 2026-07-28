@@ -3,6 +3,7 @@ import {
   AppointmentSlotClaimDtoSchema,
 } from "@townops/orchestration-contract";
 import type {
+  CancelAppointmentInput,
   ConfirmAppointmentSlotInput,
   CompleteAppointmentInput,
   ReleaseAppointmentSlotInput,
@@ -12,7 +13,7 @@ import type {
   ReserveAppointmentSlotInput,
   StartWorkAppointmentInput,
 } from "@townops/orchestration-contract";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import db from "./database/db";
 import {
@@ -383,6 +384,84 @@ export async function markAppointmentMissed(input: MarkAppointmentMissedInput) {
     if (!updated) throw new Error("Appointment update did not return a row");
 
     return { outcome: "MISSED" as const, appointment: appointmentDto(updated) };
+  });
+}
+
+/**
+ * Cancels the live scheduled Appointment for a Case and releases its active
+ * slot in the same transaction. Historical No Access and Missed rows remain
+ * untouched; a Case without a scheduled visit is already converged here.
+ */
+export async function cancelScheduledAppointment(
+  input: CancelAppointmentInput
+) {
+  return db.transaction(async (tx) => {
+    const [inProgress] = await tx
+      .select()
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.caseId, input.caseId),
+          eq(appointments.status, "in_progress")
+        )
+      )
+      .for("update");
+    if (inProgress) return { outcome: "IN_PROGRESS" as const };
+
+    const [scheduled] = await tx
+      .select()
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.caseId, input.caseId),
+          eq(appointments.status, "scheduled")
+        )
+      )
+      .for("update");
+    if (!scheduled) {
+      const [cancelled] = await tx
+        .select()
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.caseId, input.caseId),
+            eq(appointments.status, "cancelled")
+          )
+        )
+        .limit(1);
+      return cancelled
+        ? {
+            outcome: "ALREADY_CANCELLED" as const,
+            appointment: appointmentDto(cancelled),
+          }
+        : { outcome: "NO_SCHEDULED_APPOINTMENT" as const };
+    }
+
+    if (scheduled.slotClaimId) {
+      await tx
+        .update(appointmentSlotClaims)
+        .set({ status: "RELEASED" })
+        .where(eq(appointmentSlotClaims.id, scheduled.slotClaimId));
+    }
+    const [cancelled] = await tx
+      .update(appointments)
+      .set({ status: "cancelled", updatedAt: new Date().toISOString() })
+      .where(eq(appointments.id, scheduled.id))
+      .returning();
+    if (!cancelled)
+      throw new Error("Appointment cancellation update did not return a row");
+
+    await tx.insert(appointmentStatusHistory).values({
+      appointmentId: scheduled.id,
+      fromStatus: "scheduled",
+      toStatus: "cancelled",
+      changedBy: input.changedBy,
+      operationId: input.operationId,
+    });
+    return {
+      outcome: "CANCELLED" as const,
+      appointment: appointmentDto(cancelled),
+    };
   });
 }
 

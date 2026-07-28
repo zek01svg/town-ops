@@ -9,6 +9,8 @@ import {
   AccountRoleSchema,
   AcceptAllocationInputSchema,
   AcceptAllocationResultSchema,
+  CancelCaseInputSchema,
+  CancelCaseResultSchema,
   AllocationAttemptDtoSchema,
   AppointmentDtoSchema,
   AssignmentDtoSchema,
@@ -17,6 +19,7 @@ import {
   CompletionInputSchema,
   canonicalManualAllocationPayload,
   canonicalCompletionPayload,
+  canonicalCancelCasePayload,
   canonicalAcceptAllocationPayload,
   canonicalOpenCasePayload,
   canonicalReplaceAppointmentPayload,
@@ -50,6 +53,7 @@ import type {
   ApiError,
   AssignmentDto,
   CaseDto,
+  CancelCaseResult,
   CompleteCaseResult,
   ManualAllocationResult,
   OpenCaseInput,
@@ -780,6 +784,197 @@ export function createGatewayApp({
     }
 
     return c.json({ data: result.data, operation }, 201);
+  });
+
+  app.put("/api/cases/:caseId/cancel", async (c) => {
+    const actor = resolveActor(c.get("jwtPayload"));
+    if (!actor) {
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
+        retryable: false,
+      });
+    }
+    if (actor.role !== "RESIDENT" && actor.role !== "OFFICER") {
+      return error(c, 403, {
+        code: "FORBIDDEN",
+        message: "Resident or Officer access is required",
+        retryable: false,
+      });
+    }
+
+    const caseId = z.uuid().safeParse(c.req.param("caseId"));
+    if (!caseId.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Case ID must be a UUID",
+        retryable: false,
+      });
+    }
+    const idempotencyKey = idempotencyKeySchema.safeParse(
+      c.req.header("Idempotency-Key")
+    );
+    if (!idempotencyKey.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Idempotency-Key must be a UUID",
+        retryable: false,
+      });
+    }
+    const input = CancelCaseInputSchema.safeParse(
+      await c.req.json().catch(() => undefined)
+    );
+    if (!input.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Cancellation reason is invalid",
+        retryable: false,
+        details: input.error.flatten(),
+      });
+    }
+
+    let caseResponse: Response;
+    try {
+      caseResponse = await fetchImpl(`${caseAtomUrl}/api/cases/${caseId.data}`);
+    } catch {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    if (!caseResponse.ok) {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    const parsedCase = caseAtomResponseSchema.safeParse(
+      await caseResponse.json().catch(() => undefined)
+    );
+    if (!parsedCase.success || parsedCase.data.cases.length === 0) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+      });
+    }
+    const caseDto = toCaseDto(parsedCase.data.cases[0]);
+    if (actor.role === "RESIDENT" && caseDto.residentId !== actor.accountId) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+      });
+    }
+    if (
+      caseDto.status === "IN_PROGRESS" ||
+      caseDto.status === "COMPLETED" ||
+      caseDto.status === "CANCELLED"
+    ) {
+      return error(c, 409, {
+        code: "NOT_CANCELLABLE",
+        message: "Case cancellation is not available",
+        retryable: false,
+      });
+    }
+
+    const operation = operationForCase(
+      caseId.data,
+      idempotencyKey.data,
+      canonicalCancelCasePayload(caseId.data, input.data)
+    );
+    const startWorkflowOperation = new WithStartWorkflowOperation(
+      WORKFLOW_NAMES.case,
+      {
+        workflowId: operation.workflowId,
+        taskQueue: ORCHESTRATION_TASK_QUEUE,
+        args: [{ caseId: caseId.data }],
+        workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+      }
+    );
+    const update = workflowClient.executeUpdateWithStart(
+      UPDATE_NAMES.cancelCase,
+      {
+        args: [
+          {
+            idempotencyKey: operation.idempotencyKey,
+            payloadHash: operation.updateId.slice(
+              operation.idempotencyKey.length + 1
+            ),
+            operationId: operation.updateId,
+            actorId: actor.accountId,
+            actorRole: actor.role,
+            caseId: caseId.data,
+            input: input.data,
+          },
+        ],
+        updateId: operation.updateId,
+        startWorkflowOperation,
+      }
+    );
+    void update.catch(() => undefined);
+
+    let result: CancelCaseResult;
+    try {
+      result = CancelCaseResultSchema.parse(
+        await withTimeout(update, updateTimeoutMs)
+      );
+    } catch (caught) {
+      if (
+        caught instanceof Error &&
+        caught.message === "workflow update timed out"
+      ) {
+        c.header("Retry-After", "2");
+        return error(c, 504, {
+          code: "WORKFLOW_UPDATE_PENDING",
+          message: "Case cancellation is still being processed",
+          retryable: true,
+          operation,
+        });
+      }
+      if (isTemporalUnavailable(caught)) {
+        return error(c, 503, {
+          code: "TEMPORAL_UNAVAILABLE",
+          message: "Case workflow service is unavailable",
+          retryable: true,
+          operation,
+        });
+      }
+      return error(c, 500, {
+        code: "WORKFLOW_UPDATE_FAILED",
+        message: "Case cancellation could not be completed",
+        retryable: false,
+        operation,
+      });
+    }
+
+    if (result.kind === "SUCCESS") {
+      return c.json({ data: result.data, operation }, 200);
+    }
+    if (result.kind === "IDEMPOTENCY_KEY_REUSED") {
+      return error(c, 409, {
+        code: "IDEMPOTENCY_KEY_REUSED",
+        message: "Idempotency-Key was already used with a different request",
+        retryable: false,
+        operation,
+      });
+    }
+    if (result.kind === "CASE_MISMATCH") {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+        operation,
+      });
+    }
+    return error(c, 409, {
+      code: "NOT_CANCELLABLE",
+      message: "Case cancellation is not available",
+      retryable: false,
+      operation,
+    });
   });
 
   app.put(

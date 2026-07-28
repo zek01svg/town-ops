@@ -91,6 +91,47 @@ export function useReplaceAppointmentMutation() {
   });
 }
 
+export type CancelCaseInput = {
+  caseId: string;
+  reason: string;
+  idempotencyKey: string;
+};
+
+export function useCancelCaseMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CancelCaseInput) => {
+      const res = await fetchWithAuth(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/cancel`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": input.idempotencyKey,
+          },
+          body: JSON.stringify({ reason: input.reason }),
+        },
+        env.VITE_AUTH_URL
+      );
+      if (!res.ok) {
+        const body = gatewayErrorSchema.safeParse(
+          await res.json().catch(() => ({}))
+        );
+        throw new Error(
+          body.data?.error?.message ?? `The cancellation failed (${res.status})`
+        );
+      }
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      void qc.invalidateQueries({ queryKey: caseKeys.all });
+      void qc.invalidateQueries({
+        queryKey: caseKeys.gatewayCase(vars.caseId),
+      });
+    },
+  });
+}
+
 export type HandleBreachInput = {
   assignment_id: string;
   case_id: string;

@@ -6,7 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 import { auditQueries } from "../api/audit-queries";
-import { useReplaceAppointmentMutation } from "../api/mutations";
+import {
+  useCancelCaseMutation,
+  useReplaceAppointmentMutation,
+} from "../api/mutations";
 import type { GatewayAppointment } from "../api/queries";
 import { caseQueries } from "../api/queries";
 import type { CaseItem } from "../types";
@@ -54,6 +57,10 @@ export function rescheduleBlocker(
   return null;
 }
 
+export function isCaseCancellable(status: CaseItem["status"]) {
+  return !["in_progress", "completed", "cancelled"].includes(status);
+}
+
 export function CaseAuditTrail({ caseId, caseData }: Props) {
   const { data: events = [], isLoading } = useQuery(
     auditQueries.timeline(caseId)
@@ -62,10 +69,13 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
     caseQueries.gatewayAppointment(caseId)
   );
   const replaceAppointment = useReplaceAppointmentMutation();
+  const cancelCase = useCancelCaseMutation();
   const replacementKey = useRef<string | undefined>(undefined);
+  const cancellationKey = useRef<string | undefined>(undefined);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [reason, setReason] = useState("");
+  const [cancellationReason, setCancellationReason] = useState("");
 
   const isReasonRequired = appointment?.status === "SCHEDULED";
   const blockedFor = rescheduleBlocker(
@@ -95,6 +105,24 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
           setStartTime("");
           setEndTime("");
           setReason("");
+        },
+      }
+    );
+  }
+
+  const cancellable =
+    caseData !== undefined && isCaseCancellable(caseData.status);
+
+  function handleCancel() {
+    if (!cancellable || !cancellationReason.trim()) return;
+    const idempotencyKey = cancellationKey.current ?? crypto.randomUUID();
+    cancellationKey.current = idempotencyKey;
+    cancelCase.mutate(
+      { caseId, reason: cancellationReason, idempotencyKey },
+      {
+        onSuccess: () => {
+          cancellationKey.current = undefined;
+          setCancellationReason("");
         },
       }
     );
@@ -172,6 +200,41 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
               {new Date(caseData.createdAt).toLocaleString()}
             </span>
           </div>
+        </div>
+      )}
+
+      {cancellable && (
+        <div className="flex flex-col gap-3 border border-border p-4 bg-card">
+          <span className="font-label text-xs uppercase tracking-widest text-foreground font-bold">
+            Cancel Case
+          </span>
+          <label
+            htmlFor="cancel-case-reason"
+            className="flex flex-col gap-1 text-[10px] font-label uppercase tracking-widest text-muted-foreground"
+          >
+            Reason
+            <textarea
+              id="cancel-case-reason"
+              value={cancellationReason}
+              onChange={(event) => setCancellationReason(event.target.value)}
+              maxLength={1000}
+              rows={2}
+              className="border border-border bg-background px-2 py-1 text-xs text-foreground normal-case tracking-normal"
+            />
+          </label>
+          <Button
+            onClick={handleCancel}
+            disabled={cancelCase.isPending || !cancellationReason.trim()}
+            variant="outline"
+            className="rounded-none uppercase text-[10px] font-label tracking-widest w-full"
+          >
+            {cancelCase.isPending ? "Cancelling…" : "Cancel Case"}
+          </Button>
+          {cancelCase.isError && (
+            <p className="text-[10px] text-destructive uppercase">
+              {cancelCase.error.message}
+            </p>
+          )}
         </div>
       )}
 

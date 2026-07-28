@@ -6,6 +6,7 @@ import { z } from "zod/v4";
 
 import { createAllocateContractorActivities } from "./activities/allocate-contractor.ts";
 import { createAppointmentRecoveryActivities } from "./activities/appointment-recovery.ts";
+import { createCancelCaseActivities } from "./activities/cancel-case.ts";
 import { createCompleteCaseActivities } from "./activities/complete-case.ts";
 import { createOpenCaseActivity } from "./activities/open-case.ts";
 import { createProvisionResidentActivity } from "./activities/provision-resident.ts";
@@ -71,6 +72,12 @@ const worker = await Worker.create({
       assignmentAtomUrl: config.ASSIGNMENT_ATOM_URL,
       caseAtomUrl: config.CASE_ATOM_URL,
       metricsAtomUrl: config.METRICS_ATOM_URL,
+      workerServiceToken: config.WORKER_SERVICE_TOKEN,
+    }),
+    ...createCancelCaseActivities({
+      appointmentAtomUrl: config.APPOINTMENT_ATOM_URL,
+      assignmentAtomUrl: config.ASSIGNMENT_ATOM_URL,
+      caseAtomUrl: config.CASE_ATOM_URL,
       workerServiceToken: config.WORKER_SERVICE_TOKEN,
     }),
   },
