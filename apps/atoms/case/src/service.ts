@@ -39,7 +39,8 @@ type OfficerAttentionKind =
   | "ACCEPTANCE_SLA_BREACH"
   | "WORK_START_FAILED"
   | "MISSED_APPOINTMENT"
-  | "COMPLETION_FAILED";
+  | "COMPLETION_FAILED"
+  | "DERIVED_EFFECT_UNKNOWN";
 
 const allocationAttentionKinds: OfficerAttentionKind[] = [
   "NO_ELIGIBLE_CONTRACTOR",
@@ -182,7 +183,27 @@ export async function raiseOfficerAttention(input: {
   kind: OfficerAttentionKind;
   detail: string;
   operationId: string;
+  effectId?: string;
 }) {
+  // Enforced here, not left to the caller: every route (the generic
+  // /officer-attention endpoint and /derived-effect-attention) funnels
+  // through this one function, so this is the single choke point where the
+  // invariant can be made real. A discriminated input type would push this
+  // ripple into /officer-attention's shared six-kind schema, whose effectId
+  // is validated as optional regardless of kind — an explicit throw here is
+  // the smaller, still-correct fix: without it, a DERIVED_EFFECT_UNKNOWN
+  // call missing effectId would reach `eq(effectId, undefined)` and either
+  // insert a duplicate open attention or trip the effectId-scoped partial
+  // unique index with a confusing DB error instead of this one.
+  function requireEffectId(): string {
+    if (!input.effectId) {
+      throw new Error(
+        "raiseOfficerAttention requires effectId for DERIVED_EFFECT_UNKNOWN"
+      );
+    }
+    return input.effectId;
+  }
+
   return db.transaction(async (tx) => {
     const openAttention = () =>
       tx
@@ -192,6 +213,9 @@ export async function raiseOfficerAttention(input: {
           and(
             eq(officerAttention.caseId, input.caseId),
             eq(officerAttention.kind, input.kind),
+            input.kind === "DERIVED_EFFECT_UNKNOWN"
+              ? eq(officerAttention.effectId, requireEffectId())
+              : undefined,
             isNull(officerAttention.resolvedAt)
           )
         )
@@ -213,6 +237,27 @@ export async function raiseOfficerAttention(input: {
     }
     return concurrent;
   });
+}
+
+export async function resolveDerivedEffectAttention(input: {
+  caseId: string;
+  effectId: string;
+  operationId: string;
+}) {
+  await db
+    .update(officerAttention)
+    .set({
+      resolvedAt: new Date().toISOString(),
+      resolvedByOperationId: input.operationId,
+    })
+    .where(
+      and(
+        eq(officerAttention.caseId, input.caseId),
+        eq(officerAttention.kind, "DERIVED_EFFECT_UNKNOWN"),
+        eq(officerAttention.effectId, input.effectId),
+        isNull(officerAttention.resolvedAt)
+      )
+    );
 }
 
 export async function listOfficerAttention(input: {

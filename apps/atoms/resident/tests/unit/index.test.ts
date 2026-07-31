@@ -37,7 +37,7 @@ vi.mock("../../src/database/db", () => ({
 }));
 
 vi.mock("hono/jwk", () => ({
-  jwk: () => (c: any, next: any) => next(),
+  jwk: () => (_c: unknown, next: () => unknown) => next(),
 }));
 
 describe("Resident Atom API Endpoints", () => {
@@ -259,6 +259,32 @@ describe("Resident Atom API Endpoints", () => {
         },
       });
       expect(mockDb.insert).toHaveBeenCalled();
+    });
+  });
+
+  describe("GET /internal/residents/:id/contact", () => {
+    // Same workerAuth trust boundary as POST /internal/residents above; this
+    // endpoint returns personal contact data (PRS-150 effect delivery), so it
+    // gets the same 401 coverage here. The authenticated-success shape and
+    // 404 checks live in tests/integration/resident.test.ts instead — this
+    // file mocks `db`, so it can't exercise the real select() projection
+    // that the shape assertion needs to have any teeth.
+    it("rejects requests without the Worker service identity", async () => {
+      const res = await app.request(
+        `/internal/residents/${VALID_UUID_1}/contact`
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects a same-length but incorrect Bearer token", async () => {
+      const res = await app.request(
+        `/internal/residents/${VALID_UUID_1}/contact`,
+        { headers: { Authorization: `Bearer ${"b".repeat(32)}` } }
+      );
+
+      expect(res.status).toBe(401);
+      expect(mockDb.select).not.toHaveBeenCalled();
     });
   });
 });

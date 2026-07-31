@@ -350,6 +350,17 @@ const eligibleQuerySchema = z.object({
 const internalContractorsRouter = new Hono()
   .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
   .get(
+    "/:id/contact",
+    validator("param", z.object({ id: contractorIdSchema })),
+    async (c) => {
+      const contact = await contractorService.getContractorContact(
+        c.req.valid("param").id
+      );
+      if (!contact) return c.json({ error: "not found" }, 404);
+      return c.json({ contact }, 200);
+    }
+  )
+  .get(
     "/eligible",
     describeRoute({
       description:

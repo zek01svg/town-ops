@@ -17,6 +17,8 @@ import {
   CaseDtoSchema,
   CompleteCaseResultSchema,
   CompletionInputSchema,
+  DerivedEffectSummarySchema,
+  EffectRepairResultSchema,
   canonicalManualAllocationPayload,
   canonicalCompletionPayload,
   canonicalCancelCasePayload,
@@ -24,6 +26,8 @@ import {
   canonicalOpenCasePayload,
   canonicalReplaceAppointmentPayload,
   canonicalReportNoAccessPayload,
+  canonicalRetryEffectPayload,
+  canonicalWaiveEffectPayload,
   caseWorkflowId,
   MeDtoSchema,
   ManualAllocationInputSchema,
@@ -36,6 +40,7 @@ import {
   ORCHESTRATION_TASK_QUEUE,
   ReplaceAppointmentInputSchema,
   ReplaceAppointmentResultSchema,
+  RetryEffectInputSchema,
   ReportNoAccessResultSchema,
   ResidentAppointmentDtoSchema,
   ProofItemDtoSchema,
@@ -43,6 +48,7 @@ import {
   ResidentOpenCaseInputSchema,
   StartWorkResultSchema,
   UPDATE_NAMES,
+  WaiveEffectInputSchema,
   WORKFLOW_NAMES,
 } from "@townops/orchestration-contract";
 import type {
@@ -55,6 +61,7 @@ import type {
   CaseDto,
   CancelCaseResult,
   CompleteCaseResult,
+  EffectRepairResult,
   ManualAllocationResult,
   OpenCaseInput,
   OpenCaseResult,
@@ -159,6 +166,7 @@ type GatewayDependencies = {
   assignmentAtomUrl?: string;
   appointmentAtomUrl?: string;
   proofAtomUrl?: string;
+  alertAtomUrl?: string;
   workerServiceToken?: string;
   authenticate?: MiddlewareHandler;
   fetchImpl?: typeof fetch;
@@ -489,6 +497,7 @@ export function createGatewayApp({
   assignmentAtomUrl = "http://localhost:5004",
   appointmentAtomUrl = "http://localhost:5003",
   proofAtomUrl = "http://localhost:5007",
+  alertAtomUrl = "http://localhost:5002",
   workerServiceToken = "",
   authenticate,
   fetchImpl = fetch,
@@ -2051,6 +2060,186 @@ export function createGatewayApp({
     }
     return c.json({ data: { items: parsed.data.attentions, ...query.data } });
   });
+
+  app.get("/api/cases/:caseId/effects", async (c) => {
+    const actor = resolveActor(c.get("jwtPayload"));
+    const caseId = z.uuid().safeParse(c.req.param("caseId"));
+    if (!actor)
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
+        retryable: false,
+      });
+    if (actor.role !== "OFFICER")
+      return error(c, 403, {
+        code: "FORBIDDEN",
+        message: "Officer access is required",
+        retryable: false,
+      });
+    if (!caseId.success)
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Case ID must be a UUID",
+        retryable: false,
+      });
+    let response: Response;
+    try {
+      response = await fetchImpl(
+        `${alertAtomUrl}/internal/effects/case/${caseId.data}`,
+        {
+          headers: { Authorization: `Bearer ${workerServiceToken}` },
+        }
+      );
+    } catch {
+      return error(c, 503, {
+        code: "ALERT_ATOM_UNAVAILABLE",
+        message: "Alert service is unavailable",
+        retryable: true,
+      });
+    }
+    const parsed = z
+      .object({ effects: z.array(DerivedEffectSummarySchema) })
+      .safeParse(await response.json().catch(() => undefined));
+    if (!response.ok || !parsed.success) {
+      return error(c, 503, {
+        code: "ALERT_ATOM_UNAVAILABLE",
+        message: "Alert service is unavailable",
+        retryable: true,
+      });
+    }
+    return c.json({ data: { items: parsed.data.effects } });
+  });
+
+  async function repairEffect(
+    c: Context<GatewayEnv>,
+    action: "retry" | "waive"
+  ) {
+    const actor = resolveActor(c.get("jwtPayload"));
+    const caseId = z.uuid().safeParse(c.req.param("caseId"));
+    const effectId = z.string().min(1).safeParse(c.req.param("effectId"));
+    const idempotencyKey = idempotencyKeySchema.safeParse(
+      c.req.header("Idempotency-Key")
+    );
+    if (!actor)
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
+        retryable: false,
+      });
+    if (actor.role !== "OFFICER")
+      return error(c, 403, {
+        code: "FORBIDDEN",
+        message: "Officer access is required",
+        retryable: false,
+      });
+    if (!caseId.success || !effectId.success || !idempotencyKey.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Case ID, effect ID, and Idempotency-Key are required",
+        retryable: false,
+      });
+    }
+    const rawInput = await c.req.json().catch(() => undefined);
+    let input;
+    let canonical;
+    if (action === "retry") {
+      input = RetryEffectInputSchema.safeParse(rawInput);
+      if (!input.success)
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Effect repair input is invalid",
+          retryable: false,
+          details: input.error.flatten(),
+        });
+      canonical = canonicalRetryEffectPayload(
+        caseId.data,
+        effectId.data,
+        input.data
+      );
+    } else {
+      input = WaiveEffectInputSchema.safeParse(rawInput);
+      if (!input.success)
+        return error(c, 400, {
+          code: "VALIDATION_ERROR",
+          message: "Effect repair input is invalid",
+          retryable: false,
+          details: input.error.flatten(),
+        });
+      canonical = canonicalWaiveEffectPayload(
+        caseId.data,
+        effectId.data,
+        input.data
+      );
+    }
+    const operation = operationForCase(
+      caseId.data,
+      idempotencyKey.data,
+      canonical
+    );
+    const startWorkflowOperation = new WithStartWorkflowOperation(
+      WORKFLOW_NAMES.case,
+      {
+        workflowId: operation.workflowId,
+        taskQueue: ORCHESTRATION_TASK_QUEUE,
+        args: [{ caseId: caseId.data }],
+        workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+      }
+    );
+    const update = workflowClient.executeUpdateWithStart(
+      action === "retry" ? UPDATE_NAMES.retryEffect : UPDATE_NAMES.waiveEffect,
+      {
+        args: [
+          {
+            idempotencyKey: operation.idempotencyKey,
+            payloadHash: operation.updateId.slice(
+              operation.idempotencyKey.length + 1
+            ),
+            operationId: operation.updateId,
+            actorId: actor.accountId,
+            actorRole: "OFFICER",
+            caseId: caseId.data,
+            effectId: effectId.data,
+            input: input.data,
+          },
+        ],
+        updateId: operation.updateId,
+        startWorkflowOperation,
+      }
+    );
+    try {
+      const result: EffectRepairResult = EffectRepairResultSchema.parse(
+        await withTimeout(update, updateTimeoutMs)
+      );
+      if (result.kind === "SUCCESS")
+        return c.json({ data: result.effect, operation });
+      return error(
+        c,
+        result.kind === "EFFECT_NOT_FOUND" || result.kind === "CASE_MISMATCH"
+          ? 404
+          : 409,
+        {
+          code: result.kind,
+          message: "Effect repair is not available",
+          retryable: false,
+          operation,
+        }
+      );
+    } catch {
+      return error(c, 503, {
+        code: "WORKFLOW_UPDATE_PENDING",
+        message: "Effect repair is still being processed",
+        retryable: true,
+        operation,
+      });
+    }
+  }
+
+  app.post("/api/cases/:caseId/effects/:effectId/retry", (c) =>
+    repairEffect(c, "retry")
+  );
+  app.post("/api/cases/:caseId/effects/:effectId/waive", (c) =>
+    repairEffect(c, "waive")
+  );
 
   app.get("/api/cases/:caseId/proof-items", async (c) => {
     const actor = resolveActor(c.get("jwtPayload"));

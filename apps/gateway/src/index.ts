@@ -17,6 +17,7 @@ const config = z
     ASSIGNMENT_ATOM_URL: z.url().default("http://localhost:5004"),
     APPOINTMENT_ATOM_URL: z.url().default("http://localhost:5003"),
     PROOF_ATOM_URL: z.url().default("http://localhost:5007"),
+    ALERT_ATOM_URL: z.url().default("http://localhost:5002"),
     WORKER_SERVICE_TOKEN: z.string().min(32),
   })
   .parse(process.env);
@@ -53,6 +54,7 @@ const app = createGatewayApp({
   assignmentAtomUrl: config.ASSIGNMENT_ATOM_URL,
   appointmentAtomUrl: config.APPOINTMENT_ATOM_URL,
   proofAtomUrl: config.PROOF_ATOM_URL,
+  alertAtomUrl: config.ALERT_ATOM_URL,
   workerServiceToken: config.WORKER_SERVICE_TOKEN,
   authenticate: jwk({ jwks_uri: config.JWKS_URI, alg: ["EdDSA"] }),
 });

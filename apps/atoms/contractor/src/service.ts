@@ -42,6 +42,18 @@ export async function getContractorById(id: string) {
   return { ...contractor, ...(await withRelations(id)) };
 }
 
+export async function getContractorContact(id: string) {
+  const [contractor] = await db
+    .select({
+      id: contractors.id,
+      email: contractors.email,
+      name: contractors.name,
+    })
+    .from(contractors)
+    .where(eq(contractors.id, id));
+  return contractor ?? null;
+}
+
 export async function createContractor(values: NewContractor) {
   const [contractor] = await db.insert(contractors).values(values).returning();
   if (!contractor) throw new Error("Insert failed");

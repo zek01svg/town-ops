@@ -153,4 +153,40 @@ describe("Contractor API Integration Tests", () => {
       expect(body.contractors[0].name).toBe("Search Route Test");
     });
   });
+
+  describe("GET /internal/contractors/:id/contact (PRS-150)", () => {
+    const workerToken = "a".repeat(32);
+
+    it("returns exactly id, email, and name for the correct Worker service token", async () => {
+      const c = await contractorService.createContractor({
+        name: "Contact Test",
+        email: "contact@test.com",
+        contactNum: "9999999999",
+      });
+
+      const res = await app.request(`/internal/contractors/${c.id}/contact`, {
+        headers: { Authorization: `Bearer ${workerToken}` },
+      });
+
+      expect(res.status).toBe(200);
+      const { contact } = await res.json();
+      // Exact-shape assertion: a future widening of getContractorContact's
+      // select() to include e.g. contactNum or isActive must fail this.
+      expect(contact).toEqual({
+        id: c.id,
+        email: "contact@test.com",
+        name: "Contact Test",
+      });
+      expect(Object.keys(contact).toSorted()).toEqual(["email", "id", "name"]);
+    });
+
+    it("returns 404 for an unknown contractor ID", async () => {
+      const res = await app.request(
+        "/internal/contractors/00000000-0000-0000-0000-000000000000/contact",
+        { headers: { Authorization: `Bearer ${workerToken}` } }
+      );
+
+      expect(res.status).toBe(404);
+    });
+  });
 });

@@ -8,6 +8,7 @@ import { createAllocateContractorActivities } from "./activities/allocate-contra
 import { createAppointmentRecoveryActivities } from "./activities/appointment-recovery.ts";
 import { createCancelCaseActivities } from "./activities/cancel-case.ts";
 import { createCompleteCaseActivities } from "./activities/complete-case.ts";
+import { createDerivedEffectActivities } from "./activities/derived-effects.ts";
 import { createOpenCaseActivity } from "./activities/open-case.ts";
 import { createProvisionResidentActivity } from "./activities/provision-resident.ts";
 import { createStartWorkActivities } from "./activities/start-work.ts";
@@ -23,6 +24,7 @@ const config = z
     ASSIGNMENT_ATOM_URL: z.url().default("http://localhost:5004"),
     APPOINTMENT_ATOM_URL: z.url().default("http://localhost:5003"),
     PROOF_ATOM_URL: z.url().default("http://localhost:5007"),
+    ALERT_ATOM_URL: z.url().default("http://localhost:5002"),
     WORKER_SERVICE_TOKEN: z.string().min(32),
   })
   .parse(process.env);
@@ -77,6 +79,14 @@ const worker = await Worker.create({
     ...createCancelCaseActivities({
       appointmentAtomUrl: config.APPOINTMENT_ATOM_URL,
       assignmentAtomUrl: config.ASSIGNMENT_ATOM_URL,
+      caseAtomUrl: config.CASE_ATOM_URL,
+      workerServiceToken: config.WORKER_SERVICE_TOKEN,
+    }),
+    ...createDerivedEffectActivities({
+      alertAtomUrl: config.ALERT_ATOM_URL,
+      residentAtomUrl: config.RESIDENT_ATOM_URL,
+      contractorAtomUrl: config.CONTRACTOR_ATOM_URL,
+      metricsAtomUrl: config.METRICS_ATOM_URL,
       caseAtomUrl: config.CASE_ATOM_URL,
       workerServiceToken: config.WORKER_SERVICE_TOKEN,
     }),

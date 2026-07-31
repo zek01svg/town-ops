@@ -193,6 +193,17 @@ const residentRouter = new Hono()
 
 const internalResidentsRouter = new Hono()
   .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
+  .get(
+    "/:id/contact",
+    validator("param", z.object({ id: z.uuid() })),
+    async (c) => {
+      const contact = await residentService.getResidentContact(
+        c.req.valid("param").id
+      );
+      if (!contact) return c.json({ error: "Resident not found" }, 404);
+      return c.json({ contact }, 200);
+    }
+  )
   .post("/", validator("json", ProvisionResidentInputSchema), async (c) => {
     const body = c.req.valid("json");
     const resident = await residentService.ensureResidentProfile(body);

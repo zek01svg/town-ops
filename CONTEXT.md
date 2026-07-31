@@ -107,3 +107,31 @@ _Avoid_: Cancellation, reassignment
 **Performance Entry**:
 A reasoned increase or decrease to a Contractor's performance score.
 _Avoid_: Metric, score event
+
+### Derived effects
+
+**Derived Effect**:
+A side effect — an email notification or a Performance Entry — queued by a
+Case Workflow transition and delivered independently through its own retry
+ledger, rather than inline with the transition that queued it.
+_Avoid_: Notification, side effect, alert, when the ledger entry itself is
+meant
+
+**Effect Ledger**:
+The Alert atom's durable record of one Derived Effect's delivery attempts,
+status, and repair history. It lives with the notification provider rather
+than the Case atom: Case owns lifecycle truth, the Effect Ledger owns
+provider delivery state.
+_Avoid_: Outbox, queue, when the persisted record is meant rather than the
+in-Workflow queue
+
+**Waiver**:
+An Officer's explicit decision to close a Derived Effect without delivery,
+recorded with the acting Officer and a reason rather than silently discarded.
+_Avoid_: Skip, dismiss, ignore
+
+**Duplicate-Risk Acknowledgement**:
+An Officer's explicit confirmation to retry a Derived Effect whose provider
+deduplication window has expired, accepting that the retry may deliver
+twice.
+_Avoid_: Confirmation, override, without naming the duplicate-send risk

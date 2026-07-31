@@ -28,6 +28,8 @@ import type {
 } from "@townops/orchestration-contract";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { immediateDerivedEffectActivities } from "./derived-effect-test-activities";
+
 /**
  * The reportNoAccess and replaceAppointment Update handlers (PRS-146 AC1/AC4/
  * AC5/AC9).
@@ -259,6 +261,7 @@ function makeActivities(config: ActivityConfig) {
         case: caseDto(input.caseId, "ASSIGNED"),
       };
     },
+    ...immediateDerivedEffectActivities(),
   };
 }
 

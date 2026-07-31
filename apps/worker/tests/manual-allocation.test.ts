@@ -23,6 +23,8 @@ import type {
 } from "@townops/orchestration-contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { immediateDerivedEffectActivities } from "./derived-effect-test-activities";
+
 const postalCode = "123456";
 
 /** Polls a closure-mutated counter; a bare `while` loop reads as a dead loop. */
@@ -139,6 +141,7 @@ describe("Manual allocation", () => {
         },
         markCaseAssigned: async () => "ASSIGNED" as const,
         raiseOfficerAttention: async () => undefined,
+        ...immediateDerivedEffectActivities(),
       },
     });
     const client = new Client({ connection: env.nativeConnection });

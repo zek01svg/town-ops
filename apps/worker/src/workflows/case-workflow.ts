@@ -1,6 +1,5 @@
 import {
-  ActivityFailure,
-  ApplicationFailure,
+  allHandlersFinished,
   condition,
   defineUpdate,
   log,
@@ -19,8 +18,10 @@ import {
   postalSector,
   ReplaceAppointmentCommandSchema,
   ReportNoAccessCommandSchema,
+  RetryEffectCommandSchema,
   StartWorkCommandSchema,
   UPDATE_NAMES,
+  WaiveEffectCommandSchema,
 } from "@townops/orchestration-contract";
 import type {
   AcceptAllocationCommand,
@@ -50,6 +51,7 @@ import type {
   CompleteCaseTransitionInput,
   CompleteCaseTransitionResult,
   CreateCaseActivityInput,
+  DerivedEffectSummary,
   ManualAllocationCommand,
   ManualAllocationResult,
   MarkAppointmentMissedInput,
@@ -70,6 +72,8 @@ import type {
   OfficerAttentionKind,
   PerformanceEntryDto,
   RecordPerformanceEntryInput,
+  EffectRepairResult,
+  RetryEffectCommand,
   ReplaceAppointmentCommand,
   ReplaceAppointmentResult,
   ReplaceAppointmentSlotInput,
@@ -82,7 +86,10 @@ import type {
   StartWorkAppointmentResult,
   StartWorkCommand,
   StartWorkResult,
+  WaiveEffectCommand,
 } from "@townops/orchestration-contract";
+
+import type { DerivedEffectIntent } from "../activities/derived-effects.ts";
 
 export const openCase = defineUpdate<OpenCaseResult, [OpenCaseCommand]>(
   UPDATE_NAMES.openCase
@@ -113,6 +120,14 @@ export const completeCase = defineUpdate<
 export const cancelCase = defineUpdate<CancelCaseResult, [CancelCaseCommand]>(
   UPDATE_NAMES.cancelCase
 );
+export const retryEffect = defineUpdate<
+  EffectRepairResult,
+  [RetryEffectCommand]
+>(UPDATE_NAMES.retryEffect);
+export const waiveEffect = defineUpdate<
+  EffectRepairResult,
+  [WaiveEffectCommand]
+>(UPDATE_NAMES.waiveEffect);
 
 const activities = proxyActivities<{
   isCaseTerminal(input: { caseId: string }): Promise<boolean>;
@@ -208,6 +223,45 @@ const activities = proxyActivities<{
   }): Promise<PerformanceEntryDto>;
 }>({ startToCloseTimeout: "10 seconds" });
 
+const effectActivities = proxyActivities<{
+  reserveEffect(input: DerivedEffectIntent): Promise<DerivedEffectSummary>;
+  dispatchEmailEffect(input: {
+    id: string;
+    nextRetryAt: string;
+  }): Promise<DerivedEffectSummary>;
+  dispatchPerformanceEffect(input: {
+    id: string;
+    contractorId: string;
+    scoreDelta: number;
+    reason: string;
+    nextRetryAt: string;
+  }): Promise<DerivedEffectSummary>;
+  markEffectUnknown(id: string): Promise<DerivedEffectSummary>;
+  retryEffect(input: {
+    id: string;
+    acknowledgeDuplicateRisk: boolean;
+  }): Promise<
+    | { kind: "SUCCESS"; effect: DerivedEffectSummary }
+    | { kind: "NOT_FOUND" }
+    | { kind: "ACK_REQUIRED" }
+    | { kind: "NOT_REPAIRABLE" }
+  >;
+  waiveEffect(input: {
+    id: string;
+    actorId: string;
+    reason: string;
+  }): Promise<DerivedEffectSummary | null>;
+  raiseDerivedEffectAttention(input: {
+    caseId: string;
+    effectId: string;
+    detail: string;
+  }): Promise<void>;
+  resolveDerivedEffectAttention(input: {
+    caseId: string;
+    effectId: string;
+  }): Promise<void>;
+}>({ startToCloseTimeout: "10 seconds", retry: { maximumAttempts: 1 } });
+
 type Operation = {
   payloadHash: string;
   result?: OpenCaseResult;
@@ -283,6 +337,19 @@ type CancellationOperation = {
   payloadHash: string;
   result?: CancelCaseResult;
   pending?: Promise<CancelCaseResult>;
+};
+type EffectRepairOperation = {
+  payloadHash: string;
+  result?: EffectRepairResult;
+  pending?: Promise<EffectRepairResult>;
+};
+type EffectRuntime = {
+  intent: DerivedEffectIntent;
+  attempts: number;
+  nextRetryAt?: number;
+  status: "PENDING" | "SENT" | "FAILED" | "UNKNOWN" | "WAIVED";
+  inFlight: boolean;
+  manualRetry: boolean;
 };
 
 /**
@@ -586,13 +653,6 @@ async function runBreach(
     return { status: "ATTEMPT_NO_LONGER_LIVE" };
   }
 
-  await activities.recordPerformanceEntry({
-    effectId: `${attempt.attemptId}/acceptance-sla-breach`,
-    contractorId: attempt.contractorId,
-    scoreDelta: ACCEPTANCE_SLA_BREACH_SCORE_DELTA,
-    reason: "ACCEPTANCE_SLA_BREACH",
-  });
-
   const caseOutcome = await activities.markCaseBreached({
     caseId,
     operationId: `${caseId}/breach/${attempt.attemptId}/pending`,
@@ -681,15 +741,6 @@ async function runStartWork(
   };
 }
 
-function isPermanentPerformanceFailure(error: unknown) {
-  return (
-    error instanceof ActivityFailure &&
-    error.cause instanceof ApplicationFailure &&
-    error.cause.nonRetryable === true &&
-    error.cause.type === "PERFORMANCE_ENTRY_REJECTED"
-  );
-}
-
 /**
  * Forward-only completion: validate all immutable proof before writes, then
  * Appointment -> Assignment -> Case -> performance. Once any transition has
@@ -774,25 +825,6 @@ async function runCompletion(
     return { kind: "COMPLETION_FAILED" };
   }
 
-  try {
-    await activities.recordCompletionPerformance({
-      effectId: `${command.assignmentId}/completion`,
-      contractorId: command.contractorId,
-      scoreDelta: ASSIGNMENT_COMPLETED_SCORE_DELTA,
-      reason: "ASSIGNMENT_COMPLETED",
-    });
-  } catch (error) {
-    if (!isPermanentPerformanceFailure(error)) throw error;
-
-    await activities.raiseOfficerAttention({
-      caseId: command.caseId,
-      kind: "COMPLETION_FAILED",
-      detail:
-        "Metrics could not record completion performance after the Appointment, Assignment, and Case completed.",
-      operationId: `${op}/completion-failed`,
-    });
-    return { kind: "COMPLETION_FAILED" };
-  }
   return {
     kind: "SUCCESS",
     data: {
@@ -1037,6 +1069,169 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   let acceptanceGuard = 0;
   let completionGuard = 0;
   let appointmentExpiryGuard = 0;
+  const effects = new Map<string, EffectRuntime>();
+  const effectRepairOperations = new Map<string, EffectRepairOperation>();
+  let effectRevision = 0;
+
+  function queueEffect(intent: DerivedEffectIntent) {
+    if (effects.has(intent.id)) return;
+    effects.set(intent.id, {
+      intent,
+      attempts: 0,
+      status: "PENDING",
+      inFlight: false,
+      manualRetry: false,
+    });
+    effectRevision++;
+  }
+
+  function queueAssignmentNotification(attempt: CommittedAttempt) {
+    queueEffect({
+      id: `${attempt.attemptId}/assignment-notification`,
+      caseId,
+      type: "EMAIL",
+      purpose: "ATTEMPT_ASSIGNMENT_NOTIFICATION",
+      recipient: { type: "CONTRACTOR", id: attempt.contractorId },
+    });
+  }
+
+  function effectsSettled() {
+    return [...effects.values()].every(
+      (effect) =>
+        !effect.inFlight &&
+        (effect.status === "SENT" || effect.status === "WAIVED")
+    );
+  }
+
+  function nextEffectDeadline(): number | undefined {
+    const now = Date.now();
+    const upcoming = [...effects.values()]
+      .filter(
+        (effect) =>
+          !effect.inFlight &&
+          (effect.status === "PENDING" || effect.status === "FAILED")
+      )
+      .flatMap((effect) =>
+        effect.nextRetryAt !== undefined && effect.nextRetryAt > now
+          ? [effect.nextRetryAt]
+          : []
+      );
+    return upcoming.length > 0 ? Math.min(...upcoming) : undefined;
+  }
+
+  /**
+   * Resolving an Attention is bookkeeping, not delivery: the ledger is already
+   * authoritative that the effect was sent or waived. Letting a failure here
+   * propagate would demote a delivered effect back to FAILED (via runEffect's
+   * catch) or fail an Update whose durable waive already committed, and in both
+   * cases `effectsSettled()` would never trip so a terminal Workflow would
+   * never close. Tolerating it leaves an orphaned open DERIVED_EFFECT_UNKNOWN
+   * row instead, which self-heals on the next raise/resolve cycle.
+   *
+   * Raising an Attention is deliberately NOT tolerated the same way — swallowing
+   * that would silently lose an effect the Officer must repair.
+   */
+  async function resolveAttentionTolerantly(effect: EffectRuntime) {
+    try {
+      await effectActivities.resolveDerivedEffectAttention({
+        caseId,
+        effectId: effect.intent.id,
+      });
+    } catch {
+      log.warn("Derived effect Attention resolution failed", {
+        caseId,
+        effectId: effect.intent.id,
+      });
+    }
+  }
+
+  async function finishEffect(
+    effect: EffectRuntime,
+    result: DerivedEffectSummary
+  ) {
+    effect.status = result.status;
+    effect.nextRetryAt = result.nextRetryAt
+      ? Date.parse(result.nextRetryAt)
+      : undefined;
+    if (result.status === "UNKNOWN") {
+      await effectActivities.raiseDerivedEffectAttention({
+        caseId,
+        effectId: effect.intent.id,
+        detail: `Derived effect ${effect.intent.id} was not confirmed within Resend's 24-hour idempotency window.`,
+      });
+    }
+    if (result.status === "SENT" || result.status === "WAIVED") {
+      await resolveAttentionTolerantly(effect);
+    }
+  }
+
+  async function runEffect(effect: EffectRuntime) {
+    try {
+      effect.attempts++;
+      const nextRetryAt = new Date(
+        Date.now() + Math.min(1_000 * 2 ** (effect.attempts - 1), 5 * 60_000)
+      ).toISOString();
+      let current = await effectActivities.reserveEffect(effect.intent);
+      await finishEffect(effect, current);
+      if (effect.status === "FAILED") {
+        const retried = await effectActivities.retryEffect({
+          id: effect.intent.id,
+          acknowledgeDuplicateRisk: false,
+        });
+        if (retried.kind !== "SUCCESS") return;
+        current = retried.effect;
+        await finishEffect(effect, current);
+      }
+      if (effect.status !== "PENDING") return;
+      if (
+        effect.intent.type === "EMAIL" &&
+        !effect.manualRetry &&
+        current.attempts > 0 &&
+        Date.now() - Date.parse(current.createdAt) >= 24 * 60 * 60_000
+      ) {
+        await finishEffect(
+          effect,
+          await effectActivities.markEffectUnknown(effect.intent.id)
+        );
+        return;
+      }
+      effect.manualRetry = false;
+      const result =
+        effect.intent.type === "EMAIL"
+          ? await effectActivities.dispatchEmailEffect({
+              id: effect.intent.id,
+              nextRetryAt,
+            })
+          : await effectActivities.dispatchPerformanceEffect({
+              id: effect.intent.id,
+              contractorId: effect.intent.contractorId,
+              scoreDelta: effect.intent.scoreDelta,
+              reason: effect.intent.reason,
+              nextRetryAt,
+            });
+      await finishEffect(effect, result);
+    } catch {
+      effect.status = "FAILED";
+      effect.nextRetryAt =
+        Date.now() + Math.min(1_000 * 2 ** (effect.attempts - 1), 5 * 60_000);
+    } finally {
+      effect.inFlight = false;
+      effectRevision++;
+    }
+  }
+
+  function startReadyEffects() {
+    const ready = [...effects.values()].filter(
+      (effect) =>
+        !effect.inFlight &&
+        (effect.status === "PENDING" || effect.status === "FAILED") &&
+        (effect.nextRetryAt === undefined || effect.nextRetryAt <= Date.now())
+    );
+    for (const effect of ready) {
+      effect.inFlight = true;
+      void runEffect(effect);
+    }
+  }
 
   setHandler(openCase, async (unparsedCommand) => {
     const command = OpenCaseCommandSchema.parse(unparsedCommand);
@@ -1286,6 +1481,18 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     try {
       operation.pending = runNoAccess(command);
       operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        queueEffect({
+          id: `${operation.result.data.appointment.id}/no-access-notification`,
+          caseId,
+          type: "EMAIL",
+          purpose: "APPOINTMENT_NO_ACCESS_NOTIFICATION",
+          recipient: {
+            type: "RESIDENT",
+            id: operation.result.data.case.residentId,
+          },
+        });
+      }
       if (
         currentAppointment?.appointmentId === command.appointmentId &&
         (operation.result.kind === "SUCCESS" ||
@@ -1360,6 +1567,28 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       operation.pending = runReplaceAppointment(command);
       operation.result = await operation.pending;
       if (operation.result.kind === "SUCCESS") {
+        const appointment = operation.result.data.appointment;
+        const notification = {
+          caseId,
+          type: "EMAIL" as const,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+        };
+        queueEffect({
+          id: `${appointment.id}/reschedule/resident`,
+          ...notification,
+          purpose: "APPOINTMENT_RESCHEDULE_RESIDENT_NOTIFICATION",
+          recipient: {
+            type: "RESIDENT",
+            id: operation.result.data.case.residentId,
+          },
+        });
+        queueEffect({
+          id: `${appointment.id}/reschedule/contractor`,
+          ...notification,
+          purpose: "APPOINTMENT_RESCHEDULE_CONTRACTOR_NOTIFICATION",
+          recipient: { type: "CONTRACTOR", id: appointment.contractorId },
+        });
         currentAppointment = {
           appointmentId: operation.result.data.appointment.id,
           endAt: Date.parse(operation.result.data.appointment.endTime),
@@ -1445,6 +1674,118 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
     }
   });
 
+  setHandler(retryEffect, async (unparsedCommand) => {
+    const command = RetryEffectCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+    const existing = effectRepairOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error(
+        "Effect repair operation has no result or pending activity"
+      );
+    }
+    const effect = effects.get(command.effectId);
+    if (!effect) return { kind: "EFFECT_NOT_FOUND" };
+
+    const operation: EffectRepairOperation = {
+      payloadHash: command.payloadHash,
+    };
+    effectRepairOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = effectActivities
+        .retryEffect({
+          id: command.effectId,
+          acknowledgeDuplicateRisk: command.input.acknowledgeDuplicateRisk,
+        })
+        .then(
+          (result): EffectRepairResult =>
+            result.kind === "NOT_FOUND"
+              ? { kind: "EFFECT_NOT_FOUND" }
+              : result.kind === "ACK_REQUIRED"
+                ? { kind: "DUPLICATE_RISK_ACKNOWLEDGEMENT_REQUIRED" }
+                : result.kind === "NOT_REPAIRABLE"
+                  ? { kind: "EFFECT_NOT_REPAIRABLE" }
+                  : { kind: "SUCCESS", effect: result.effect }
+        );
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        effect.status = "PENDING";
+        effect.nextRetryAt = undefined;
+        // Restarts the backoff ramp: without this, a manual retry after many
+        // automatic attempts would dispatch its very first try already
+        // capped at the 5-minute ceiling instead of the 1s start.
+        effect.attempts = 0;
+        effect.manualRetry = command.input.acknowledgeDuplicateRisk;
+        effectRevision++;
+      }
+      return operation.result;
+    } catch (error) {
+      effectRepairOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
+  });
+
+  setHandler(waiveEffect, async (unparsedCommand) => {
+    const command = WaiveEffectCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+    const existing = effectRepairOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error(
+        "Effect repair operation has no result or pending activity"
+      );
+    }
+    const effect = effects.get(command.effectId);
+    if (!effect) return { kind: "EFFECT_NOT_FOUND" };
+
+    const operation: EffectRepairOperation = {
+      payloadHash: command.payloadHash,
+    };
+    effectRepairOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = effectActivities
+        .waiveEffect({
+          id: command.effectId,
+          actorId: command.actorId,
+          reason: command.input.reason,
+        })
+        .then(
+          (waived): EffectRepairResult =>
+            waived
+              ? { kind: "SUCCESS", effect: waived }
+              : { kind: "EFFECT_NOT_FOUND" }
+        );
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        // Local state must never lag the durable commit it represents: the
+        // atom has already recorded WAIVED above, so this Workflow reflects
+        // that before doing anything that can fail. See
+        // `resolveAttentionTolerantly` for why the resolve below cannot be
+        // allowed to fail this Update.
+        effect.status = "WAIVED";
+        effect.nextRetryAt = undefined;
+        effectRevision++;
+        await resolveAttentionTolerantly(effect);
+      }
+      return operation.result;
+    } catch (error) {
+      effectRepairOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
+  });
+
   setHandler(completeCase, async (unparsedCommand) => {
     const command = CompleteCaseCommandSchema.parse(unparsedCommand);
     if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
@@ -1466,7 +1807,28 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       completionGuard++;
       operation.pending = runCompletion(command);
       operation.result = await operation.pending;
-      if (operation.result.kind === "SUCCESS") closeAfterCompletion = true;
+      if (operation.result.kind === "SUCCESS") {
+        queueEffect({
+          id: `${command.assignmentId}/completion-notification`,
+          caseId,
+          type: "EMAIL",
+          purpose: "ASSIGNMENT_COMPLETION_NOTIFICATION",
+          recipient: {
+            type: "RESIDENT",
+            id: operation.result.data.case.residentId,
+          },
+        });
+        queueEffect({
+          id: `${command.assignmentId}/completion`,
+          caseId,
+          type: "PERFORMANCE_ENTRY",
+          purpose: "ASSIGNMENT_COMPLETION_PERFORMANCE",
+          contractorId: command.contractorId,
+          scoreDelta: ASSIGNMENT_COMPLETED_SCORE_DELTA,
+          reason: "ASSIGNMENT_COMPLETED",
+        });
+        closeAfterCompletion = true;
+      }
       if (operation.result.kind === "COMPLETION_FAILED") {
         completionOperations.delete(command.idempotencyKey);
       }
@@ -1486,9 +1848,29 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   // request, while the absolute retry deadline remains intact. PRS-144 adds a
   // second timer on the same wait — the current Attempt's acceptance
   // deadline — so an unaccepted offer breaches without a manual poll.
+  //
+  // lint: several checks below on cancellationStarted, closeAfterCompletion,
+  // currentAppointment, and accepted read as unnecessary to TypeScript's flow
+  // analysis, since nothing between their declaration and use reassigns them
+  // in straight-line code. They are load-bearing: every one of those
+  // variables is mutated only inside a setHandler closure (cancelCase,
+  // completeCase, replaceAppointment, acceptAllocation, ...), which can run
+  // and interleave across any `await` in this loop (runMissedAppointment,
+  // runBreach, the condition() waits). Flow analysis can't see that
+  // interleaving, so it looks redundant; it is the actual race guard. Do not
+  // delete or suppress these on the strength of the warning alone.
+  //
+  // Every closeAfterCompletion && effectsSettled() check below also gates on
+  // allHandlersFinished(): a repair handler (retryEffect/waiveEffect) can
+  // settle the last open effect and bump effectRevision from inside its own
+  // still-running Update — the settle wakes this loop before that handler
+  // has returned, and returning here out from under it fails the Update
+  // with AcceptedUpdateCompletedWorkflow. Do not drop this guard.
   while (true) {
-    if (closeAfterCompletion) return;
-    if (cancellationStarted) {
+    startReadyEffects();
+    if (closeAfterCompletion && effectsSettled() && allHandlersFinished())
+      return;
+    if (cancellationStarted && !closeAfterCompletion) {
       await condition(() => !cancellationStarted || closeAfterCompletion);
       continue;
     }
@@ -1499,18 +1881,37 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       if (!automaticAllocationActive && automaticRetryAt !== undefined) {
         deadlines.push(automaticRetryAt);
       }
+      const effectDeadline = nextEffectDeadline();
+      if (effectDeadline !== undefined) deadlines.push(effectDeadline);
 
       if (deadlines.length > 0) {
+        const earliestDeadline = Math.min(...deadlines);
         const revisionAtWait = appointmentStateRevision;
+        const effectRevisionAtWait = effectRevision;
         const wokeForRequest = await condition(
           () =>
-            closeAfterCompletion ||
+            (closeAfterCompletion &&
+              effectsSettled() &&
+              allHandlersFinished()) ||
             allocationQueue.length > 0 ||
-            appointmentStateRevision !== revisionAtWait,
-          Math.max(0, Math.min(...deadlines) - Date.now())
+            appointmentStateRevision !== revisionAtWait ||
+            effectRevision !== effectRevisionAtWait,
+          // ponytail: floor is 1, not 0 — @temporalio/workflow's condition(fn, 0)
+          // special-cases a zero timeout back to an indefinite wait with no timer
+          // (conditionInner), silently discarding every deadline here. Do not
+          // "simplify" this back to Math.max(0, ...).
+          Math.max(1, earliestDeadline - Date.now())
         );
 
-        if (!wokeForRequest) {
+        // Why this is not just `!wokeForRequest`: waking early and having a
+        // deadline due are independent facts, and conflating them starves the
+        // deadline. A derived effect that keeps failing bumps `effectRevision`
+        // on every attempt, so the predicate above can keep returning true at
+        // the exact moments an Appointment expiry or acceptance SLA comes due,
+        // skipping this block indefinitely. Every action inside re-checks its
+        // own `Date.now() >=` guard, so entering on an elapsed deadline is
+        // safe — it just decides nothing is due yet.
+        if (!wokeForRequest || earliestDeadline <= Date.now()) {
           // A handler armed before the deadline must finish before this
           // check runs, or a before-deadline acceptance could lose the race
           // to the breach it should have prevented.
@@ -1555,6 +1956,24 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
             } finally {
               allocationMutationGuard--;
             }
+            if (outcome.status !== "ATTEMPT_NO_LONGER_LIVE") {
+              queueEffect({
+                id: `${breached.attemptId}/acceptance-sla-breach-notification`,
+                caseId,
+                type: "EMAIL",
+                purpose: "ATTEMPT_BREACH_NOTIFICATION",
+                recipient: { type: "CONTRACTOR", id: breached.contractorId },
+              });
+              queueEffect({
+                id: `${breached.attemptId}/acceptance-sla-breach`,
+                caseId,
+                type: "PERFORMANCE_ENTRY",
+                purpose: "ATTEMPT_BREACH_PERFORMANCE",
+                contractorId: breached.contractorId,
+                scoreDelta: ACCEPTANCE_SLA_BREACH_SCORE_DELTA,
+                reason: "ACCEPTANCE_SLA_BREACH",
+              });
+            }
             currentAttempt = undefined;
             if (outcome.status === "REPLACED") {
               automaticAllocationActive = false;
@@ -1589,16 +2008,21 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
         }
       } else {
         const revisionAtWait = appointmentStateRevision;
+        const effectRevisionAtWait = effectRevision;
         await condition(
           () =>
-            closeAfterCompletion ||
+            (closeAfterCompletion &&
+              effectsSettled() &&
+              allHandlersFinished()) ||
             allocationQueue.length > 0 ||
-            appointmentStateRevision !== revisionAtWait
+            appointmentStateRevision !== revisionAtWait ||
+            effectRevision !== effectRevisionAtWait
         );
       }
     }
 
-    if (closeAfterCompletion) return;
+    if (closeAfterCompletion && effectsSettled() && allHandlersFinished())
+      return;
 
     const request = allocationQueue.shift();
     if (!request) continue;
@@ -1638,6 +2062,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
           allocation = { status: "ALLOCATED", attempt: outcome.attempt };
           currentAttempt = outcome.attempt;
           accepted = false;
+          queueAssignmentNotification(outcome.attempt);
         }
       } else if (result.kind === "ACTIVE_ATTEMPT_EXISTS") {
         automaticAllocationActive = true;
@@ -1691,6 +2116,7 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
       automaticRetryDelayMs = INITIAL_ALLOCATION_RETRY_MS;
       currentAttempt = allocation.attempt;
       accepted = false;
+      queueAssignmentNotification(allocation.attempt);
       continue;
     }
     if (allocation.status === "TERMINAL") {

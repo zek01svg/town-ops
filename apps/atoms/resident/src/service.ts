@@ -11,6 +11,18 @@ export async function getResidentById(id: string) {
   return db.select().from(profiles).where(eq(profiles.id, id));
 }
 
+export async function getResidentContact(id: string) {
+  const [resident] = await db
+    .select({
+      id: profiles.id,
+      email: profiles.email,
+      fullName: profiles.fullName,
+    })
+    .from(profiles)
+    .where(eq(profiles.id, id));
+  return resident ?? null;
+}
+
 /**
  * Search residents by postal code.
  */
@@ -21,7 +33,7 @@ export async function getResidentsByPostalCode(postalCode: string) {
 /**
  * Create a new resident profile.
  */
-export async function createResident(values: any) {
+export async function createResident(values: typeof profiles.$inferInsert) {
   const [newResident] = await db.insert(profiles).values(values).returning();
   if (!newResident) throw new Error("Resident insert did not return a row");
   return newResident;
@@ -30,7 +42,10 @@ export async function createResident(values: any) {
 /**
  * Update an existing resident profile.
  */
-export async function updateResident(id: string, values: any) {
+export async function updateResident(
+  id: string,
+  values: Partial<typeof profiles.$inferInsert>
+) {
   const [updated] = await db
     .update(profiles)
     .set({ ...values, updatedAt: new Date().toISOString() })

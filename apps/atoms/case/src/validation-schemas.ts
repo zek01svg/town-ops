@@ -31,9 +31,11 @@ export const raiseOfficerAttentionSchema = z
       "WORK_START_FAILED",
       "MISSED_APPOINTMENT",
       "COMPLETION_FAILED",
+      "DERIVED_EFFECT_UNKNOWN",
     ]),
     detail: z.string().trim().min(1).max(10_000),
     operationId: z.string().min(1),
+    effectId: z.string().min(1).optional(),
   })
   .strict();
 

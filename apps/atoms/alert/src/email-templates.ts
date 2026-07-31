@@ -84,6 +84,28 @@ export function getJobCompletedEmail({ caseId }: BaseTemplateParams) {
   `;
 }
 
+/** Template for a replacement Appointment. */
+export function getAppointmentRescheduledEmail({
+  caseId,
+  startTime,
+  endTime,
+}: {
+  caseId: string;
+  startTime: string;
+  endTime: string;
+}) {
+  return `
+    <h1>Appointment Rescheduled</h1>
+    <p>The appointment for the following case has been moved:</p>
+    <ul>
+      <li><strong>Case ID:</strong> ${caseId}</li>
+      <li><strong>New start:</strong> ${startTime}</li>
+      <li><strong>New end:</strong> ${endTime}</li>
+    </ul>
+    <p>Please check the TownOps portal for the updated visit details.</p>
+  `;
+}
+
 /**
  * Generic Fallback Alert Template.
  */

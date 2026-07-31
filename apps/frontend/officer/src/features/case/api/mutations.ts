@@ -161,3 +161,45 @@ export function useHandleBreachMutation() {
     },
   });
 }
+
+export function useRepairEffectMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      caseId: string;
+      effectId: string;
+      action: "retry" | "waive";
+      reason?: string;
+      acknowledgeDuplicateRisk?: boolean;
+    }) => {
+      const res = await fetchWithAuth(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/effects/${encodeURIComponent(input.effectId)}/${input.action}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+          body: JSON.stringify(
+            input.action === "waive"
+              ? { reason: input.reason }
+              : { acknowledgeDuplicateRisk: input.acknowledgeDuplicateRisk }
+          ),
+        },
+        env.VITE_AUTH_URL
+      );
+      if (!res.ok) {
+        const body = gatewayErrorSchema.safeParse(
+          await res.json().catch(() => ({}))
+        );
+        throw new Error(
+          body.data?.error?.message ?? `Effect repair failed (${res.status})`
+        );
+      }
+      return res.json();
+    },
+    onSuccess: (_, input) => {
+      void qc.invalidateQueries({ queryKey: caseKeys.effects(input.caseId) });
+    },
+  });
+}

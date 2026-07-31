@@ -9,6 +9,7 @@ interface SendEmailOptions {
   to: string;
   subject: string;
   html: string;
+  idempotencyKey?: string;
 }
 
 /**
@@ -17,13 +18,21 @@ interface SendEmailOptions {
  * @param subject - The subject line of the email.
  * @param html - The HTML body of the email.
  */
-export async function sendEmail({ to, subject, html }: SendEmailOptions) {
+export async function sendEmail({
+  to,
+  subject,
+  html,
+  idempotencyKey,
+}: SendEmailOptions) {
   try {
     const { data } = await mailer.emails.send({
       from: "TownOps <townops@resend.dev>",
       to: [to],
       subject: subject,
       html: html,
+      headers: idempotencyKey
+        ? { "Idempotency-Key": idempotencyKey }
+        : undefined,
     });
 
     logger.info(

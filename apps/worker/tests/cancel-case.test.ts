@@ -19,6 +19,8 @@ import type {
 } from "@townops/orchestration-contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { immediateDerivedEffectActivities } from "./derived-effect-test-activities";
+
 function command(caseId: string): CancelCaseCommand {
   const idempotencyKey = randomUUID();
   const payloadHash = "a".repeat(64);
@@ -92,6 +94,7 @@ describe("Case cancellation workflow (PRS-148)", () => {
           expect(input.reason).toBe(commandValue.input.reason);
           return { outcome: "CANCELLED" as const, case: cancelledCase(caseId) };
         },
+        ...immediateDerivedEffectActivities(),
       },
     });
     const client = new Client({ connection: env.nativeConnection });
@@ -159,6 +162,7 @@ describe("Case cancellation workflow (PRS-148)", () => {
           calls.push("case");
           return { outcome: "CANCELLED" as const, case: cancelledCase(caseId) };
         },
+        ...immediateDerivedEffectActivities(),
       },
     });
     const client = new Client({ connection: env.nativeConnection });
@@ -215,6 +219,7 @@ describe("Case cancellation workflow (PRS-148)", () => {
           calls.push("case");
           return { outcome: "CANCELLED" as const, case: cancelledCase(caseId) };
         },
+        ...immediateDerivedEffectActivities(),
       },
     });
     const client = new Client({ connection: env.nativeConnection });

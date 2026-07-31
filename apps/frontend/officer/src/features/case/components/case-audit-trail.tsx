@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { auditQueries } from "../api/audit-queries";
 import {
   useCancelCaseMutation,
+  useRepairEffectMutation,
   useReplaceAppointmentMutation,
 } from "../api/mutations";
 import type { GatewayAppointment } from "../api/queries";
@@ -68,14 +69,21 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
   const { data: appointment } = useQuery(
     caseQueries.gatewayAppointment(caseId)
   );
+  const { data: effects = [] } = useQuery(caseQueries.effects(caseId));
   const replaceAppointment = useReplaceAppointmentMutation();
   const cancelCase = useCancelCaseMutation();
+  const repairEffect = useRepairEffectMutation();
   const replacementKey = useRef<string | undefined>(undefined);
   const cancellationKey = useRef<string | undefined>(undefined);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [reason, setReason] = useState("");
   const [cancellationReason, setCancellationReason] = useState("");
+  // Keyed by effect id — a shared reason field would leave the previous
+  // effect's text pre-filled (and dispatched) when waiving the next one.
+  const [waiverReasons, setWaiverReasons] = useState<Record<string, string>>(
+    {}
+  );
 
   const isReasonRequired = appointment?.status === "SCHEDULED";
   const blockedFor = rescheduleBlocker(
@@ -233,6 +241,104 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
           {cancelCase.isError && (
             <p className="text-[10px] text-destructive uppercase">
               {cancelCase.error.message}
+            </p>
+          )}
+        </div>
+      )}
+
+      {effects.some(
+        (effect) => effect.status === "FAILED" || effect.status === "UNKNOWN"
+      ) && (
+        <div className="flex flex-col gap-3 border border-border p-4 bg-card">
+          <span className="font-label text-xs uppercase tracking-widest text-foreground font-bold">
+            Effect Repair
+          </span>
+          {effects
+            // Only FAILED and UNKNOWN are actually repairable (retryEffect
+            // rejects everything else as NOT_REPAIRABLE) — PENDING is still
+            // in flight, not stuck, so it has no business in this panel.
+            .filter(
+              (effect) =>
+                effect.status === "FAILED" || effect.status === "UNKNOWN"
+            )
+            .map((effect) => (
+              <div
+                key={effect.id}
+                className="border border-border/50 p-2 text-[10px]"
+              >
+                <p className="font-mono break-all">{effect.id}</p>
+                <p className="text-muted-foreground">
+                  {effect.status} · attempts {effect.attempts}
+                </p>
+                {effect.lastError && (
+                  <p className="text-destructive">{effect.lastError}</p>
+                )}
+                <label className="flex flex-col gap-1 mt-2 text-[10px] font-label uppercase tracking-widest text-muted-foreground">
+                  Waiver reason
+                  <textarea
+                    value={waiverReasons[effect.id] ?? ""}
+                    onChange={(event) =>
+                      setWaiverReasons((prev) => ({
+                        ...prev,
+                        [effect.id]: event.target.value,
+                      }))
+                    }
+                    maxLength={1000}
+                    rows={2}
+                    className="border border-border bg-background px-2 py-1 text-xs text-foreground normal-case tracking-normal"
+                  />
+                </label>
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={repairEffect.isPending}
+                    onClick={() => {
+                      const acknowledgeDuplicateRisk =
+                        effect.status === "UNKNOWN";
+                      if (
+                        acknowledgeDuplicateRisk &&
+                        !window.confirm(
+                          "The provider's deduplication window has expired. Retrying may send a duplicate email. Continue?"
+                        )
+                      ) {
+                        return;
+                      }
+                      repairEffect.mutate({
+                        caseId,
+                        effectId: effect.id,
+                        action: "retry",
+                        acknowledgeDuplicateRisk,
+                      });
+                    }}
+                  >
+                    Retry
+                    {effect.status === "UNKNOWN" ? " (duplicate risk)" : ""}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      repairEffect.isPending ||
+                      !(waiverReasons[effect.id] ?? "").trim()
+                    }
+                    onClick={() =>
+                      repairEffect.mutate({
+                        caseId,
+                        effectId: effect.id,
+                        action: "waive",
+                        reason: waiverReasons[effect.id] ?? "",
+                      })
+                    }
+                  >
+                    Waive
+                  </Button>
+                </div>
+              </div>
+            ))}
+          {repairEffect.isError && (
+            <p className="text-[10px] text-destructive">
+              {repairEffect.error.message}
             </p>
           )}
         </div>

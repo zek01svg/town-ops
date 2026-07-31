@@ -146,4 +146,29 @@ describe("Contractor Atom API Endpoints (Unit)", () => {
       expect(mockQuery.innerJoin).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe("GET /internal/contractors/:id/contact", () => {
+    // workerAuth-gated trust boundary (PRS-150 effect delivery) returning
+    // personal contact data — same auth coverage pattern as the resident
+    // atom's internal routes. The authenticated-success shape and 404 checks
+    // live in tests/integration/contractor.test.ts instead, since this file
+    // mocks `db` and can't exercise the real select() projection.
+    it("rejects requests without the Worker service identity", async () => {
+      const res = await app.request(
+        `/internal/contractors/${VALID_UUID}/contact`
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects a same-length but incorrect Bearer token", async () => {
+      const res = await app.request(
+        `/internal/contractors/${VALID_UUID}/contact`,
+        { headers: { Authorization: `Bearer ${"b".repeat(32)}` } }
+      );
+
+      expect(res.status).toBe(401);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+  });
 });

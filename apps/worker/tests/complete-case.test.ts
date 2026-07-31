@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-import { ApplicationFailure } from "@temporalio/activity";
 import {
   Client,
   WithStartWorkflowOperation,
@@ -29,6 +28,11 @@ type Recorded = {
   calls: string[];
   attentions: { caseId: string; kind: OfficerAttentionKind }[];
   effectIds: string[];
+  effects: {
+    reservations: { id: string; type: "EMAIL" | "PERFORMANCE_ENTRY" }[];
+    dispatched: string[];
+  };
+  derivedEffectAttentions: string[];
 };
 
 function caseDto(caseId: string, status: "IN_PROGRESS" | "COMPLETED"): CaseDto {
@@ -72,8 +76,42 @@ function activities(
   recorded: Recorded,
   validation: Validation,
   completedCase: CaseDto,
-  options: { metricsFails?: boolean; metricsFailuresRemaining?: number } = {}
+  options: {
+    effectGate?: Promise<void>;
+    effectCreatedAt?: string;
+    emailReservationFails?: boolean;
+    performanceReservationFails?: boolean;
+    resolveDerivedEffectAttentionFails?: boolean;
+  } = {}
 ) {
+  const effect = (
+    input: {
+      id: string;
+      caseId: string;
+      type: "EMAIL" | "PERFORMANCE_ENTRY";
+      purpose: string;
+    },
+    status: "PENDING" | "SENT" | "FAILED" | "UNKNOWN" | "WAIVED"
+  ) => ({
+    id: input.id,
+    caseId: input.caseId,
+    type: input.type,
+    purpose: input.purpose,
+    status,
+    providerId: null,
+    providerIdempotencyKey: input.id,
+    attempts: 1,
+    lastError: status === "FAILED" ? "Metrics atom unavailable" : null,
+    nextRetryAt:
+      status === "FAILED"
+        ? new Date(Date.now() + 60 * 60_000).toISOString()
+        : null,
+    waiverActorId: null,
+    waiverReason: null,
+    createdAt: options.effectCreatedAt ?? new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
   return {
     validateCompletion: async () => {
       recorded.calls.push("validate");
@@ -136,25 +174,99 @@ function activities(
         case: completedCase,
       };
     },
-    recordCompletionPerformance: async (input: { effectId: string }) => {
-      recorded.calls.push("metrics");
-      if (options.metricsFails || (options.metricsFailuresRemaining ?? 0) > 0) {
-        if (options.metricsFailuresRemaining)
-          options.metricsFailuresRemaining--;
-        throw ApplicationFailure.nonRetryable(
-          "Metrics atom rejected completion reward",
-          "PERFORMANCE_ENTRY_REJECTED"
-        );
+    reserveEffect: async (input: {
+      id: string;
+      caseId: string;
+      type: "EMAIL" | "PERFORMANCE_ENTRY";
+      purpose: string;
+    }) => {
+      recorded.effects.reservations.push({ id: input.id, type: input.type });
+      return effect(
+        input,
+        (input.type === "EMAIL" && options.emailReservationFails) ||
+          (input.type === "PERFORMANCE_ENTRY" &&
+            options.performanceReservationFails)
+          ? "FAILED"
+          : "PENDING"
+      );
+    },
+    dispatchEmailEffect: async (input: { id: string }) => {
+      recorded.effects.dispatched.push(input.id);
+      await options.effectGate;
+      return effect(
+        {
+          id: input.id,
+          caseId: completedCase.id,
+          type: "EMAIL",
+          purpose: "ASSIGNMENT_COMPLETION_NOTIFICATION",
+        },
+        "SENT"
+      );
+    },
+    dispatchPerformanceEffect: async (input: { id: string }) => {
+      recorded.effects.dispatched.push(input.id);
+      await options.effectGate;
+      recorded.effectIds.push(input.id);
+      return effect(
+        {
+          id: input.id,
+          caseId: completedCase.id,
+          type: "PERFORMANCE_ENTRY",
+          purpose: "ASSIGNMENT_COMPLETION_PERFORMANCE",
+        },
+        "SENT"
+      );
+    },
+    markEffectUnknown: async (id: string) =>
+      effect(
+        {
+          id,
+          caseId: completedCase.id,
+          type: "EMAIL",
+          purpose: "ASSIGNMENT_COMPLETION_NOTIFICATION",
+        },
+        "UNKNOWN"
+      ),
+    retryEffect: async (input: { id: string }) =>
+      options.emailReservationFails
+        ? {
+            kind: "SUCCESS" as const,
+            effect: effect(
+              {
+                id: input.id,
+                caseId: completedCase.id,
+                type: "EMAIL",
+                purpose: "ASSIGNMENT_COMPLETION_NOTIFICATION",
+              },
+              "PENDING"
+            ),
+          }
+        : { kind: "NOT_REPAIRABLE" as const },
+    waiveEffect: async (input: { id: string }) => {
+      // Echo back the effect actually requested — completeCase queues both
+      // an EMAIL notification and a PERFORMANCE_ENTRY effect, and a stub
+      // that always answers as the performance one would silently mismatch
+      // a test waiving the notification effect.
+      const isNotification = input.id.endsWith("/completion-notification");
+      return effect(
+        {
+          id: input.id,
+          caseId: completedCase.id,
+          type: isNotification ? "EMAIL" : "PERFORMANCE_ENTRY",
+          purpose: isNotification
+            ? "ASSIGNMENT_COMPLETION_NOTIFICATION"
+            : "ASSIGNMENT_COMPLETION_PERFORMANCE",
+        },
+        "WAIVED"
+      );
+    },
+    raiseDerivedEffectAttention: async (input: { effectId: string }) => {
+      recorded.derivedEffectAttentions.push(input.effectId);
+    },
+    resolveDerivedEffectAttention: async () => {
+      if (options.resolveDerivedEffectAttentionFails) {
+        throw new Error("Case atom unavailable");
       }
-      recorded.effectIds.push(input.effectId);
-      return {
-        id: randomUUID(),
-        contractorId,
-        scoreDelta: 10,
-        reason: "ASSIGNMENT_COMPLETED",
-        effectId: input.effectId,
-        createdAt: "2030-01-01T00:00:00.000Z",
-      };
     },
     raiseOfficerAttention: async (input: {
       caseId: string;
@@ -163,6 +275,14 @@ function activities(
       recorded.attentions.push(input);
     },
   };
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return predicate();
 }
 
 describe("Case completion workflow (PRS-147)", () => {
@@ -179,9 +299,18 @@ describe("Case completion workflow (PRS-147)", () => {
   async function run(
     commandValue: CompleteCaseCommand,
     validation: Validation,
-    options?: { metricsFails?: boolean; metricsFailuresRemaining?: number }
+    options?: {
+      effectGate?: Promise<void>;
+      performanceReservationFails?: boolean;
+    }
   ) {
-    const recorded: Recorded = { calls: [], attentions: [], effectIds: [] };
+    const recorded: Recorded = {
+      calls: [],
+      attentions: [],
+      effectIds: [],
+      effects: { reservations: [], dispatched: [] },
+      derivedEffectAttentions: [],
+    };
     const taskQueue = `${ORCHESTRATION_TASK_QUEUE}-${randomUUID()}`;
     const worker = await Worker.create({
       connection: env.nativeConnection,
@@ -232,63 +361,21 @@ describe("Case completion workflow (PRS-147)", () => {
     expect(result.recorded.attentions).toEqual([]);
   }, 30_000);
 
-  it("runs the terminal chain once in order and reconstructs success from an already-completed operation", async () => {
-    const firstCommand = command(randomUUID());
-    const first = await run(firstCommand, "READY");
-
-    expect(first.result).toMatchObject({ kind: "SUCCESS" });
-    expect(first.recorded.calls).toEqual([
-      "validate",
-      "appointment",
-      "assignment",
-      "case",
-      "metrics",
-    ]);
-    expect(first.recorded.effectIds).toEqual([
-      `${firstCommand.assignmentId}/completion`,
-    ]);
-
-    const replay = await run(firstCommand, "ALREADY_COMPLETED");
-
-    expect(replay.result).toMatchObject({ kind: "SUCCESS" });
-    expect(replay.recorded.calls).toEqual([
-      "validate",
-      "appointment",
-      "assignment",
-      "case",
-      "metrics",
-    ]);
-    expect(replay.recorded.effectIds).toEqual([
-      `${firstCommand.assignmentId}/completion`,
-    ]);
-  }, 30_000);
-
-  it("raises COMPLETION_FAILED when a permanent Metrics failure follows the terminal mutations", async () => {
+  it("keeps a terminal Case workflow open until its completion effects are sent", async () => {
     const commandValue = command(randomUUID());
-    const result = await run(commandValue, "READY", { metricsFails: true });
-
-    expect(result.result).toEqual({ kind: "COMPLETION_FAILED" });
-    expect(result.recorded.calls).toEqual([
-      "validate",
-      "appointment",
-      "assignment",
-      "case",
-      "metrics",
-    ]);
-    expect(result.recorded.attentions).toEqual([
-      expect.objectContaining({
-        caseId: commandValue.caseId,
-        kind: "COMPLETION_FAILED",
-      }),
-    ]);
-  }, 30_000);
-
-  it("re-enters a repaired completion with the same domain operation under a new Temporal delivery ID", async () => {
-    const commandValue = command(randomUUID());
-    const recorded: Recorded = { calls: [], attentions: [], effectIds: [] };
+    const recorded: Recorded = {
+      calls: [],
+      attentions: [],
+      effectIds: [],
+      effects: { reservations: [], dispatched: [] },
+      derivedEffectAttentions: [],
+    };
+    let releaseEffects: (() => void) | undefined;
+    const effectGate = new Promise<void>((resolve) => {
+      releaseEffects = resolve;
+    });
     const taskQueue = `${ORCHESTRATION_TASK_QUEUE}-${randomUUID()}`;
     const workflowId = `case/${commandValue.caseId}`;
-    const repairedMetrics = { metricsFailuresRemaining: 1 };
     const worker = await Worker.create({
       connection: env.nativeConnection,
       taskQueue,
@@ -299,7 +386,287 @@ describe("Case completion workflow (PRS-147)", () => {
         recorded,
         "READY",
         caseDto(commandValue.caseId, "IN_PROGRESS"),
-        repairedMetrics
+        { effectGate }
+      ),
+    });
+    const client = new Client({ connection: env.nativeConnection });
+
+    await worker.runUntil(async () => {
+      const result = await client.workflow.executeUpdateWithStart(
+        UPDATE_NAMES.completeCase,
+        {
+          args: [commandValue],
+          updateId: commandValue.operationId,
+          startWorkflowOperation: new WithStartWorkflowOperation(
+            WORKFLOW_NAMES.case,
+            {
+              workflowId,
+              taskQueue,
+              args: [{ caseId: commandValue.caseId }],
+              workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+            }
+          ),
+        }
+      );
+      expect(result).toMatchObject({ kind: "SUCCESS" });
+      expect(await waitFor(() => recorded.effects.dispatched.length > 0)).toBe(
+        true
+      );
+
+      const completion = client.workflow.getHandle(workflowId).result();
+      const closedBeforeEffects = await Promise.race([
+        completion.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 100)),
+      ]);
+      expect(closedBeforeEffects).toBe(false);
+
+      releaseEffects?.();
+      await expect(completion).resolves.toBeUndefined();
+    });
+
+    // Order-insensitive: Task 1 (PRS-150) starts every ready effect at once,
+    // so these two independent, idempotent ledger effects race as concurrent
+    // Activity round-trips — only that both dispatched is guaranteed.
+    expect(recorded.effects.dispatched).toHaveLength(2);
+    expect(recorded.effects.dispatched).toEqual(
+      expect.arrayContaining([
+        `${commandValue.assignmentId}/completion-notification`,
+        `${commandValue.assignmentId}/completion`,
+      ])
+    );
+  }, 30_000);
+
+  it("marks an email UNKNOWN after the provider window and closes only after an Officer waiver", async () => {
+    const commandValue = command(randomUUID());
+    const recorded: Recorded = {
+      calls: [],
+      attentions: [],
+      effectIds: [],
+      effects: { reservations: [], dispatched: [] },
+      derivedEffectAttentions: [],
+    };
+    const taskQueue = `${ORCHESTRATION_TASK_QUEUE}-${randomUUID()}`;
+    const workflowId = `case/${commandValue.caseId}`;
+    const effectId = `${commandValue.assignmentId}/completion-notification`;
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: fileURLToPath(
+        new URL("../src/workflows/case-workflow.ts", import.meta.url)
+      ),
+      activities: activities(
+        recorded,
+        "READY",
+        caseDto(commandValue.caseId, "IN_PROGRESS"),
+        {
+          emailReservationFails: true,
+          effectCreatedAt: new Date(
+            Date.now() - 24 * 60 * 60_000 - 1
+          ).toISOString(),
+        }
+      ),
+    });
+    const client = new Client({ connection: env.nativeConnection });
+
+    await worker.runUntil(async () => {
+      const completed = await client.workflow.executeUpdateWithStart(
+        UPDATE_NAMES.completeCase,
+        {
+          args: [commandValue],
+          updateId: commandValue.operationId,
+          startWorkflowOperation: new WithStartWorkflowOperation(
+            WORKFLOW_NAMES.case,
+            {
+              workflowId,
+              taskQueue,
+              args: [{ caseId: commandValue.caseId }],
+              workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+            }
+          ),
+        }
+      );
+      expect(completed).toMatchObject({ kind: "SUCCESS" });
+      expect(
+        await waitFor(() => recorded.derivedEffectAttentions.includes(effectId))
+      ).toBe(true);
+
+      const handle = client.workflow.getHandle(workflowId);
+      const workflowResult = handle.result();
+      const closedBeforeWaiver = await Promise.race([
+        workflowResult.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 100)),
+      ]);
+      expect(closedBeforeWaiver).toBe(false);
+
+      const waiverKey = randomUUID();
+      const waived = await handle.executeUpdate(UPDATE_NAMES.waiveEffect, {
+        args: [
+          {
+            idempotencyKey: waiverKey,
+            payloadHash: "b".repeat(64),
+            operationId: `${waiverKey}.${"b".repeat(64)}`,
+            actorId: randomUUID(),
+            actorRole: "OFFICER",
+            caseId: commandValue.caseId,
+            effectId,
+            input: { reason: "Provider confirmation unavailable" },
+          },
+        ],
+        updateId: randomUUID(),
+      });
+      expect(waived).toMatchObject({
+        kind: "SUCCESS",
+        effect: { id: effectId, type: "EMAIL", status: "WAIVED" },
+      });
+      await expect(workflowResult).resolves.toBeUndefined();
+    });
+  }, 30_000);
+
+  it("still settles the waiver and closes the terminal Workflow when resolving the Attention fails (regression: Attention bookkeeping must not corrupt delivery state)", async () => {
+    const commandValue = command(randomUUID());
+    const recorded: Recorded = {
+      calls: [],
+      attentions: [],
+      effectIds: [],
+      effects: { reservations: [], dispatched: [] },
+      derivedEffectAttentions: [],
+    };
+    const taskQueue = `${ORCHESTRATION_TASK_QUEUE}-${randomUUID()}`;
+    const workflowId = `case/${commandValue.caseId}`;
+    const effectId = `${commandValue.assignmentId}/completion-notification`;
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: fileURLToPath(
+        new URL("../src/workflows/case-workflow.ts", import.meta.url)
+      ),
+      activities: activities(
+        recorded,
+        "READY",
+        caseDto(commandValue.caseId, "IN_PROGRESS"),
+        {
+          emailReservationFails: true,
+          effectCreatedAt: new Date(
+            Date.now() - 24 * 60 * 60_000 - 1
+          ).toISOString(),
+          resolveDerivedEffectAttentionFails: true,
+        }
+      ),
+    });
+    const client = new Client({ connection: env.nativeConnection });
+
+    await worker.runUntil(async () => {
+      const completed = await client.workflow.executeUpdateWithStart(
+        UPDATE_NAMES.completeCase,
+        {
+          args: [commandValue],
+          updateId: commandValue.operationId,
+          startWorkflowOperation: new WithStartWorkflowOperation(
+            WORKFLOW_NAMES.case,
+            {
+              workflowId,
+              taskQueue,
+              args: [{ caseId: commandValue.caseId }],
+              workflowIdConflictPolicy: WorkflowIdConflictPolicy.USE_EXISTING,
+            }
+          ),
+        }
+      );
+      expect(completed).toMatchObject({ kind: "SUCCESS" });
+      expect(
+        await waitFor(() => recorded.derivedEffectAttentions.includes(effectId))
+      ).toBe(true);
+
+      const handle = client.workflow.getHandle(workflowId);
+      const workflowResult = handle.result();
+
+      const waiverKey = randomUUID();
+      // Every resolveDerivedEffectAttention call fails here. That is
+      // bookkeeping, not delivery — the atom durably recorded WAIVED — so the
+      // Update must still report SUCCESS, and the Workflow's own effect.status
+      // must not lag that durable commit. Two things would each hang a terminal
+      // Workflow forever if the ordering or the tolerance regressed: a waive
+      // whose local status is never set, and a SENT Performance Entry demoted
+      // back to FAILED by the same failing resolve. The accepted trade-off is
+      // an orphaned open Attention row.
+      const waived = await handle.executeUpdate(UPDATE_NAMES.waiveEffect, {
+        args: [
+          {
+            idempotencyKey: waiverKey,
+            payloadHash: "b".repeat(64),
+            operationId: `${waiverKey}.${"b".repeat(64)}`,
+            actorId: randomUUID(),
+            actorRole: "OFFICER",
+            caseId: commandValue.caseId,
+            effectId,
+            input: { reason: "Provider confirmation unavailable" },
+          },
+        ],
+        updateId: randomUUID(),
+      });
+
+      expect(waived).toMatchObject({ kind: "SUCCESS" });
+      await expect(workflowResult).resolves.toBeUndefined();
+    });
+  }, 30_000);
+
+  it("runs the terminal chain once in order and reconstructs success from an already-completed operation", async () => {
+    const firstCommand = command(randomUUID());
+    const first = await run(firstCommand, "READY");
+
+    expect(first.result).toMatchObject({ kind: "SUCCESS" });
+    expect(first.recorded.calls).toEqual([
+      "validate",
+      "appointment",
+      "assignment",
+      "case",
+    ]);
+    expect(first.recorded.effectIds).toEqual([]);
+
+    const replay = await run(firstCommand, "ALREADY_COMPLETED");
+
+    expect(replay.result).toMatchObject({ kind: "SUCCESS" });
+    expect(replay.recorded.calls).toEqual([]);
+    expect(replay.recorded.effectIds).toEqual([]);
+  }, 30_000);
+
+  it("returns core success when the post-commit performance effect cannot be reserved", async () => {
+    const commandValue = command(randomUUID());
+    const result = await run(commandValue, "READY", {
+      performanceReservationFails: true,
+    });
+
+    expect(result.result).toMatchObject({ kind: "SUCCESS" });
+    expect(result.recorded.calls).toEqual([
+      "validate",
+      "appointment",
+      "assignment",
+      "case",
+    ]);
+    expect(result.recorded.attentions).toEqual([]);
+  }, 30_000);
+
+  it("returns the cached core completion for a new Temporal delivery ID", async () => {
+    const commandValue = command(randomUUID());
+    const recorded: Recorded = {
+      calls: [],
+      attentions: [],
+      effectIds: [],
+      effects: { reservations: [], dispatched: [] },
+      derivedEffectAttentions: [],
+    };
+    const taskQueue = `${ORCHESTRATION_TASK_QUEUE}-${randomUUID()}`;
+    const workflowId = `case/${commandValue.caseId}`;
+    const worker = await Worker.create({
+      connection: env.nativeConnection,
+      taskQueue,
+      workflowsPath: fileURLToPath(
+        new URL("../src/workflows/case-workflow.ts", import.meta.url)
+      ),
+      activities: activities(
+        recorded,
+        "READY",
+        caseDto(commandValue.caseId, "IN_PROGRESS")
       ),
     });
     const client = new Client({ connection: env.nativeConnection });
@@ -335,28 +702,15 @@ describe("Case completion workflow (PRS-147)", () => {
     });
 
     expect(firstDeliveryId).not.toBe(repairedDeliveryId);
-    expect(firstResult).toEqual({ kind: "COMPLETION_FAILED" });
+    expect(firstResult).toMatchObject({ kind: "SUCCESS" });
     expect(repairedResult).toMatchObject({ kind: "SUCCESS" });
     expect(recorded.calls).toEqual([
       "validate",
       "appointment",
       "assignment",
       "case",
-      "metrics",
-      "validate",
-      "appointment",
-      "assignment",
-      "case",
-      "metrics",
     ]);
-    expect(recorded.effectIds).toEqual([
-      `${commandValue.assignmentId}/completion`,
-    ]);
-    expect(recorded.attentions).toEqual([
-      expect.objectContaining({
-        caseId: commandValue.caseId,
-        kind: "COMPLETION_FAILED",
-      }),
-    ]);
+    expect(recorded.effectIds).toEqual([]);
+    expect(recorded.attentions).toEqual([]);
   }, 30_000);
 });

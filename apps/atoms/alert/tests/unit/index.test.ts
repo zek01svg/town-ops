@@ -45,6 +45,9 @@ vi.mock("@townops/shared-ts", () => {
       await next();
     },
     corsOrigins: () => ["http://localhost:5173"],
+    workerAuth: () => async (_c: unknown, next: () => Promise<void>) => {
+      await next();
+    },
     initSentry: vi.fn(),
     captureHonoException: vi.fn(),
   };
@@ -55,9 +58,13 @@ vi.mock("../../src/database/db", () => ({
 }));
 
 vi.mock("resend", () => ({
-  Resend: vi.fn().mockImplementation(function (this: any) {
-    this.emails = { send: vi.fn() };
-  }),
+  Resend: vi
+    .fn()
+    .mockImplementation(
+      function (this: { emails: { send: ReturnType<typeof vi.fn> } }) {
+        this.emails = { send: vi.fn() };
+      }
+    ),
 }));
 
 vi.mock("../../src/env", () => ({

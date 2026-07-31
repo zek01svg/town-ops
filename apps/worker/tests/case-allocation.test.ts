@@ -24,6 +24,8 @@ import type {
 } from "@townops/orchestration-contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { immediateDerivedEffectActivities } from "./derived-effect-test-activities";
+
 /**
  * Automatic allocation is only observable through what the Workflow commits —
  * its ranking function is deliberately private. Every test here therefore
@@ -173,6 +175,7 @@ async function openCaseAndAllocate(
         return outcome;
       },
       raiseOfficerAttention: async () => undefined,
+      ...immediateDerivedEffectActivities(),
     },
   });
 
@@ -407,6 +410,7 @@ describe("Automatic allocation outcomes", () => {
         },
         markCaseAssigned: async () => "ASSIGNED" as const,
         raiseOfficerAttention: async () => undefined,
+        ...immediateDerivedEffectActivities(),
       },
     });
     const client = new Client({ connection: env.nativeConnection });

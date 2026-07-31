@@ -33,6 +33,8 @@ import type {
 } from "@townops/orchestration-contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { immediateDerivedEffectActivities } from "./derived-effect-test-activities";
+
 /**
  * The workflow-owned acceptance SLA timer (PRS-144). Every `it` below is one
  * of the 8 scenarios enumerated in the PRS-144 plan's Verification section.
@@ -309,6 +311,16 @@ function makeActivities(config: ActivityConfig) {
       recorded.caseBreaches.push(input);
       return "PENDING" as const;
     },
+    ...immediateDerivedEffectActivities({
+      onPerformanceDispatch: (input) => {
+        recorded.performanceEntries.push({
+          effectId: input.id,
+          contractorId: input.contractorId,
+          scoreDelta: input.scoreDelta,
+          reason: input.reason,
+        });
+      },
+    }),
   };
 }
 
@@ -451,6 +463,9 @@ describe("Acceptance SLA breach and replacement (PRS-144)", () => {
         actorId: "00000000-0000-0000-0000-000000000000",
         actorRole: "SYSTEM",
       });
+      expect(
+        await waitUntil(() => recorded.performanceEntries.length > 0)
+      ).toBe(true);
       expect(recorded.performanceEntries).toHaveLength(1);
       expect(recorded.performanceEntries[0]).toMatchObject({
         contractorId: contractorA,
@@ -585,6 +600,9 @@ describe("Acceptance SLA breach and replacement (PRS-144)", () => {
       const settled = await waitUntil(() => recorded.caseBreaches.length > 0);
       expect(settled).toBe(true);
       expect(recorded.breaches).toHaveLength(1);
+      expect(
+        await waitUntil(() => recorded.performanceEntries.length > 0)
+      ).toBe(true);
       expect(recorded.performanceEntries).toHaveLength(1);
       expect(recorded.performanceEntries[0]).toMatchObject({
         contractorId: contractorA,
@@ -817,6 +835,9 @@ describe("Acceptance SLA breach and replacement (PRS-144)", () => {
       const settled = await waitUntil(() => recorded.caseBreaches.length > 0);
       expect(settled).toBe(true);
       expect(recorded.breaches).toHaveLength(1);
+      expect(
+        await waitUntil(() => recorded.performanceEntries.length > 0)
+      ).toBe(true);
       expect(recorded.performanceEntries).toHaveLength(1);
 
       await client.workflow.getHandle(workflowId).terminate();

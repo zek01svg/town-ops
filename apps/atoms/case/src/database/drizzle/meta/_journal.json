@@ -29,6 +29,13 @@
       "when": 1785217044795,
       "tag": "0003_hard_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785228740049,
+      "tag": "0004_spotty_hannibal_king",
+      "breakpoints": true
     }
   ]
 }

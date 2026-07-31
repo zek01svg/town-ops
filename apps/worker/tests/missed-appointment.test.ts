@@ -24,6 +24,8 @@ import type {
 } from "@townops/orchestration-contract";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { immediateDerivedEffectActivities } from "./derived-effect-test-activities";
+
 const contractorId = "11111111-1111-4111-8111-111111111111";
 let clockSkewMs = 0;
 
@@ -385,6 +387,7 @@ function activities(recorded: Recorded, config: ActivityConfig = {}) {
     recordPerformanceEntry: async () =>
       unexpectedMutation("recordPerformanceEntry"),
     markCaseBreached: async () => unexpectedMutation("markCaseBreached"),
+    ...immediateDerivedEffectActivities(),
   };
 }
 
@@ -593,6 +596,51 @@ describe("Missed Appointment timer (PRS-149)", () => {
       expect(await waitUntil(() => recorded.missed.length === 1)).toBe(true);
       expect(recorded.missed[0]?.appointmentId).toBe(replacementAppointmentId);
       expect(recorded.missed).toHaveLength(1);
+      await client.workflow.getHandle(`case/${caseId}`).terminate();
+    });
+  }, 30_000);
+
+  it("still expires a replacement Appointment while derived effect delivery keeps failing (regression guard for the condition(fn, 0) deadline bug)", async () => {
+    const caseId = randomUUID();
+    const appointmentId = randomUUID();
+    const replacementAppointmentId = randomUUID();
+    const recorded = newRecorder();
+    let reserveEffectCalls = 0;
+    const { worker, taskQueue } = await createWorker({
+      ...activities(recorded, { appointmentId, replacementAppointmentId }),
+      reserveEffect: async () => {
+        reserveEffectCalls++;
+        throw new Error("reserveEffect must not block appointment expiry");
+      },
+      dispatchEmailEffect: async () => {
+        throw new Error(
+          "dispatchEmailEffect must not block appointment expiry"
+        );
+      },
+    });
+    const client = new Client({ connection: env.nativeConnection });
+    const accepted = acceptCommand(caseId, appointmentId, 60_000, 120_000);
+
+    await worker.runUntil(async () => {
+      await accept(client, taskQueue, caseId, accepted);
+      const result = await client.workflow
+        .getHandle(`case/${caseId}`)
+        .executeUpdate(UPDATE_NAMES.replaceAppointment, {
+          args: [
+            replaceCommand(accepted, appointmentId, "SCHEDULED", 1_000, 2_000),
+          ],
+          updateId: randomUUID(),
+        });
+
+      expect(result).toMatchObject({ kind: "SUCCESS" });
+      expect(recorded.replacementSlots).toEqual([appointmentId]);
+      expect(await waitUntil(() => recorded.missed.length === 1)).toBe(true);
+      expect(recorded.missed[0]?.appointmentId).toBe(replacementAppointmentId);
+      expect(recorded.missed).toHaveLength(1);
+      // Proves this guard isn't vacuous — the throwing reserveEffect stub must
+      // actually have been invoked (assignment notification queued on
+      // allocation), otherwise appointment expiry never raced any effect churn.
+      expect(await waitUntil(() => reserveEffectCalls > 0)).toBe(true);
       await client.workflow.getHandle(`case/${caseId}`).terminate();
     });
   }, 30_000);

@@ -19,6 +19,20 @@ const gatewayAppointmentSchema = z.object({
 
 export type GatewayAppointment = z.infer<typeof gatewayAppointmentSchema>;
 
+const effectSchema = z.object({
+  id: z.string(),
+  purpose: z.string(),
+  status: z.enum(["PENDING", "SENT", "FAILED", "UNKNOWN", "WAIVED"]),
+  attempts: z.number(),
+  lastError: z.string().nullable(),
+  nextRetryAt: z.string().nullable(),
+  waiverReason: z.string().nullable(),
+});
+const effectsSchema = z.object({
+  data: z.object({ items: z.array(effectSchema) }),
+});
+export type GatewayEffect = z.infer<typeof effectSchema>;
+
 const gatewayCaseSchema = z.object({
   data: z
     .object({
@@ -73,6 +87,23 @@ export const caseQueries = {
         return parsed.success
           ? (parsed.data.data?.assignment?.appointment ?? null)
           : null;
+      },
+    }),
+
+  effects: (caseId: string) =>
+    queryOptions({
+      queryKey: caseKeys.effects(caseId),
+      enabled: !!caseId && !!localStorage.getItem("jwt"),
+      retry: false,
+      queryFn: async (): Promise<GatewayEffect[]> => {
+        const res = await fetchWithAuth(
+          `${env.VITE_GATEWAY_URL}/api/cases/${caseId}/effects`,
+          {},
+          env.VITE_AUTH_URL
+        );
+        if (!res.ok) return [];
+        const parsed = effectsSchema.safeParse(await res.json());
+        return parsed.success ? parsed.data.data.items : [];
       },
     }),
 };

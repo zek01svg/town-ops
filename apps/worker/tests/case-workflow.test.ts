@@ -20,6 +20,7 @@ import type {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { openCase } from "../src/workflows/case-workflow";
+import { immediateDerivedEffectActivities } from "./derived-effect-test-activities";
 
 const residentId = "a3d4d1c2-5555-4e66-8e77-123456789abc";
 
@@ -93,6 +94,7 @@ describe("CaseWorkflow", () => {
         },
         markCaseAssigned: async () => "ASSIGNED" as const,
         raiseOfficerAttention: async () => undefined,
+        ...immediateDerivedEffectActivities(),
       },
     });
     const client = new Client({ connection: env.nativeConnection });

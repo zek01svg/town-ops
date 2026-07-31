@@ -28,6 +28,8 @@ import type {
 } from "@townops/orchestration-contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { immediateDerivedEffectActivities } from "./derived-effect-test-activities";
+
 const contractorId = "11111111-1111-4111-8111-111111111111";
 const scheduledStart = "2030-01-01T09:00:00.000Z";
 const scheduledEnd = "2030-01-01T10:00:00.000Z";
@@ -325,6 +327,7 @@ function cancellationActivities(
       expect(input.reason).toBe("No longer needed");
       return { outcome: "CANCELLED" as const, case: caseDto(caseId) };
     },
+    ...immediateDerivedEffectActivities(),
   };
 }
 

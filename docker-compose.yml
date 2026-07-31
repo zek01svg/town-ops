@@ -196,6 +196,7 @@ services:
       DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_alert
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       RESEND_API_KEY: ${RESEND_API_KEY}
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
       # Empty OTEL vars satisfy shared-ts env validation and disable tracing
       # locally (otel.ts treats a falsy endpoint as "tracing disabled").
       OTEL_EXPORTER_OTLP_ENDPOINT: ""
@@ -378,6 +379,7 @@ services:
       ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
       APPOINTMENT_ATOM_URL: http://appointment-atom:5003
       PROOF_ATOM_URL: http://proof-atom:5007
+      ALERT_ATOM_URL: http://alert-atom:5002
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
     ports:
       - "6010:6010"
@@ -412,6 +414,7 @@ services:
       ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
       APPOINTMENT_ATOM_URL: http://appointment-atom:5003
       PROOF_ATOM_URL: http://proof-atom:5007
+      ALERT_ATOM_URL: http://alert-atom:5002
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
 
   assign-job-composite:

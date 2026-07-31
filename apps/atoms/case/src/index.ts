@@ -248,6 +248,40 @@ const internalCasesRouter = new Hono()
     }
   )
   .post(
+    "/:id/derived-effect-attention",
+    validator("param", z.object({ id: z.uuid() })),
+    validator("json", raiseOfficerAttentionSchema),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      if (body.kind !== "DERIVED_EFFECT_UNKNOWN" || !body.effectId) {
+        return c.json(
+          { error: "Derived effect attention requires an effect ID" },
+          400
+        );
+      }
+      const attention = await caseService.raiseOfficerAttention({
+        caseId: id,
+        ...body,
+      });
+      return c.json({ attention }, 201);
+    }
+  )
+  .post(
+    "/:id/derived-effect-attention/:effectId/resolve",
+    validator("param", z.object({ id: z.uuid(), effectId: z.string().min(1) })),
+    validator("json", z.object({ operationId: z.string().min(1) }).strict()),
+    async (c) => {
+      const { id, effectId } = c.req.valid("param");
+      await caseService.resolveDerivedEffectAttention({
+        caseId: id,
+        effectId,
+        operationId: c.req.valid("json").operationId,
+      });
+      return c.body(null, 204);
+    }
+  )
+  .post(
     "/:id/assign",
     validator("param", z.object({ id: z.uuid() })),
     validator("json", markCaseAssignedSchema),

@@ -25,6 +25,8 @@ import type {
 } from "@townops/orchestration-contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { immediateDerivedEffectActivities } from "./derived-effect-test-activities";
+
 /**
  * The startWork Update handler (PRS-145). Every `it` below is one of the 10
  * scenarios enumerated in the PRS-145 plan's Verification section.
@@ -184,6 +186,7 @@ function makeActivities(config: ActivityConfig) {
       recorded.attentions.push(input);
       return undefined;
     },
+    ...immediateDerivedEffectActivities(),
   };
 }
 

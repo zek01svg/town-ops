@@ -147,6 +147,7 @@ export const OfficerAttentionKindSchema = z.enum([
   "WORK_START_FAILED",
   "MISSED_APPOINTMENT",
   "COMPLETION_FAILED",
+  "DERIVED_EFFECT_UNKNOWN",
 ]);
 export type OfficerAttentionKind = z.infer<typeof OfficerAttentionKindSchema>;
 
@@ -168,6 +169,7 @@ export const OfficerAttentionDtoSchema = z.object({
   kind: OfficerAttentionKindSchema,
   detail: z.string(),
   operationId: z.string(),
+  effectId: z.string().nullable().optional(),
   createdAt: z.string(),
   resolvedAt: z.string().nullable(),
   resolvedByOperationId: z.string().nullable(),
@@ -224,6 +226,8 @@ export const UPDATE_NAMES = {
   replaceAppointment: "replaceAppointment",
   completeCase: "completeCase",
   cancelCase: "cancelCase",
+  retryEffect: "retryEffect",
+  waiveEffect: "waiveEffect",
 } as const;
 export const ORCHESTRATION_TASK_QUEUE = "townops-orchestration";
 
@@ -1389,4 +1393,120 @@ export function canonicalReplaceAppointmentPayload(
     endTime: input.endTime,
     reason: input.reason,
   });
+}
+
+// ─── Repairable derived effects (PRS-150) ───────────────────────────────────
+
+export const DerivedEffectTypeSchema = z.enum(["EMAIL", "PERFORMANCE_ENTRY"]);
+export type DerivedEffectType = z.infer<typeof DerivedEffectTypeSchema>;
+
+export const DerivedEffectPurposeSchema = z.enum([
+  "ATTEMPT_ASSIGNMENT_NOTIFICATION",
+  "ATTEMPT_BREACH_NOTIFICATION",
+  "ATTEMPT_BREACH_PERFORMANCE",
+  "APPOINTMENT_NO_ACCESS_NOTIFICATION",
+  "APPOINTMENT_RESCHEDULE_RESIDENT_NOTIFICATION",
+  "APPOINTMENT_RESCHEDULE_CONTRACTOR_NOTIFICATION",
+  "ASSIGNMENT_COMPLETION_NOTIFICATION",
+  "ASSIGNMENT_COMPLETION_PERFORMANCE",
+]);
+export type DerivedEffectPurpose = z.infer<typeof DerivedEffectPurposeSchema>;
+
+export const DerivedEffectStatusSchema = z.enum([
+  "PENDING",
+  "SENT",
+  "FAILED",
+  "UNKNOWN",
+  "WAIVED",
+]);
+export type DerivedEffectStatus = z.infer<typeof DerivedEffectStatusSchema>;
+
+export const DerivedEffectSummarySchema = z
+  .object({
+    id: z.string().min(1),
+    caseId: z.uuid(),
+    type: DerivedEffectTypeSchema,
+    purpose: DerivedEffectPurposeSchema,
+    status: DerivedEffectStatusSchema,
+    providerId: z.string().nullable(),
+    providerIdempotencyKey: z.string().min(1),
+    attempts: z.int().nonnegative(),
+    lastError: z.string().nullable(),
+    nextRetryAt: z.string().nullable(),
+    waiverActorId: z.uuid().nullable(),
+    waiverReason: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .strict();
+export type DerivedEffectSummary = z.infer<typeof DerivedEffectSummarySchema>;
+
+export const RetryEffectInputSchema = z
+  .object({
+    acknowledgeDuplicateRisk: z.boolean().optional().default(false),
+  })
+  .strict();
+export type RetryEffectInput = z.infer<typeof RetryEffectInputSchema>;
+
+export const WaiveEffectInputSchema = z
+  .object({ reason: z.string().trim().min(1).max(1_000) })
+  .strict();
+export type WaiveEffectInput = z.infer<typeof WaiveEffectInputSchema>;
+
+export const RetryEffectCommandSchema = z
+  .object({
+    idempotencyKey: z.uuid(),
+    payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+    operationId: z.string().min(1),
+    actorId: z.uuid(),
+    actorRole: z.literal("OFFICER"),
+    caseId: z.uuid(),
+    effectId: z.string().min(1),
+    input: RetryEffectInputSchema,
+  })
+  .strict();
+export type RetryEffectCommand = z.infer<typeof RetryEffectCommandSchema>;
+
+export const WaiveEffectCommandSchema = z
+  .object({
+    idempotencyKey: z.uuid(),
+    payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+    operationId: z.string().min(1),
+    actorId: z.uuid(),
+    actorRole: z.literal("OFFICER"),
+    caseId: z.uuid(),
+    effectId: z.string().min(1),
+    input: WaiveEffectInputSchema,
+  })
+  .strict();
+export type WaiveEffectCommand = z.infer<typeof WaiveEffectCommandSchema>;
+
+export const EffectRepairResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SUCCESS"), effect: DerivedEffectSummarySchema }),
+  z.object({ kind: z.literal("IDEMPOTENCY_KEY_REUSED") }),
+  z.object({ kind: z.literal("CASE_MISMATCH") }),
+  z.object({ kind: z.literal("EFFECT_NOT_FOUND") }),
+  z.object({ kind: z.literal("DUPLICATE_RISK_ACKNOWLEDGEMENT_REQUIRED") }),
+  z.object({ kind: z.literal("EFFECT_NOT_REPAIRABLE") }),
+]);
+export type EffectRepairResult = z.infer<typeof EffectRepairResultSchema>;
+
+export function canonicalRetryEffectPayload(
+  caseId: string,
+  effectId: string,
+  input: RetryEffectInput
+) {
+  return JSON.stringify({
+    caseId,
+    effectId,
+    acknowledgeDuplicateRisk: input.acknowledgeDuplicateRisk,
+  });
+}
+
+export function canonicalWaiveEffectPayload(
+  caseId: string,
+  effectId: string,
+  input: WaiveEffectInput
+) {
+  return JSON.stringify({ caseId, effectId, reason: input.reason });
 }

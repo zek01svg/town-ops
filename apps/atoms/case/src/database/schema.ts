@@ -52,6 +52,7 @@ export const officerAttentionKind = pgEnum("officer_attention_kind", [
   "WORK_START_FAILED",
   "MISSED_APPOINTMENT",
   "COMPLETION_FAILED",
+  "DERIVED_EFFECT_UNKNOWN",
 ]);
 
 export const cases = pgTable(
@@ -145,6 +146,7 @@ export const officerAttention = pgTable(
     kind: officerAttentionKind().notNull(),
     detail: text().notNull(),
     operationId: text("operation_id").notNull(),
+    effectId: text("effect_id"),
     createdAt: timestamp("created_at", {
       withTimezone: true,
       mode: "string",
@@ -160,7 +162,12 @@ export const officerAttention = pgTable(
   (table) => [
     uniqueIndex("officer_attention_open_case_kind_idx")
       .on(table.caseId, table.kind)
-      .where(sql`${table.resolvedAt} IS NULL`),
+      .where(sql`${table.resolvedAt} IS NULL AND ${table.effectId} IS NULL`),
+    uniqueIndex("officer_attention_open_effect_idx")
+      .on(table.caseId, table.kind, table.effectId)
+      .where(
+        sql`${table.resolvedAt} IS NULL AND ${table.effectId} IS NOT NULL`
+      ),
   ]
 );
 
