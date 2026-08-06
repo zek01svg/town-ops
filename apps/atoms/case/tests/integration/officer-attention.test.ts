@@ -375,4 +375,103 @@ describe("Officer Attention persistence", () => {
       });
     });
   });
+
+  describe("GET /api/cases/officer-attention?caseId= (PRS-151)", () => {
+    it("narrows to one Case's attention while the unfiltered call still returns both", async () => {
+      const otherCaseId = crypto.randomUUID();
+      await db.insert(cases).values({
+        id: otherCaseId,
+        residentId: RESIDENT_ID,
+        category: "LE",
+        status: "pending",
+      });
+
+      await raiseNoEligibleContractorAttention(
+        "case/attention/scope/this-case"
+      );
+      await caseService.raiseOfficerAttention({
+        caseId: otherCaseId,
+        kind: "NO_ELIGIBLE_CONTRACTOR",
+        detail: "No eligible contractor covers this Case.",
+        operationId: "case/attention/scope/other-case",
+      });
+
+      const scoped = await app.request(
+        `/api/cases/officer-attention?caseId=${CASE_ID}`
+      );
+      expect(scoped.status).toBe(200);
+      const scopedBody = await scoped.json();
+      expect(scopedBody.attentions).toHaveLength(1);
+      expect(scopedBody.attentions[0].caseId).toBe(CASE_ID);
+
+      // A generous pageSize (still bounded by the 100 cap) rather than the
+      // default 25 — this file's suite shares the Testcontainer DB with
+      // case.test.ts (no per-file isolation), so the unfiltered call must
+      // not flake just because unrelated open attentions from a concurrent
+      // run outrank these two on `desc(createdAt)`.
+      const unfiltered = await app.request(
+        "/api/cases/officer-attention?pageSize=100"
+      );
+      expect(unfiltered.status).toBe(200);
+      const unfilteredCaseIds = (await unfiltered.json()).attentions.map(
+        (record: { caseId: string }) => record.caseId
+      );
+      expect(unfilteredCaseIds).toContain(CASE_ID);
+      expect(unfilteredCaseIds).toContain(otherCaseId);
+
+      await db.delete(cases).where(eq(cases.id, otherCaseId));
+    });
+
+    it("combines caseId with state=resolved, excluding this Case's still-open attention and another Case's resolved one", async () => {
+      const otherCaseId = crypto.randomUUID();
+      await db.insert(cases).values({
+        id: otherCaseId,
+        residentId: RESIDENT_ID,
+        category: "LE",
+        status: "pending",
+      });
+
+      await raiseNoEligibleContractorAttention(
+        "case/attention/resolved-scope/this-case"
+      );
+      await caseService.markCaseAssignedForOperation({
+        caseId: CASE_ID,
+        operationId: "case/attention/resolved-scope/resolve-this-case",
+        actorId: ACTOR_ID,
+        actorRole: "WORKER",
+      });
+      // A different kind, not touched by markCaseAssignedForOperation —
+      // stays open and must not leak into the state=resolved result.
+      await raiseMissedAppointmentAttention(
+        "case/attention/resolved-scope/still-open"
+      );
+
+      await caseService.raiseOfficerAttention({
+        caseId: otherCaseId,
+        kind: "NO_ELIGIBLE_CONTRACTOR",
+        detail: "No eligible contractor covers this Case.",
+        operationId: "case/attention/resolved-scope/other-case",
+      });
+      await caseService.markCaseAssignedForOperation({
+        caseId: otherCaseId,
+        operationId: "case/attention/resolved-scope/resolve-other-case",
+        actorId: ACTOR_ID,
+        actorRole: "WORKER",
+      });
+
+      const res = await app.request(
+        `/api/cases/officer-attention?caseId=${CASE_ID}&state=resolved`
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.attentions).toHaveLength(1);
+      expect(body.attentions[0]).toMatchObject({
+        caseId: CASE_ID,
+        kind: "NO_ELIGIBLE_CONTRACTOR",
+        resolvedAt: expect.any(String),
+      });
+
+      await db.delete(cases).where(eq(cases.id, otherCaseId));
+    });
+  });
 });

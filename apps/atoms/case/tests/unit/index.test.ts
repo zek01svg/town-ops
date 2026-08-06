@@ -18,6 +18,10 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
     set: vi.fn().mockReturnThis(),
     values: vi.fn().mockReturnThis(),
     returning: vi.fn().mockReturnThis(),
+    // listCases (PRS-151) chains these onto the same builder.
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    offset: vi.fn().mockReturnThis(),
     // eslint-disable-next-line unicorn/no-thenable
     then: vi.fn(),
   };

@@ -17,30 +17,6 @@ export const env: Env = {
     runtimeEnv?.VITE_GATEWAY_URL ??
     import.meta.env.VITE_GATEWAY_URL ??
     "http://localhost:6010",
-  VITE_CASE_ATOM_URL:
-    runtimeEnv?.VITE_CASE_ATOM_URL ??
-    import.meta.env.VITE_CASE_ATOM_URL ??
-    "http://localhost:5001",
-  VITE_ASSIGNMENT_ATOM_URL:
-    runtimeEnv?.VITE_ASSIGNMENT_ATOM_URL ??
-    import.meta.env.VITE_ASSIGNMENT_ATOM_URL ??
-    "http://localhost:5003",
-  VITE_APPOINTMENT_ATOM_URL:
-    runtimeEnv?.VITE_APPOINTMENT_ATOM_URL ??
-    import.meta.env.VITE_APPOINTMENT_ATOM_URL ??
-    "http://localhost:5004",
-  VITE_ALERT_ATOM_URL:
-    runtimeEnv?.VITE_ALERT_ATOM_URL ??
-    import.meta.env.VITE_ALERT_ATOM_URL ??
-    "http://localhost:5006",
-  VITE_PROOF_ATOM_URL:
-    runtimeEnv?.VITE_PROOF_ATOM_URL ??
-    import.meta.env.VITE_PROOF_ATOM_URL ??
-    "http://localhost:5005",
-  VITE_ACCEPT_JOB_URL:
-    runtimeEnv?.VITE_ACCEPT_JOB_URL ??
-    import.meta.env.VITE_ACCEPT_JOB_URL ??
-    "http://localhost:6003",
   VITE_GOOGLE_MAPS_API_KEY:
     runtimeEnv?.VITE_GOOGLE_MAPS_API_KEY ??
     import.meta.env.VITE_GOOGLE_MAPS_API_KEY ??

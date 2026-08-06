@@ -8,7 +8,7 @@ import type {
   MarkCaseNoAccessInput,
   RecordAllocationAcceptanceInput,
 } from "@townops/orchestration-contract";
-import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import db from "./database/db";
 import {
@@ -63,10 +63,45 @@ const terminalResolvedAttentionKinds: OfficerAttentionKind[] = [
 ];
 
 /**
- * Retrieve all cases.
+ * List cases with optional filters and pagination (PRS-151). When `ids` is
+ * given the Gateway has already paginated upstream (the assignment atom's
+ * contractor scope route), so the offset is skipped — only the limit still
+ * bounds the response. `.limit(pageSize)` still applies, though: a caller
+ * passing N ids must pass `pageSize >= N` or the result is silently
+ * truncated.
  */
-export async function getAllCases() {
-  return db.select().from(cases);
+export async function listCases(input: {
+  residentId?: string;
+  status?: CaseStatus;
+  ids?: string[];
+  page: number;
+  pageSize: number;
+}) {
+  const where = and(
+    input.residentId ? eq(cases.residentId, input.residentId) : undefined,
+    input.status ? eq(cases.status, input.status) : undefined,
+    input.ids ? inArray(cases.id, input.ids) : undefined
+  );
+
+  // A tie on createdAt (defaultNow() is transaction-scoped, so a multi-row
+  // insert shares one timestamp) would make LIMIT/OFFSET non-deterministic
+  // across two paginated requests — cases.id breaks the tie.
+  if (input.ids) {
+    return db
+      .select()
+      .from(cases)
+      .where(where)
+      .orderBy(desc(cases.createdAt), cases.id)
+      .limit(input.pageSize);
+  }
+
+  return db
+    .select()
+    .from(cases)
+    .where(where)
+    .orderBy(desc(cases.createdAt), cases.id)
+    .limit(input.pageSize)
+    .offset((input.page - 1) * input.pageSize);
 }
 
 /**
@@ -74,6 +109,19 @@ export async function getAllCases() {
  */
 export async function getCaseById(id: string) {
   return db.select().from(cases).where(eq(cases.id, id));
+}
+
+/**
+ * Get the full audit trail for a Case, oldest first (PRS-151). `case_history`
+ * was write-only before this — nine INSERTs across this file with no read
+ * route until now.
+ */
+export async function getCaseHistoryByCaseId(caseId: string) {
+  return db
+    .select()
+    .from(caseHistory)
+    .where(eq(caseHistory.caseId, caseId))
+    .orderBy(asc(caseHistory.createdAt));
 }
 
 /**
@@ -264,14 +312,18 @@ export async function listOfficerAttention(input: {
   state: "open" | "resolved";
   page: number;
   pageSize: number;
+  caseId?: string;
 }) {
   return db
     .select()
     .from(officerAttention)
     .where(
-      input.state === "open"
-        ? isNull(officerAttention.resolvedAt)
-        : isNotNull(officerAttention.resolvedAt)
+      and(
+        input.state === "open"
+          ? isNull(officerAttention.resolvedAt)
+          : isNotNull(officerAttention.resolvedAt),
+        input.caseId ? eq(officerAttention.caseId, input.caseId) : undefined
+      )
     )
     .orderBy(desc(officerAttention.createdAt))
     .limit(input.pageSize)

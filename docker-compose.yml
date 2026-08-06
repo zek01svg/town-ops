@@ -518,6 +518,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
+      VITE_GATEWAY_URL: http://localhost:6010
     ports:
       - "3001:3000"
 
@@ -526,6 +527,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
+      VITE_GATEWAY_URL: http://localhost:6010
     ports:
       - "3002:3000"
 

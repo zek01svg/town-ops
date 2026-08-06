@@ -138,17 +138,24 @@ describe("Gateway open Case endpoint", () => {
   });
 
   it("reads the Case from its atom without touching Temporal history", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      Response.json({
-        cases: [
-          {
-            ...successResult.data,
-            priority: "high",
-            status: "pending",
-          },
-        ],
-      })
-    );
+    // The default actor is an Officer (helpers.ts `createApp`), which reads
+    // the internal, un-redacted Case route (PRS-151 Task 2) — a singular
+    // `case`, not the public route's `cases` array.
+    const caseRecord = {
+      ...successResult.data,
+      priority: "high",
+      status: "pending",
+    };
+    const fetchImpl = vi.fn(async (url: RequestInfo | URL) => {
+      const href = url instanceof Request ? url.url : String(url);
+      if (
+        href.includes("/api/assignments") ||
+        href.includes("/api/appointments")
+      ) {
+        return Response.json({ assignment: null, attempt: null, attempts: [] });
+      }
+      return Response.json({ case: caseRecord });
+    });
     const { app, executeUpdateWithStart } = createApp(undefined, fetchImpl);
 
     const response = await app.request("/api/cases/" + successResult.data.id);
@@ -158,7 +165,8 @@ describe("Gateway open Case endpoint", () => {
       data: { priority: "HIGH", status: "PENDING" },
     });
     expect(fetchImpl).toHaveBeenCalledWith(
-      "http://case-atom:5005/api/cases/" + successResult.data.id
+      "http://case-atom:5005/internal/cases/" + successResult.data.id,
+      expect.objectContaining({ headers: expect.anything() })
     );
     expect(executeUpdateWithStart).not.toHaveBeenCalled();
   });

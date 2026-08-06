@@ -1,24 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { gatewayFetch } from "@townops/ui/libr/gateway";
 import { z } from "zod/v4";
 
 import { env } from "@/env";
-import { clearAuth, getAuthHeader } from "@/libr/auth-token";
 
-import { auditKeys } from "./audit-queries";
 import { caseKeys } from "./query-keys";
-
-async function throwIfRequestFailed(res: Response) {
-  if (res.ok) return;
-  if (res.status === 401) clearAuth();
-  const parsed = z
-    .object({
-      message: z.string().optional(),
-      error: z.object({ message: z.string().optional() }).optional(),
-    })
-    .safeParse(await res.json().catch(() => ({})));
-  const body = parsed.success ? parsed.data : {};
-  throw new Error(body.error?.message ?? body.message ?? `Error ${res.status}`);
-}
 
 export async function uploadProofFile(
   file: File,
@@ -30,15 +16,17 @@ export async function uploadProofFile(
   form.append("file", file);
   form.append("type", type.toUpperCase());
 
-  const res = await fetch(
+  const body = await gatewayFetch(
     `${env.VITE_GATEWAY_URL}/api/cases/${caseId}/proof-items`,
     {
       method: "POST",
-      headers: { ...getAuthHeader(), "Idempotency-Key": idempotencyKey },
+      // No Content-Type here — the browser sets the multipart boundary for
+      // FormData bodies; fetchWithAuth only ever overwrites Authorization.
+      headers: { "Idempotency-Key": idempotencyKey },
       body: form,
-    }
+    },
+    env.VITE_AUTH_URL
   );
-  await throwIfRequestFailed(res);
   return z
     .object({
       data: z.object({
@@ -47,17 +35,15 @@ export async function uploadProofFile(
         mediaUrl: z.string(),
       }),
     })
-    .parse(await res.json()).data;
+    .parse(body).data;
 }
 
 export async function getReadyProofItems(caseId: string) {
-  const res = await fetch(
+  const body = await gatewayFetch(
     `${env.VITE_GATEWAY_URL}/api/cases/${caseId}/proof-items`,
-    {
-      headers: getAuthHeader(),
-    }
+    {},
+    env.VITE_AUTH_URL
   );
-  await throwIfRequestFailed(res);
   return z
     .object({
       data: z.array(
@@ -68,7 +54,7 @@ export async function getReadyProofItems(caseId: string) {
         })
       ),
     })
-    .parse(await res.json()).data;
+    .parse(body).data;
 }
 
 export type AcceptJobInput = {
@@ -82,13 +68,12 @@ export type AcceptJobInput = {
 export function useAcceptJobMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: AcceptJobInput) => {
-      const res = await fetch(
+    mutationFn: (input: AcceptJobInput) =>
+      gatewayFetch(
         `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/allocation-attempts/${input.attemptId}/acceptance`,
         {
           method: "PUT",
           headers: {
-            ...getAuthHeader(),
             "Content-Type": "application/json",
             "Idempotency-Key": input.idempotencyKey,
           },
@@ -96,11 +81,9 @@ export function useAcceptJobMutation() {
             startTime: input.startTime,
             endTime: input.endTime,
           }),
-        }
-      );
-      await throwIfRequestFailed(res);
-      return res.json();
-    },
+        },
+        env.VITE_AUTH_URL
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
   });
 }
@@ -114,20 +97,17 @@ export type StartWorkInput = {
 export function useStartWorkMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: StartWorkInput) => {
-      const res = await fetch(
+    mutationFn: (input: StartWorkInput) =>
+      gatewayFetch(
         `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/appointments/${input.appointmentId}/start-work`,
         {
           method: "PUT",
           headers: {
-            ...getAuthHeader(),
             "Idempotency-Key": input.idempotencyKey,
           },
-        }
-      );
-      await throwIfRequestFailed(res);
-      return res.json();
-    },
+        },
+        env.VITE_AUTH_URL
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
   });
 }
@@ -142,13 +122,12 @@ export type CompleteCaseInput = {
 export function useCompleteCaseMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: CompleteCaseInput) => {
-      const res = await fetch(
+    mutationFn: (input: CompleteCaseInput) =>
+      gatewayFetch(
         `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/completion`,
         {
           method: "PUT",
           headers: {
-            ...getAuthHeader(),
             "Content-Type": "application/json",
             "Idempotency-Key": input.idempotencyKey,
           },
@@ -156,21 +135,16 @@ export function useCompleteCaseMutation() {
             report: input.report,
             proofItemIds: input.proofItemIds,
           }),
-        }
-      );
-      await throwIfRequestFailed(res);
-      return res.json();
-    },
+        },
+        env.VITE_AUTH_URL
+      ),
     onSuccess: (_, input) => {
       void qc.invalidateQueries({ queryKey: caseKeys.all });
       void qc.invalidateQueries({ queryKey: caseKeys.detail(input.caseId) });
       void qc.invalidateQueries({
-        queryKey: caseKeys.appointments(input.caseId),
-      });
-      void qc.invalidateQueries({
         queryKey: caseKeys.proofItems(input.caseId),
       });
-      void qc.invalidateQueries({ queryKey: auditKeys.timeline(input.caseId) });
+      void qc.invalidateQueries({ queryKey: caseKeys.timeline(input.caseId) });
       void qc.invalidateQueries({ queryKey: ["gateway-case", input.caseId] });
     },
   });
@@ -185,20 +159,17 @@ export type NoAccessInput = {
 export function useNoAccessMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: NoAccessInput) => {
-      const res = await fetch(
+    mutationFn: (input: NoAccessInput) =>
+      gatewayFetch(
         `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/appointments/${input.appointmentId}/no-access`,
         {
           method: "PUT",
           headers: {
-            ...getAuthHeader(),
             "Idempotency-Key": input.idempotencyKey,
           },
-        }
-      );
-      await throwIfRequestFailed(res);
-      return res.json();
-    },
+        },
+        env.VITE_AUTH_URL
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
   });
 }

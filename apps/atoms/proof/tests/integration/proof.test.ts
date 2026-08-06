@@ -93,6 +93,12 @@ describe("Proof Atom Integration Tests", () => {
     );
   }
 
+  function internalListAll() {
+    return app.request(`/internal/proof-items/${VALID_CASE_ID}`, {
+      headers: { Authorization: `Bearer ${WORKER_TOKEN}` },
+    });
+  }
+
   function internalResolve(
     proofItemId: string,
     contractorId = VALID_UPLOADER_ID
@@ -344,6 +350,38 @@ describe("Proof Atom Integration Tests", () => {
       expect((await internalResolve(legacyId)).status).toBe(404);
       expect((await internalResolve(unreadyId)).status).toBe(404);
       expect((await internalResolve(randomUUID())).status).toBe(404);
+    });
+
+    it("returns ready Proof Items from every contractor when contractorId is omitted, and only one contractor's when supplied (PRS-151)", async () => {
+      const ownedId = randomUUID();
+      const otherContractorId = randomUUID();
+      const otherReadyId = randomUUID();
+      expect((await internalUpload({ proofItemId: ownedId })).status).toBe(201);
+      await db.insert(proofItems).values({
+        id: otherReadyId,
+        caseId: VALID_CASE_ID,
+        uploaderId: otherContractorId,
+        contractorId: otherContractorId,
+        operationId: randomUUID(),
+        payloadHash: "c".repeat(64),
+        mediaUrl: "https://proof.example/other",
+        type: "before",
+        checksum: "c".repeat(64),
+        readyAt: "2030-01-01T00:00:00.000Z",
+      });
+
+      const unfiltered = await internalListAll();
+      expect(unfiltered.status).toBe(200);
+      const unfilteredIds = (await unfiltered.json()).proof
+        .map((item: { id: string }) => item.id)
+        .toSorted();
+      expect(unfilteredIds).toEqual([ownedId, otherReadyId].toSorted());
+
+      const filtered = await internalList();
+      expect(filtered.status).toBe(200);
+      expect(await filtered.json()).toEqual({
+        proof: [expect.objectContaining({ id: ownedId })],
+      });
     });
   });
 });

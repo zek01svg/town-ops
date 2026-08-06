@@ -29,14 +29,14 @@ Create a `.env` file in this directory:
 
 ```env
 VITE_APP_URL=http://localhost:3001
-VITE_AUTH_URL=http://localhost:5001
+VITE_AUTH_URL=http://localhost:5008
 VITE_GATEWAY_URL=http://localhost:6010
-VITE_CASE_ATOM_URL=http://localhost:5005
-VITE_ASSIGNMENT_ATOM_URL=http://localhost:5004
-VITE_APPOINTMENT_ATOM_URL=http://localhost:5003
-VITE_PROOF_ATOM_URL=http://localhost:5007
-VITE_ALERT_ATOM_URL=http://localhost:5002
 VITE_OPEN_CASE_URL=http://localhost:6001
 VITE_HANDLE_BREACH_URL=http://localhost:6005
 VITE_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
 ```
+
+All Case reads (list, detail, timeline, Officer Attention) go through the
+Gateway. PRS-151-E removed the per-atom URLs — the browser no longer talks to
+any atom directly. `VITE_OPEN_CASE_URL` and `VITE_HANDLE_BREACH_URL` remain
+only for the legacy composite writes that PRS-153 retires.

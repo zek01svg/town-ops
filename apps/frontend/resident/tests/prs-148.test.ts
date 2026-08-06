@@ -31,13 +31,22 @@ test("cancels only through the Gateway and retains the supplied idempotency key"
 
   await cancelCase(caseId, { reason: "No longer needed" }, idempotencyKey);
 
-  expect(fetchMock).toHaveBeenCalledWith(
-    expect.stringContaining(`/api/cases/${caseId}/cancel`),
-    expect.objectContaining({
-      method: "PUT",
-      headers: expect.objectContaining({ "Idempotency-Key": idempotencyKey }),
-    })
-  );
+  // `fetchWithAuth` builds a real `Headers` instance (it needs `.set()` to
+  // overwrite Authorization on retry), so `expect.objectContaining` can't
+  // introspect it — headers aren't the object's own enumerable properties.
+  // The header is still sent; only the assertion technique changes.
+  const call = fetchMock.mock.calls[0];
+  if (!call) throw new Error("fetch was not called");
+  const [url, init] = call;
+  const href =
+    typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+  expect(href).toContain(`/api/cases/${caseId}/cancel`);
+  expect(init?.method).toBe("PUT");
+  const headers = init?.headers;
+  if (!(headers instanceof Headers)) {
+    throw new Error("expected fetchWithAuth to send a Headers instance");
+  }
+  expect(headers.get("Idempotency-Key")).toBe(idempotencyKey);
 });
 
 test("loads an existing eligible Case through the owner-protected Gateway read for cancellation", async () => {

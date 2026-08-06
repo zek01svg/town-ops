@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { vi } from "vitest";
 
 import { createGatewayApp } from "../src/app";
@@ -22,6 +23,16 @@ export const residentAuth: MiddlewareHandler = async (c, next) => {
 };
 export const rejectingAuth: MiddlewareHandler = async (c) => {
   return c.json({ error: { code: "INVALID_TOKEN" } }, 401);
+};
+/**
+ * The production `authenticate` middleware is `hono/jwk`'s `jwk()`, which
+ * rejects a missing/invalid token by *throwing* an `HTTPException` rather
+ * than returning a Response — unlike `rejectingAuth` above. This exercises
+ * the same path so `app.onError()`'s `HTTPException` special-case (PRS-151)
+ * is proven against a real throw, not just read from the `hono/jwk` source.
+ */
+export const throwingUnauthorizedAuth: MiddlewareHandler = async () => {
+  throw new HTTPException(401, { message: "Unauthorized" });
 };
 
 export const validBody = {

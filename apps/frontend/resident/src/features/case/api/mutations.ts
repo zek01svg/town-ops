@@ -6,6 +6,8 @@ import type {
 
 import { cancelCase, replaceAppointment } from "@/libr/gateway";
 
+import { caseKeys } from "./query-keys";
+
 export type ReplaceAppointmentVariables = {
   caseId: string;
   appointmentId: string;
@@ -29,7 +31,7 @@ export function useReplaceAppointmentMutation() {
         variables.idempotencyKey
       ),
     onSuccess: (_, variables) =>
-      qc.invalidateQueries({ queryKey: ["case", variables.caseId] }),
+      qc.invalidateQueries({ queryKey: caseKeys.detail(variables.caseId) }),
   });
 }
 
@@ -44,7 +46,13 @@ export function useCancelCaseMutation() {
   return useMutation({
     mutationFn: (variables: CancelCaseVariables) =>
       cancelCase(variables.caseId, variables.input, variables.idempotencyKey),
-    onSuccess: (_, variables) =>
-      qc.invalidateQueries({ queryKey: ["case", variables.caseId] }),
+    onSuccess: (_, variables) => {
+      // Cancelling moves the Case's status, which the list row also shows —
+      // both reads must go stale together.
+      void qc.invalidateQueries({
+        queryKey: caseKeys.detail(variables.caseId),
+      });
+      void qc.invalidateQueries({ queryKey: caseKeys.list });
+    },
   });
 }

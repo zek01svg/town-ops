@@ -1,11 +1,19 @@
 import { queryOptions } from "@tanstack/react-query";
+import {
+  CaseDtoSchema,
+  TimelineEventDtoSchema,
+} from "@townops/orchestration-contract";
+import { gatewayFetch } from "@townops/ui/libr/gateway";
+import type { TimelineEvent } from "@townops/ui/libr/timeline";
+import { toTimelineEvents } from "@townops/ui/libr/timeline";
 import { z } from "zod/v4";
 
 import { env } from "@/env";
-import { fetchWithAuth } from "@/libr/auth-token";
 
 import { mapApiCaseToItem } from "../lib/map-case";
 import { caseKeys } from "./query-keys";
+
+export type { TimelineEvent };
 
 // Tolerant schema — status stays `z.string()` so a terminal Appointment still
 // parses; the UI only ever compares it against literals.
@@ -43,6 +51,17 @@ const gatewayCaseSchema = z.object({
     .nullish(),
 });
 
+const casesResponseSchema = z.object({
+  data: z.object({ items: z.array(CaseDtoSchema) }),
+});
+
+const timelineResponseSchema = z.object({
+  data: z.object({
+    items: z.array(TimelineEventDtoSchema),
+    missingSources: z.array(z.string()),
+  }),
+});
+
 export const caseQueries = {
   all: () =>
     queryOptions({
@@ -50,22 +69,54 @@ export const caseQueries = {
       enabled: !!localStorage.getItem("jwt"),
       retry: false,
       queryFn: async () => {
-        const res = await fetchWithAuth(
-          `${env.VITE_CASE_ATOM_URL}/api/cases`,
+        // ponytail: one page of 100. The Gateway returns no total, and the
+        // dashboard derives stat cards, kanban buckets, map pins and the
+        // detail sheet from this one array — real pagination needs a total
+        // first.
+        const body = await gatewayFetch(
+          `${env.VITE_GATEWAY_URL}/api/cases?pageSize=100`,
           {},
           env.VITE_AUTH_URL
         );
-        if (!res.ok) throw new Error(`Failed to fetch cases: ${res.status}`);
-        const data: unknown = await res.json();
-        if (
-          !data ||
-          typeof data !== "object" ||
-          !("cases" in data) ||
-          !Array.isArray(data.cases)
-        ) {
-          throw new Error("Invalid cases response");
-        }
-        return data.cases.map(mapApiCaseToItem);
+        const parsed = casesResponseSchema.safeParse(body);
+        if (!parsed.success) throw new Error("Invalid cases response");
+        return parsed.data.data.items.map(mapApiCaseToItem);
+      },
+    }),
+
+  // The Case's full timeline, merged and sorted ascending by the Gateway
+  // across all seven atom sources. `missingSources` names which of them
+  // were unreachable, so the caller can render a degraded-history strip
+  // instead of a silently shorter timeline.
+  timeline: (caseId: string) =>
+    queryOptions({
+      queryKey: caseKeys.timeline(caseId),
+      enabled: !!caseId && !!localStorage.getItem("jwt"),
+      retry: false,
+      queryFn: async (): Promise<{
+        events: TimelineEvent[];
+        missingSources: string[];
+      }> => {
+        const body = await gatewayFetch(
+          `${env.VITE_GATEWAY_URL}/api/cases/${caseId}/timeline`,
+          {},
+          env.VITE_AUTH_URL
+        );
+        const parsed = timelineResponseSchema.safeParse(body);
+        if (!parsed.success) throw new Error("Invalid timeline response");
+        // `detail: z.unknown()` makes the key optional on the inferred DTO
+        // type (undefined is a valid `unknown`) — this re-asserts it present
+        // so the structural `TimelineEventInput` (`detail: unknown`,
+        // required) that `toTimelineEvents` is pinned to still matches.
+        return {
+          events: toTimelineEvents(
+            parsed.data.data.items.map((event) => ({
+              ...event,
+              detail: event.detail,
+            }))
+          ),
+          missingSources: parsed.data.data.missingSources,
+        };
       },
     }),
 
@@ -77,16 +128,14 @@ export const caseQueries = {
       enabled: !!caseId && !!localStorage.getItem("jwt"),
       retry: false,
       queryFn: async (): Promise<GatewayAppointment | null> => {
-        const res = await fetchWithAuth(
+        const body = await gatewayFetch(
           `${env.VITE_GATEWAY_URL}/api/cases/${caseId}`,
           {},
           env.VITE_AUTH_URL
         );
-        if (!res.ok) return null;
-        const parsed = gatewayCaseSchema.safeParse(await res.json());
-        return parsed.success
-          ? (parsed.data.data?.assignment?.appointment ?? null)
-          : null;
+        const parsed = gatewayCaseSchema.safeParse(body);
+        if (!parsed.success) throw new Error("Invalid case response");
+        return parsed.data.data?.assignment?.appointment ?? null;
       },
     }),
 
@@ -96,14 +145,14 @@ export const caseQueries = {
       enabled: !!caseId && !!localStorage.getItem("jwt"),
       retry: false,
       queryFn: async (): Promise<GatewayEffect[]> => {
-        const res = await fetchWithAuth(
+        const body = await gatewayFetch(
           `${env.VITE_GATEWAY_URL}/api/cases/${caseId}/effects`,
           {},
           env.VITE_AUTH_URL
         );
-        if (!res.ok) return [];
-        const parsed = effectsSchema.safeParse(await res.json());
-        return parsed.success ? parsed.data.data.items : [];
+        const parsed = effectsSchema.safeParse(body);
+        if (!parsed.success) throw new Error("Invalid effects response");
+        return parsed.data.data.items;
       },
     }),
 };

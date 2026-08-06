@@ -92,6 +92,44 @@ export const CaseDtoSchema = z.object({
 
 export type CaseDto = z.infer<typeof CaseDtoSchema>;
 
+/**
+ * What a Contractor may see of a Case once their Attempt has been replaced
+ * (PRS-151 AC6). A historical Contractor keeps read access to the Case for
+ * accountability, but not the Resident's identity or the exact address —
+ * both belong to a Case they no longer hold. `postalCode` is a full 6-digit
+ * code that pins one building (see `postalSector()` below), and with
+ * `addressDetails` already dropped it is effectively the address, so it is
+ * omitted too — replaced by `postalSector`, the 2-digit granularity a
+ * Contractor who may never have attended still needs for their own records.
+ */
+export const HistoricalContractorCaseDtoSchema = CaseDtoSchema.omit({
+  residentId: true,
+  addressDetails: true,
+  postalCode: true,
+}).extend({ postalSector: z.string().length(2) });
+export type HistoricalContractorCaseDto = z.infer<
+  typeof HistoricalContractorCaseDtoSchema
+>;
+
+/**
+ * The Officer-only full Case view (PRS-151 AC3, 151-D Task 2). `publicCase()`
+ * (case atom) strips these three completion-workflow fields for every other
+ * reader — Resident and Contractor detail keep reading the public route and
+ * `CaseDtoSchema` — but an Officer reviewing a COMPLETED Case needs the
+ * report and evidence, so this is the one schema that carries them, sourced
+ * from the atom's un-redacted `/internal/cases/:id`. Plain nullable, not
+ * `.uuid()`/format-checked: this is a read-rendering path, and the DB column
+ * is nullable for legacy rows and only compile-time typed as `string[]` — a
+ * narrower schema here would turn an ordinary read into a 500, the same
+ * hazard `CaseStatusSchema` and `AppointmentStatusSchema` already call out.
+ */
+export const OfficerCaseDtoSchema = CaseDtoSchema.extend({
+  completionOperationId: z.string().nullable(),
+  completionReport: z.string().nullable(),
+  completionProofItemIds: z.array(z.string()).nullable(),
+});
+export type OfficerCaseDto = z.infer<typeof OfficerCaseDtoSchema>;
+
 export const MarkCaseAssignedResultSchema = z.object({
   outcome: z.enum(["ASSIGNED", "CASE_TERMINAL"]),
 });
@@ -390,6 +428,44 @@ export const ResidentAppointmentDtoSchema = AppointmentDtoSchema.pick({
 export type ResidentAppointmentDto = z.infer<
   typeof ResidentAppointmentDtoSchema
 >;
+
+/**
+ * The seven atom sources a Case's timeline (PRS-151) merges rows from.
+ */
+export const TimelineEventSourceSchema = z.enum([
+  "CASE_HISTORY",
+  "ALLOCATION_ATTEMPT",
+  "ASSIGNMENT_STATUS",
+  "APPOINTMENT",
+  "PROOF_ITEM",
+  "DERIVED_EFFECT",
+  "OFFICER_ATTENTION",
+]);
+export type TimelineEventSource = z.infer<typeof TimelineEventSourceSchema>;
+
+/**
+ * One normalized row in a Case's timeline (PRS-151). Every source's own
+ * actor/reason/operationId columns differ in shape — `case_history` and
+ * `allocation_attempts` carry a full `(actorId, actorRole, reason,
+ * operationId)` tuple, `assignment_status_history`'s `changedBy` is text
+ * (not a uuid, hence `actorId` here is a plain string), an Appointment row
+ * tracks no actor at all, and `derived_effects` only ever names a waiver
+ * actor. This is the one shape every source normalizes into — `null`
+ * standing in for whatever that source does not track, never an invented
+ * value.
+ */
+export const TimelineEventDtoSchema = z.object({
+  id: z.string().min(1),
+  at: z.string(),
+  source: TimelineEventSourceSchema,
+  type: z.string(),
+  actorId: z.string().nullable(),
+  actorRole: z.string().nullable(),
+  reason: z.string().nullable(),
+  operationId: z.string().nullable(),
+  detail: z.unknown(),
+});
+export type TimelineEventDto = z.infer<typeof TimelineEventDtoSchema>;
 
 export const AcceptAllocationInputSchema = z
   .object({
@@ -1435,6 +1511,10 @@ export const DerivedEffectSummarySchema = z
     nextRetryAt: z.string().nullable(),
     waiverActorId: z.uuid().nullable(),
     waiverReason: z.string().nullable(),
+    // Projected out of the immutable `payload` for a PERFORMANCE_ENTRY
+    // effect (PRS-151); null for EMAIL. `payload` itself is never exposed.
+    contractorId: z.uuid().nullable(),
+    scoreDelta: z.int().nullable(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })

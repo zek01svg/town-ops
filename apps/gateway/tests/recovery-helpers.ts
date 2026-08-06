@@ -77,8 +77,23 @@ export function recoveryFetch(options: {
 }): typeof fetch {
   return vi.fn(async (url: RequestInfo | URL) => {
     const href = url instanceof Request ? url.url : String(url);
+    // The internal Case route (Officer only, PRS-151 Task 2) hands back a
+    // singular `case`, not the public route's `cases` array.
+    if (href.includes("/internal/cases/")) {
+      return Response.json({ case: options.caseRecord ?? null });
+    }
     if (href.includes("/api/appointments")) {
       return Response.json({ appointments: options.appointments ?? [] });
+    }
+    // The Attempt-history route (`.../by-case/:id/attempts`) is a distinct
+    // shape from the current-assignment lookup below, and its URL is a
+    // superset of the latter's — checked first.
+    if (
+      href.includes("/api/assignments/by-case/") &&
+      href.endsWith("/attempts")
+    ) {
+      const attempt = options.attempt ?? recoveryAttempt;
+      return Response.json({ attempts: attempt ? [attempt] : [] });
     }
     if (href.includes("/api/assignments")) {
       return Response.json({

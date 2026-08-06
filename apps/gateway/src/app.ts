@@ -15,10 +15,12 @@ import {
   AppointmentDtoSchema,
   AssignmentDtoSchema,
   CaseDtoSchema,
+  CaseStatusSchema,
   CompleteCaseResultSchema,
   CompletionInputSchema,
   DerivedEffectSummarySchema,
   EffectRepairResultSchema,
+  HistoricalContractorCaseDtoSchema,
   canonicalManualAllocationPayload,
   canonicalCompletionPayload,
   canonicalCancelCasePayload,
@@ -33,11 +35,13 @@ import {
   ManualAllocationInputSchema,
   ManualAllocationResultSchema,
   OfficerAttentionDtoSchema,
+  OfficerCaseDtoSchema,
   canonicalStartWorkPayload,
   OpenCaseInputSchema,
   OpenCaseResultSchema,
   OperationSchema,
   ORCHESTRATION_TASK_QUEUE,
+  postalSector,
   ReplaceAppointmentInputSchema,
   ReplaceAppointmentResultSchema,
   RetryEffectInputSchema,
@@ -61,20 +65,27 @@ import type {
   CaseDto,
   CancelCaseResult,
   CompleteCaseResult,
+  DerivedEffectSummary,
   EffectRepairResult,
   ManualAllocationResult,
+  OfficerAttentionDto,
+  OfficerCaseDto,
   OpenCaseInput,
   OpenCaseResult,
   Operation,
+  ProofItemDto,
   ReplaceAppointmentResult,
   ReportNoAccessResult,
   ResidentAppointmentDto,
   StartWorkResult,
+  TimelineEventDto,
+  TimelineEventSource,
 } from "@townops/orchestration-contract";
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod/v4";
 
 const idempotencyKeySchema = z.uuid();
@@ -112,6 +123,10 @@ function isSupportedProofImage(file: File, bytes: Uint8Array) {
   }
 }
 const caseAtomResponseSchema = z.object({ cases: z.array(z.unknown()) });
+// The internal case atom route (`/internal/cases/:id`, service token) hands
+// back one un-redacted record under `case`, not the public route's `cases`
+// array — a distinct shape, not a subset, so it gets its own schema.
+const internalCaseAtomResponseSchema = z.object({ case: z.unknown() });
 const residentAtomResponseSchema = z.object({
   residents: z.array(z.unknown()),
 });
@@ -129,6 +144,29 @@ const proofAtomListResponseSchema = z.object({
 const officerAttentionAtomResponseSchema = z.object({
   attentions: z.array(OfficerAttentionDtoSchema),
 });
+const contractorCaseScopeResponseSchema = z.object({
+  items: z.array(
+    z.object({
+      caseId: z.uuid(),
+      assignmentId: z.uuid(),
+      participation: z.enum(["CURRENT", "HISTORICAL"]),
+    })
+  ),
+  page: z.number(),
+  pageSize: z.number(),
+});
+const attemptsAtomResponseSchema = z.object({
+  attempts: z.array(z.unknown()),
+});
+const caseHistoryAtomResponseSchema = z.object({
+  history: z.array(z.unknown()),
+});
+const assignmentStatusHistoryAtomResponseSchema = z.object({
+  history: z.array(z.unknown()),
+});
+const derivedEffectsAtomResponseSchema = z.object({
+  effects: z.array(DerivedEffectSummarySchema),
+});
 const authResponseSchema = z.object({
   user: z.object({
     id: z.uuid(),
@@ -141,10 +179,18 @@ const authResponseSchema = z.object({
 // at runtime so the per-field reads below need no type assertion.
 const AtomRecordSchema = z.record(z.string(), z.unknown());
 
+// Officer, Contractor, Resident — on their Compose published ports (3001-3003)
+// and their Vite dev ports (5173-5175, `strictPort: true` in each
+// `vite.config.ts`). Both are needed: every Gateway read carries an
+// `Authorization` header, so it is preflighted, and `credentials: true`
+// forbids the `"*"` wildcard.
 const browserOrigins = new Set([
   "http://localhost:3001",
   "http://localhost:3002",
   "http://localhost:3003",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
 ]);
 
 type GatewayWorkflowClient = {
@@ -269,10 +315,46 @@ function toCaseDto(record: unknown): CaseDto {
   });
 }
 
+/**
+ * The Officer-only widening of `toCaseDto` (151-D Task 2): same record, same
+ * transform, plus the three completion fields `CaseDtoSchema` never carries
+ * so they survive `.parse()`'s default strip. Only ever called on a record
+ * from the internal, un-redacted case route — never the public one, which
+ * omits these fields entirely rather than nulling them.
+ */
+function toOfficerCaseDto(record: unknown): OfficerCaseDto {
+  const source = AtomRecordSchema.parse(record);
+  return OfficerCaseDtoSchema.parse({
+    ...toCaseDto(source),
+    completionOperationId: source.completionOperationId ?? null,
+    completionReport: source.completionReport ?? null,
+    completionProofItemIds: source.completionProofItemIds ?? null,
+  });
+}
+
 type CaseAssignment = {
   assignment: AssignmentDto;
   currentAttempt: AllocationAttemptDto | null;
 };
+
+/**
+ * The tri-state shape `lookupResidentProfile` already uses, generalized:
+ * `ABSENT` is a well-formed response with no such record, `UNAVAILABLE` is a
+ * fetch throw, a non-ok response, or a response that parsed to an unexpected
+ * shape — a malformed payload means the source is not usable, and reporting
+ * it as "no data" would silently hide a broken atom (PRS-151 AC8).
+ */
+type Tristate<T> =
+  | { status: "FOUND"; data: T }
+  | { status: "ABSENT" }
+  | { status: "UNAVAILABLE" };
+
+/** Collapses a `Tristate` to its value, treating ABSENT and UNAVAILABLE the
+ * same — the caller that needs to tell them apart (e.g. the Contractor
+ * authorization branches below) reads `.status` directly instead. */
+function found<T>(lookup: Tristate<T>): T | null {
+  return lookup.status === "FOUND" ? lookup.data : null;
+}
 
 function toAppointmentDto(record: unknown): AppointmentDto | null {
   const parsed = AtomRecordSchema.safeParse(record);
@@ -301,62 +383,68 @@ async function lookupAppointment(
   fetchImpl: typeof fetch,
   caseId: string,
   attemptId: string | undefined
-) {
-  if (!attemptId) return null;
+): Promise<Tristate<AppointmentDto>> {
+  // No current Attempt means there is nothing to look up — that is the Case's
+  // own state, not the Appointment atom's, so it is ABSENT rather than
+  // UNAVAILABLE.
+  if (!attemptId) return { status: "ABSENT" };
+  let response: Response;
   try {
-    const response = await fetchImpl(
+    response = await fetchImpl(
       `${appointmentAtomUrl}/api/appointments/${caseId}`
     );
-    if (!response.ok) return null;
-    const parsed = appointmentAtomResponseSchema.safeParse(
-      await response.json().catch(() => undefined)
-    );
-    if (!parsed.success) return null;
-    // A rescheduled Case holds several Appointments under one Attempt — the
-    // Assignment and Attempt stay stable across a replacement (PRS-146 AC7) —
-    // and the retired RESCHEDULED/NO_ACCESS rows now survive the DTO parse, so
-    // an unordered `.find()` would return an arbitrary one. The atom already
-    // reads newest-first; ordering here makes "newest wins" this function's
-    // own guarantee rather than a silent dependency on that.
-    return (
-      parsed.data.appointments
-        .flatMap((record) => toAppointmentDto(record) ?? [])
-        .toSorted((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
-        .find((appointment) => appointment.attemptId === attemptId) ?? null
-    );
   } catch {
-    return null;
+    return { status: "UNAVAILABLE" };
   }
+  if (!response.ok) return { status: "UNAVAILABLE" };
+  const parsed = appointmentAtomResponseSchema.safeParse(
+    await response.json().catch(() => undefined)
+  );
+  if (!parsed.success) return { status: "UNAVAILABLE" };
+  // A rescheduled Case holds several Appointments under one Attempt — the
+  // Assignment and Attempt stay stable across a replacement (PRS-146 AC7) —
+  // and the retired RESCHEDULED/NO_ACCESS rows now survive the DTO parse, so
+  // an unordered `.find()` would return an arbitrary one. The atom already
+  // reads newest-first; ordering here makes "newest wins" this function's
+  // own guarantee rather than a silent dependency on that.
+  const match = parsed.data.appointments
+    .flatMap((record) => toAppointmentDto(record) ?? [])
+    .toSorted((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .find((appointment) => appointment.attemptId === attemptId);
+  return match ? { status: "FOUND", data: match } : { status: "ABSENT" };
 }
 
 /**
  * Looks up a Case's stable Assignment and current pending Attempt from the
- * assignment atom (AC7). A secondary source — an unreachable atom, an
- * unexpected response shape, or no Assignment yet — resolves to null rather
- * than failing the Case lookup closed.
+ * assignment atom (AC7). `ABSENT` is a well-formed response with no
+ * Assignment yet; `UNAVAILABLE` is an unreachable atom or an unexpected
+ * response shape. Most callers still fail closed on either (see `found()`) —
+ * `GET /api/cases/:caseId`'s Contractor branch is the one place the
+ * distinction changes the response (PRS-151 knock-on).
  */
 async function lookupCaseAssignment(
   assignmentAtomUrl: string,
   fetchImpl: typeof fetch,
   caseId: string
-): Promise<CaseAssignment | null> {
+): Promise<Tristate<CaseAssignment>> {
   let response: Response;
   try {
     response = await fetchImpl(
       `${assignmentAtomUrl}/api/assignments/by-case/${caseId}`
     );
   } catch {
-    return null;
+    return { status: "UNAVAILABLE" };
   }
-  if (!response.ok) return null;
+  if (!response.ok) return { status: "UNAVAILABLE" };
 
   const parsed = assignmentAtomResponseSchema.safeParse(
     await response.json().catch(() => undefined)
   );
-  if (!parsed.success || !parsed.data.assignment) return null;
+  if (!parsed.success) return { status: "UNAVAILABLE" };
+  if (!parsed.data.assignment) return { status: "ABSENT" };
 
   const assignment = AssignmentDtoSchema.safeParse(parsed.data.assignment);
-  if (!assignment.success) return null;
+  if (!assignment.success) return { status: "UNAVAILABLE" };
 
   let currentAttempt: AllocationAttemptDto | null = null;
   if (parsed.data.attempt) {
@@ -364,7 +452,10 @@ async function lookupCaseAssignment(
     if (attempt.success) currentAttempt = attempt.data;
   }
 
-  return { assignment: assignment.data, currentAttempt };
+  return {
+    status: "FOUND",
+    data: { assignment: assignment.data, currentAttempt },
+  };
 }
 
 /**
@@ -489,6 +580,638 @@ function ensureResidentProvisioning(
     .catch(() => undefined);
 }
 
+// ─── Case timeline (PRS-151) ────────────────────────────────────────────────
+// Seven atoms, one merged and sorted read. Every per-source fetcher below
+// resolves to `TimelineSourceLookup` — FOUND (possibly empty) or
+// UNAVAILABLE — never throws, so `Promise.all` in the route below always
+// settles and an unreachable atom degrades to `missingSources` (AC8) rather
+// than failing the whole read.
+
+/**
+ * A `TimelineEventDto` carrying the contractor it belongs to, when the
+ * source names one. Used only to filter a historical Contractor's view
+ * (AC6) and stripped before the response leaves the Gateway — the contract
+ * DTO has no such field, since only the Gateway needs it.
+ */
+type TimelineEvent = TimelineEventDto & { contractorId: string | null };
+
+type TimelineSourceLookup =
+  | { status: "FOUND"; events: TimelineEvent[] }
+  | { status: "UNAVAILABLE" };
+
+function allocationAttemptEvent(attempt: AllocationAttemptDto): TimelineEvent {
+  return {
+    id: attempt.id,
+    at: attempt.createdAt,
+    source: "ALLOCATION_ATTEMPT",
+    type: attempt.status,
+    actorId: attempt.actorId,
+    actorRole: attempt.actorRole,
+    reason: attempt.reason,
+    operationId: attempt.operationId,
+    detail: attempt,
+    contractorId: attempt.contractorId,
+  };
+}
+
+/**
+ * `lookupAttemptHistory`'s result. Deliberately not `Tristate<T>` — an empty
+ * Attempt list ("no Assignment yet") is a normal FOUND, not an ABSENT this
+ * caller needs to branch on, so there is no third state.
+ */
+type AttemptHistoryLookup =
+  | { status: "FOUND"; data: AllocationAttemptDto[] }
+  | { status: "UNAVAILABLE" };
+
+/**
+ * Every Attempt ever offered for a Case (151-A), oldest first, `[]` when the
+ * Case has no Assignment yet. A PRIMARY source for a Contractor's timeline
+ * authorization (the only way to know whether they ever held the Case) and
+ * a secondary timeline source for everyone else.
+ */
+async function lookupAttemptHistory(
+  assignmentAtomUrl: string,
+  fetchImpl: typeof fetch,
+  caseId: string
+): Promise<AttemptHistoryLookup> {
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      `${assignmentAtomUrl}/api/assignments/by-case/${caseId}/attempts`
+    );
+  } catch {
+    return { status: "UNAVAILABLE" };
+  }
+  if (!response.ok) return { status: "UNAVAILABLE" };
+  const parsed = attemptsAtomResponseSchema.safeParse(
+    await response.json().catch(() => undefined)
+  );
+  if (!parsed.success) return { status: "UNAVAILABLE" };
+  const attempts = parsed.data.attempts.flatMap((record) => {
+    const attempt = AllocationAttemptDtoSchema.safeParse(record);
+    return attempt.success ? [attempt.data] : [];
+  });
+  return { status: "FOUND", data: attempts };
+}
+
+/**
+ * The Attempt with the latest `createdAt`, ties broken by the smallest id —
+ * the same rule the assignment atom's own Contractor Case scope route uses
+ * to decide CURRENT vs HISTORICAL (`listCasesForContractor`), kept
+ * consistent here so a Contractor's timeline never disagrees with their
+ * Case list about which Attempt is current.
+ */
+function newestAttempt(
+  attempts: AllocationAttemptDto[]
+): AllocationAttemptDto | undefined {
+  return attempts.reduce<AllocationAttemptDto | undefined>(
+    (newest, attempt) => {
+      if (!newest) return attempt;
+      const delta =
+        Date.parse(attempt.createdAt) - Date.parse(newest.createdAt);
+      if (delta > 0) return attempt;
+      if (delta === 0 && attempt.id < newest.id) return attempt;
+      return newest;
+    },
+    undefined
+  );
+}
+
+/**
+ * `case_history` carries the full `(actorId, actorRole, reason,
+ * operationId)` tuple, but has no contract DTO of its own — this reads the
+ * atom's raw JSON row the same defensive way `toCaseDto`/`toAppointmentDto`
+ * do, skipping (not failing) a row missing its required fields.
+ */
+function caseHistoryEvent(record: unknown): TimelineEvent | undefined {
+  const parsed = AtomRecordSchema.safeParse(record);
+  if (!parsed.success) return undefined;
+  const row = parsed.data;
+  const id = typeof row.id === "string" ? row.id : undefined;
+  const at = typeof row.createdAt === "string" ? row.createdAt : undefined;
+  const type = typeof row.eventType === "string" ? row.eventType : undefined;
+  if (!id || !at || !type) return undefined;
+  return {
+    id,
+    at,
+    source: "CASE_HISTORY",
+    type,
+    actorId: typeof row.actorId === "string" ? row.actorId : null,
+    actorRole: typeof row.actorRole === "string" ? row.actorRole : null,
+    reason: typeof row.reason === "string" ? row.reason : null,
+    operationId: typeof row.operationId === "string" ? row.operationId : null,
+    detail: row,
+    contractorId: null,
+  };
+}
+
+async function fetchCaseHistorySource(
+  caseAtomUrl: string,
+  fetchImpl: typeof fetch,
+  caseId: string
+): Promise<TimelineSourceLookup> {
+  let response: Response;
+  try {
+    response = await fetchImpl(`${caseAtomUrl}/api/cases/${caseId}/history`);
+  } catch {
+    return { status: "UNAVAILABLE" };
+  }
+  if (!response.ok) return { status: "UNAVAILABLE" };
+  const parsed = caseHistoryAtomResponseSchema.safeParse(
+    await response.json().catch(() => undefined)
+  );
+  if (!parsed.success) return { status: "UNAVAILABLE" };
+  return {
+    status: "FOUND",
+    events: parsed.data.history.flatMap(
+      (record) => caseHistoryEvent(record) ?? []
+    ),
+  };
+}
+
+/**
+ * `assignment_status_history.changed_by` is text, not a uuid — there is no
+ * separate actor id/role tracked, so `changedBy` maps straight onto
+ * `actorId` (itself a plain string in `TimelineEventDto`, precisely so this
+ * needs no uuid parse) and `actorRole` stays null. The table also has no
+ * `operationId` column.
+ */
+function assignmentStatusEvent(record: unknown): TimelineEvent | undefined {
+  const parsed = AtomRecordSchema.safeParse(record);
+  if (!parsed.success) return undefined;
+  const row = parsed.data;
+  const id = typeof row.id === "string" ? row.id : undefined;
+  const at = typeof row.changedAt === "string" ? row.changedAt : undefined;
+  const type = typeof row.toStatus === "string" ? row.toStatus : undefined;
+  if (!id || !at || !type) return undefined;
+  return {
+    id,
+    at,
+    source: "ASSIGNMENT_STATUS",
+    type,
+    actorId: typeof row.changedBy === "string" ? row.changedBy : null,
+    actorRole: null,
+    reason: typeof row.reason === "string" ? row.reason : null,
+    operationId: null,
+    detail: row,
+    contractorId: null,
+  };
+}
+
+async function fetchAssignmentStatusSource(
+  assignmentAtomUrl: string,
+  fetchImpl: typeof fetch,
+  caseId: string
+): Promise<TimelineSourceLookup> {
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      `${assignmentAtomUrl}/api/assignments/${caseId}/history`
+    );
+  } catch {
+    return { status: "UNAVAILABLE" };
+  }
+  if (!response.ok) return { status: "UNAVAILABLE" };
+  const parsed = assignmentStatusHistoryAtomResponseSchema.safeParse(
+    await response.json().catch(() => undefined)
+  );
+  if (!parsed.success) return { status: "UNAVAILABLE" };
+  return {
+    status: "FOUND",
+    events: parsed.data.history.flatMap(
+      (record) => assignmentStatusEvent(record) ?? []
+    ),
+  };
+}
+
+function appointmentEvent(appointment: AppointmentDto): TimelineEvent {
+  return {
+    id: appointment.id,
+    at: appointment.createdAt,
+    source: "APPOINTMENT",
+    type: appointment.status,
+    actorId: null,
+    actorRole: null,
+    reason: appointment.reason,
+    operationId: appointment.operationId,
+    detail: appointment,
+    contractorId: appointment.contractorId,
+  };
+}
+
+async function fetchAppointmentSource(
+  appointmentAtomUrl: string,
+  fetchImpl: typeof fetch,
+  caseId: string
+): Promise<TimelineSourceLookup> {
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      `${appointmentAtomUrl}/api/appointments/${caseId}`
+    );
+  } catch {
+    return { status: "UNAVAILABLE" };
+  }
+  if (!response.ok) return { status: "UNAVAILABLE" };
+  const parsed = appointmentAtomResponseSchema.safeParse(
+    await response.json().catch(() => undefined)
+  );
+  if (!parsed.success) return { status: "UNAVAILABLE" };
+  return {
+    status: "FOUND",
+    events: parsed.data.appointments.flatMap((record) => {
+      const appointment = toAppointmentDto(record);
+      return appointment ? [appointmentEvent(appointment)] : [];
+    }),
+  };
+}
+
+function proofItemEvent(proofItem: ProofItemDto): TimelineEvent | undefined {
+  // `createdAt` is nullable on the DTO for an item that is not yet ready —
+  // the internal route only ever returns ready items, but a timeline row
+  // with no timestamp cannot be placed, so it is skipped defensively.
+  if (!proofItem.createdAt) return undefined;
+  return {
+    id: proofItem.id,
+    at: proofItem.createdAt,
+    source: "PROOF_ITEM",
+    type: proofItem.type,
+    actorId: null,
+    actorRole: null,
+    reason: null,
+    operationId: null,
+    detail: proofItem,
+    contractorId: proofItem.contractorId,
+  };
+}
+
+/**
+ * `contractorId` is omitted here for every role, not just OFFICER — a
+ * CURRENT Contractor must still see a replaced predecessor's Proof Items
+ * (Task 4 only drops OFFICER_ATTENTION for them), so the fetch stays
+ * unfiltered and the Contractor-HISTORICAL narrowing happens once, in the
+ * shared role filter below, the same way it does for every other source.
+ */
+async function fetchProofItemSource(
+  proofAtomUrl: string,
+  fetchImpl: typeof fetch,
+  workerServiceToken: string,
+  caseId: string
+): Promise<TimelineSourceLookup> {
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      `${proofAtomUrl}/internal/proof-items/${caseId}`,
+      {
+        headers: { Authorization: `Bearer ${workerServiceToken}` },
+      }
+    );
+  } catch {
+    return { status: "UNAVAILABLE" };
+  }
+  if (!response.ok) return { status: "UNAVAILABLE" };
+  const parsed = proofAtomListResponseSchema.safeParse(
+    await response.json().catch(() => undefined)
+  );
+  if (!parsed.success) return { status: "UNAVAILABLE" };
+  return {
+    status: "FOUND",
+    events: parsed.data.proof.flatMap((item) => proofItemEvent(item) ?? []),
+  };
+}
+
+/**
+ * `waiverActorId`/`waiverReason` are the only actor/reason data a Derived
+ * Effect carries — the immutable `payload`'s own `reason` (for a
+ * PERFORMANCE_ENTRY) is deliberately never exposed (PRS-151 locked
+ * decision), and there is no `operationId` column at all.
+ */
+function derivedEffectEvent(effect: DerivedEffectSummary): TimelineEvent {
+  return {
+    id: effect.id,
+    at: effect.createdAt,
+    source: "DERIVED_EFFECT",
+    type: effect.type,
+    actorId: effect.waiverActorId,
+    actorRole: null,
+    reason: effect.waiverReason,
+    operationId: null,
+    detail: effect,
+    contractorId: effect.contractorId,
+  };
+}
+
+async function fetchDerivedEffectSource(
+  alertAtomUrl: string,
+  fetchImpl: typeof fetch,
+  workerServiceToken: string,
+  caseId: string
+): Promise<TimelineSourceLookup> {
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      `${alertAtomUrl}/internal/effects/case/${caseId}`,
+      {
+        headers: { Authorization: `Bearer ${workerServiceToken}` },
+      }
+    );
+  } catch {
+    return { status: "UNAVAILABLE" };
+  }
+  if (!response.ok) return { status: "UNAVAILABLE" };
+  const parsed = derivedEffectsAtomResponseSchema.safeParse(
+    await response.json().catch(() => undefined)
+  );
+  if (!parsed.success) return { status: "UNAVAILABLE" };
+  return {
+    status: "FOUND",
+    events: parsed.data.effects.map(derivedEffectEvent),
+  };
+}
+
+function officerAttentionEvent(attention: OfficerAttentionDto): TimelineEvent {
+  return {
+    id: attention.id,
+    at: attention.createdAt,
+    source: "OFFICER_ATTENTION",
+    type: attention.kind,
+    actorId: null,
+    actorRole: null,
+    reason: null,
+    operationId: attention.operationId,
+    detail: attention,
+    contractorId: null,
+  };
+}
+
+/**
+ * Officer Attention has no "all" state filter, only open/resolved — this
+ * merges both into the one OFFICER_ATTENTION timeline source. Either call
+ * failing marks the whole source UNAVAILABLE rather than silently showing
+ * half of it.
+ * ponytail: `pageSize: 100` (the atom's own max) per state is not a true
+ * "all" — raise this if a Case ever plausibly carries more Attentions than
+ * that.
+ */
+async function fetchOfficerAttentionSource(
+  caseAtomUrl: string,
+  fetchImpl: typeof fetch,
+  caseId: string
+): Promise<TimelineSourceLookup> {
+  async function fetchState(state: "open" | "resolved") {
+    let response: Response;
+    try {
+      response = await fetchImpl(
+        `${caseAtomUrl}/api/cases/officer-attention?${new URLSearchParams({
+          state,
+          caseId,
+          pageSize: "100",
+        })}`
+      );
+    } catch {
+      return undefined;
+    }
+    if (!response.ok) return undefined;
+    const parsed = officerAttentionAtomResponseSchema.safeParse(
+      await response.json().catch(() => undefined)
+    );
+    return parsed.success ? parsed.data.attentions : undefined;
+  }
+  const [open, resolved] = await Promise.all([
+    fetchState("open"),
+    fetchState("resolved"),
+  ]);
+  if (!open || !resolved) return { status: "UNAVAILABLE" };
+  return {
+    status: "FOUND",
+    events: [...open, ...resolved].map(officerAttentionEvent),
+  };
+}
+
+/**
+ * Task 4's role filter, applied once every source is normalized into the
+ * same shape so one predicate set covers all seven. `participation` is null
+ * for RESIDENT/OFFICER, where it plays no part.
+ */
+function includeTimelineEventForRole(
+  event: TimelineEvent,
+  actor: Actor,
+  participation: "CURRENT" | "HISTORICAL" | null
+): boolean {
+  if (actor.role === "RESIDENT") {
+    // Deny-by-default, same reasoning and the same hazard as the Contractor
+    // branch below: this is an allow-list over the seven sources, and the
+    // exhaustive switch turns an eighth source added later into a compile
+    // error instead of a silent `return true`.
+    //
+    // ALLOCATION_ATTEMPT and ASSIGNMENT_STATUS are Contractor allocation
+    // bookkeeping — exactly what `ResidentAppointmentDtoSchema`
+    // (packages/orchestration-contract/src/index.ts:402-408) already drops
+    // `contractorId`/`attemptId` for on the Case detail route, "because
+    // allocation bookkeeping would expose Contractor churn across
+    // Acceptance SLA Breaches." Dropping both sources here keeps the
+    // timeline consistent with that decision instead of re-exposing the
+    // same churn through a second surface. The surviving sources still get
+    // narrowed by `redactForResident()` below — this only decides whether a
+    // source is reachable at all.
+    switch (event.source) {
+      case "CASE_HISTORY":
+      case "APPOINTMENT":
+      case "PROOF_ITEM":
+        return true;
+      case "DERIVED_EFFECT":
+        return event.type !== "PERFORMANCE_ENTRY";
+      case "ALLOCATION_ATTEMPT":
+      case "ASSIGNMENT_STATUS":
+      case "OFFICER_ATTENTION":
+        return false;
+      default: {
+        const unhandledSource: never = event.source;
+        throw new Error(
+          `Unhandled timeline source: ${String(unhandledSource)}`
+        );
+      }
+    }
+  }
+  if (actor.role === "CONTRACTOR") {
+    if (event.source === "OFFICER_ATTENTION") return false;
+    if (participation !== "HISTORICAL") return true;
+
+    // Deny-by-default, on purpose: AC5 names exactly four things a
+    // historical Contractor keeps (its own Attempts, Appointments, Proof
+    // Items, and Performance Entries), and the two sources excluded below
+    // (CASE_HISTORY, ASSIGNMENT_STATUS) carry no reliable per-row contractor
+    // attribution to scope by even if they were on the list —
+    // `assignmentStatusEvent()` maps `changed_by` onto `actorId`, and the
+    // mainline acceptance path writes the *accepting* Contractor's id there
+    // regardless of who is asking; `caseHistoryEvent()`'s `operationId`
+    // embeds the winning Contractor's id verbatim for auto-allocation. An
+    // exclusion list over those two would leak the next source added to
+    // `TimelineEventSourceSchema` by default — unfiltered, silently, in the
+    // exact function that already shipped one AC5 leak. This switch is an
+    // allow-list instead, and the `default` arm turns an unhandled source
+    // into a compile error (`event.source` fails to narrow to `never`)
+    // rather than a silent `return true`: adding an eighth source forces
+    // whoever adds it to decide here, on purpose, which bucket it belongs in.
+    switch (event.source) {
+      case "ALLOCATION_ATTEMPT":
+      case "APPOINTMENT":
+      case "PROOF_ITEM":
+      case "DERIVED_EFFECT":
+        return event.contractorId === actor.contractorId;
+      case "CASE_HISTORY":
+      case "ASSIGNMENT_STATUS":
+        return false;
+      default: {
+        const unhandledSource: never = event.source;
+        throw new Error(
+          `Unhandled timeline source: ${String(unhandledSource)}`
+        );
+      }
+    }
+  }
+  // OFFICER: AccountRoleSchema is an exhaustive 3-value enum and
+  // resolveActor() already 401s anything else, so this is the only
+  // remaining branch — an Officer sees every source, unfiltered.
+  return true;
+}
+
+/** A plain, non-array object — `Record<string, unknown>` narrowed at
+ * runtime rather than asserted, for `redactForResident`'s `detail` guards. */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Narrows what a Resident sees *within* a source `includeTimelineEventForRole`
+ * has already let through — that function decides reachability, this decides
+ * content. Mirrors `ResidentAppointmentDtoSchema`'s existing "no Contractor
+ * churn" rule (contract:402-408) everywhere a Contractor id can otherwise
+ * reach a Resident:
+ *  - CASE_HISTORY: `actorId` is the acting party — a Contractor on
+ *    contractor-driven transitions — and `operationId` embeds a Contractor's
+ *    id verbatim for auto-allocation (`${caseId}/allocate/${contractorId}/${epoch}`).
+ *    Both are nulled, in `detail` too, not just the flattened fields.
+ *    `actorRole` stays: "a Contractor started work" is the useful,
+ *    non-identifying fact this source exists to carry.
+ *  - APPOINTMENT: reuses `toResidentAppointmentDto` — the exact DTO the Case
+ *    detail route already hands a Resident — instead of a second narrowing,
+ *    and nulls `operationId` to match (that DTO drops it too).
+ *  - PROOF_ITEM: `contractorId` names who uploaded the item — a Resident
+ *    seeing which Contractor across a reassignment is the same churn leak by
+ *    another route.
+ * Exhaustive over every source for the same reason `includeTimelineEventForRole`
+ * is: a source a Resident can newly reach but this switch does not name
+ * fails to compile rather than passing its raw `detail` through unredacted.
+ *
+ * `detail` is `unknown` by contract, so every case below narrows it at
+ * runtime instead of asserting its shape — an assertion that turns out
+ * wrong either degrades silently (spreading a non-object yields no own
+ * properties) or throws mid-request. Neither is acceptable here: on a
+ * guard failure this redacts harder, not softer, and sets `detail: null`.
+ * Showing a Resident less than intended is a cosmetic bug; showing them
+ * more is the exact class of defect this whole sub-issue exists to close.
+ */
+function redactForResident(event: TimelineEvent): TimelineEvent {
+  switch (event.source) {
+    case "CASE_HISTORY":
+      return {
+        ...event,
+        actorId: null,
+        operationId: null,
+        detail: isPlainRecord(event.detail)
+          ? { ...event.detail, actorId: null, operationId: null }
+          : null,
+      };
+    case "APPOINTMENT": {
+      const appointment = AppointmentDtoSchema.safeParse(event.detail);
+      return {
+        ...event,
+        operationId: null,
+        detail: appointment.success
+          ? toResidentAppointmentDto(appointment.data)
+          : null,
+      };
+    }
+    case "PROOF_ITEM":
+      return {
+        ...event,
+        detail: isPlainRecord(event.detail)
+          ? { ...event.detail, contractorId: null }
+          : null,
+      };
+    case "DERIVED_EFFECT":
+      // EMAIL-only by the time a Resident sees this — `includeTimelineEventForRole`
+      // already drops PERFORMANCE_ENTRY — and an EMAIL summary's
+      // `contractorId` is already null (151-A), so there is nothing to redact.
+      return event;
+    case "ALLOCATION_ATTEMPT":
+    case "ASSIGNMENT_STATUS":
+    case "OFFICER_ATTENTION":
+      // Unreachable for a Resident — `includeTimelineEventForRole` already
+      // drops all three — kept here only so this switch stays exhaustive
+      // against the full `TimelineEventSource` union.
+      return event;
+    default: {
+      const unhandledSource: never = event.source;
+      throw new Error(`Unhandled timeline source: ${String(unhandledSource)}`);
+    }
+  }
+}
+
+/**
+ * Rows from different atoms collide on timestamp routinely (a Case-atom
+ * write and an Attempt insert in the same request, for instance) — sorting
+ * by `at` alone is not a total order. `(at, source, id)` is: ties resolve
+ * deterministically instead of however the fan-out happened to settle.
+ * `Date.parse` on a malformed `at` falls back to a string compare so the
+ * sort never sees `NaN`, which fails every comparison.
+ */
+function compareTimelineEvents(a: TimelineEvent, b: TimelineEvent) {
+  const atA = Date.parse(a.at);
+  const atB = Date.parse(b.at);
+  const byTime =
+    Number.isNaN(atA) || Number.isNaN(atB)
+      ? a.at.localeCompare(b.at)
+      : atA - atB;
+  if (byTime !== 0) return byTime;
+  if (a.source !== b.source) return a.source < b.source ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+// ─── Case detail full-history sections (PRS-151 151-D, Tasks 1 & 3) ───────
+// Officer and Contractor detail both gain the same four sections — full
+// Allocation Attempt history, Appointment history, Proof Items, and Derived
+// Effects — reusing the exact per-source fetchers the timeline above already
+// built, rather than a fourth set of atom calls.
+
+/**
+ * Runs a source's `TimelineEvent[]` through `includeTimelineEventForRole` —
+ * the same participation predicate the timeline uses, not a second copy of
+ * the CURRENT/HISTORICAL rule (151-D Task 3) — then unwraps each surviving
+ * event back to its typed DTO via `.detail`, which every `*Event()` mapper
+ * above sets to exactly that DTO. `detail` is `unknown` by contract, so this
+ * re-parses rather than casts; a row that fails to parse is dropped, the
+ * same defensive default the mappers above already use. Officer's
+ * `participation` is always null, under which every source passes
+ * unconditionally (`includeTimelineEventForRole`'s OFFICER branch), so this
+ * same call is a no-op filter for an Officer and the real narrowing for a
+ * HISTORICAL Contractor.
+ */
+function caseDetailSection<T>(
+  events: TimelineEvent[],
+  actor: Actor,
+  participation: "CURRENT" | "HISTORICAL" | null,
+  schema: z.ZodType<T>
+): T[] {
+  return events
+    .filter((event) => includeTimelineEventForRole(event, actor, participation))
+    .flatMap((event) => {
+      const parsed = schema.safeParse(event.detail);
+      return parsed.success ? [parsed.data] : [];
+    });
+}
+
 export function createGatewayApp({
   workflowClient,
   caseAtomUrl,
@@ -504,6 +1227,28 @@ export function createGatewayApp({
   updateTimeoutMs = 20_000,
 }: GatewayDependencies) {
   const app = new Hono<GatewayEnv>();
+
+  // A thrown HTTPException (e.g. the `jwk` authenticate middleware on a
+  // missing/invalid token) already carries its own correct response —
+  // Hono's own default handler special-cases it the same way — so this only
+  // takes over for what would otherwise be Hono's plaintext 500: a stray
+  // `.parse()` throw (CaseStatusSchema, most often) escaping a handler.
+  // AC1 requires the common error envelope on every read, this included.
+  app.onError((err, c) => {
+    if (err instanceof HTTPException) return err.getResponse();
+    // The Gateway carries no logger (unlike the atoms' shared-ts logger +
+    // Sentry) — 151-B deliberately does not add that dependency here.
+    console.error("[gateway] internal server error", {
+      error: err.message,
+      stack: err.stack,
+      route: c.req.path,
+    });
+    return error(c, 500, {
+      code: "INTERNAL_ERROR",
+      message: "An unexpected error occurred",
+      retryable: false,
+    });
+  });
 
   app.use(
     "/api/*",
@@ -1036,10 +1781,8 @@ export function createGatewayApp({
           details: input.error.flatten(),
         });
       }
-      const caseAssignment = await lookupCaseAssignment(
-        assignmentAtomUrl,
-        fetchImpl,
-        caseId.data
+      const caseAssignment = found(
+        await lookupCaseAssignment(assignmentAtomUrl, fetchImpl, caseId.data)
       );
       if (
         !caseAssignment ||
@@ -2014,6 +2757,8 @@ export function createGatewayApp({
         state: z.enum(["open", "resolved"]).default("open"),
         page: z.coerce.number().int().positive().default(1),
         pageSize: z.coerce.number().int().positive().max(100).default(25),
+        // 151-A added this filter to the atom; 151-D Task 4 wires it through.
+        caseId: z.uuid().optional(),
       })
       .safeParse(c.req.query());
     if (!query.success) {
@@ -2025,14 +2770,19 @@ export function createGatewayApp({
       });
     }
 
+    const officerAttentionParams = new URLSearchParams({
+      state: query.data.state,
+      page: String(query.data.page),
+      pageSize: String(query.data.pageSize),
+    });
+    if (query.data.caseId) {
+      officerAttentionParams.set("caseId", query.data.caseId);
+    }
+
     let response: Response;
     try {
       response = await fetchImpl(
-        `${caseAtomUrl}/api/cases/officer-attention?${new URLSearchParams({
-          state: query.data.state,
-          page: String(query.data.page),
-          pageSize: String(query.data.pageSize),
-        })}`
+        `${caseAtomUrl}/api/cases/officer-attention?${officerAttentionParams}`
       );
     } catch {
       return error(c, 503, {
@@ -2266,11 +3016,25 @@ export function createGatewayApp({
         retryable: false,
       });
     }
-    const assignment = await lookupCaseAssignment(
+    // 151-D Task 5 (carry-over): `found()` alone would collapse UNAVAILABLE
+    // and ABSENT to the same `null` — exactly the 151-C conflation this
+    // route missed the first time, turning an unreachable assignment atom
+    // into a wrong 404 for a legitimately-assigned Contractor. UNAVAILABLE
+    // defers with 503; ABSENT (and a mismatched Contractor) still 404s —
+    // authorization fails closed either way, never grants on a down atom.
+    const assignmentLookup = await lookupCaseAssignment(
       assignmentAtomUrl,
       fetchImpl,
       caseId.data
     );
+    if (assignmentLookup.status === "UNAVAILABLE") {
+      return error(c, 503, {
+        code: "ASSIGNMENT_ATOM_UNAVAILABLE",
+        message: "Assignment service is unavailable",
+        retryable: true,
+      });
+    }
+    const assignment = found(assignmentLookup);
     if (assignment?.currentAttempt?.contractorId !== contractorId.data) {
       return error(c, 404, {
         code: "CASE_NOT_FOUND",
@@ -2380,12 +3144,13 @@ export function createGatewayApp({
           retryable: false,
         });
       }
-      const [assignment, caseResponse] = await Promise.all([
+      const [assignmentLookup, caseResponse] = await Promise.all([
         lookupCaseAssignment(assignmentAtomUrl, fetchImpl, caseId.data),
         fetchImpl(`${caseAtomUrl}/api/cases/${caseId.data}`).catch(
           () => undefined
         ),
       ]);
+      const assignment = found(assignmentLookup);
       if (!caseResponse || !caseResponse.ok) {
         return error(c, 503, {
           code: "CASE_ATOM_UNAVAILABLE",
@@ -2404,11 +3169,13 @@ export function createGatewayApp({
         });
       }
       const caseDto = toCaseDto(parsedCase.data.cases[0]);
-      const appointment = await lookupAppointment(
-        appointmentAtomUrl,
-        fetchImpl,
-        caseId.data,
-        assignment?.currentAttempt?.id
+      const appointment = found(
+        await lookupAppointment(
+          appointmentAtomUrl,
+          fetchImpl,
+          caseId.data,
+          assignment?.currentAttempt?.id
+        )
       );
       if (
         !assignment ||
@@ -2532,12 +3299,13 @@ export function createGatewayApp({
         details: input.error.flatten(),
       });
     }
-    const [assignment, caseResponse] = await Promise.all([
+    const [assignmentLookup, caseResponse] = await Promise.all([
       lookupCaseAssignment(assignmentAtomUrl, fetchImpl, caseId.data),
       fetchImpl(`${caseAtomUrl}/api/cases/${caseId.data}`).catch(
         () => undefined
       ),
     ]);
+    const assignment = found(assignmentLookup);
     if (!caseResponse || !caseResponse.ok) {
       return error(c, 503, {
         code: "CASE_ATOM_UNAVAILABLE",
@@ -2556,11 +3324,13 @@ export function createGatewayApp({
       });
     }
     const caseDto = toCaseDto(parsedCase.data.cases[0]);
-    const appointment = await lookupAppointment(
-      appointmentAtomUrl,
-      fetchImpl,
-      caseId.data,
-      assignment?.currentAttempt?.id
+    const appointment = found(
+      await lookupAppointment(
+        appointmentAtomUrl,
+        fetchImpl,
+        caseId.data,
+        assignment?.currentAttempt?.id
+      )
     );
     if (
       !assignment ||
@@ -2685,6 +3455,222 @@ export function createGatewayApp({
     });
   });
 
+  // A GET on the exact "/api/cases" path never matches the "/api/cases/:caseId"
+  // route below it (different segment count) or the POST above (different
+  // method) — Hono routes on method + segment shape, not registration order.
+  app.get("/api/cases", async (c) => {
+    const actor = resolveActor(c.get("jwtPayload"));
+    if (!actor) {
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
+        retryable: false,
+      });
+    }
+
+    const query = z
+      .object({
+        status: CaseStatusSchema.optional(),
+        page: z.coerce.number().int().positive().default(1),
+        pageSize: z.coerce.number().int().positive().max(100).default(25),
+      })
+      .safeParse(c.req.query());
+    if (!query.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Case list pagination is invalid",
+        retryable: false,
+        details: query.error.flatten(),
+      });
+    }
+
+    if (actor.role === "RESIDENT" || actor.role === "OFFICER") {
+      const params = new URLSearchParams({
+        page: String(query.data.page),
+        pageSize: String(query.data.pageSize),
+      });
+      // RESIDENT scopes to their own Cases; OFFICER sees every Case, with an
+      // optional status filter. The atom's status column is lowercase.
+      if (actor.role === "RESIDENT") {
+        params.set("residentId", actor.accountId);
+      }
+      if (actor.role === "OFFICER" && query.data.status) {
+        params.set("status", query.data.status.toLowerCase());
+      }
+
+      let response: Response;
+      try {
+        response = await fetchImpl(`${caseAtomUrl}/api/cases?${params}`);
+      } catch {
+        return error(c, 503, {
+          code: "CASE_ATOM_UNAVAILABLE",
+          message: "Case service is unavailable",
+          retryable: true,
+        });
+      }
+      if (!response.ok) {
+        return error(c, 503, {
+          code: "CASE_ATOM_UNAVAILABLE",
+          message: "Case service is unavailable",
+          retryable: true,
+        });
+      }
+      const parsed = caseAtomResponseSchema.safeParse(
+        await response.json().catch(() => undefined)
+      );
+      if (!parsed.success) {
+        return error(c, 503, {
+          code: "CASE_ATOM_UNAVAILABLE",
+          message: "Case service returned an invalid response",
+          retryable: true,
+        });
+      }
+      let items = parsed.data.cases.map(toCaseDto);
+      // The `residentId` query param above is a filter, not an authorization
+      // boundary — the Gateway re-verifies ownership itself rather than
+      // trusting the atom, the same rule every other Resident-scoped read in
+      // this file follows (e.g. the Case detail route below). A list surface
+      // silently drops a mismatched row rather than 404ing: there is no
+      // single resource here whose existence a 404 would confirm.
+      if (actor.role === "RESIDENT") {
+        items = items.filter((item) => item.residentId === actor.accountId);
+      }
+      return c.json({
+        data: { items, page: query.data.page, pageSize: query.data.pageSize },
+      });
+    }
+
+    // CONTRACTOR falls through to here unconditionally: AccountRoleSchema is
+    // an exhaustive 3-value enum and resolveActor() already 401s any token
+    // whose role does not parse against it, so there is no fourth role left
+    // for an explicit gate to catch — the sibling routes' three-way checks
+    // are a redundant belt-and-braces the type system already guarantees.
+    //
+    // The assignment atom's Contractor Case scope is the authoritative — and
+    // paginated — source. The Case atom's `?ids=` call is a secondary fan-in
+    // on top of it, never the source of scoping.
+    const contractorId = z.uuid().safeParse(actor.contractorId);
+    if (!contractorId.success) {
+      return error(c, 403, {
+        code: "FORBIDDEN",
+        message: "Contractor access is required",
+        retryable: false,
+      });
+    }
+
+    let scopeResponse: Response;
+    try {
+      scopeResponse = await fetchImpl(
+        `${assignmentAtomUrl}/api/assignments/contractor/${contractorId.data}/cases?${new URLSearchParams(
+          {
+            page: String(query.data.page),
+            pageSize: String(query.data.pageSize),
+          }
+        )}`
+      );
+    } catch {
+      return error(c, 503, {
+        code: "ASSIGNMENT_ATOM_UNAVAILABLE",
+        message: "Assignment service is unavailable",
+        retryable: true,
+      });
+    }
+    if (!scopeResponse.ok) {
+      return error(c, 503, {
+        code: "ASSIGNMENT_ATOM_UNAVAILABLE",
+        message: "Assignment service is unavailable",
+        retryable: true,
+      });
+    }
+    const scopeParsed = contractorCaseScopeResponseSchema.safeParse(
+      await scopeResponse.json().catch(() => undefined)
+    );
+    if (!scopeParsed.success) {
+      return error(c, 503, {
+        code: "ASSIGNMENT_ATOM_UNAVAILABLE",
+        message: "Assignment service returned an invalid response",
+        retryable: true,
+      });
+    }
+
+    if (scopeParsed.data.items.length === 0) {
+      return c.json({
+        data: {
+          items: [],
+          page: query.data.page,
+          pageSize: query.data.pageSize,
+        },
+      });
+    }
+
+    let casesResponse: Response;
+    try {
+      // At most `pageSize` (capped at 100 by the query schema above) ids go
+      // on this query string — 100 UUIDs is ~3.7KB, safely under Node's
+      // default 16KB header limit. Raising that cap later must keep this in
+      // mind, or a large scope page turns into a request-line failure.
+      casesResponse = await fetchImpl(
+        `${caseAtomUrl}/api/cases?${new URLSearchParams({
+          ids: scopeParsed.data.items.map((item) => item.caseId).join(","),
+          // The case atom skips the offset when `ids` is present but still
+          // applies `.limit(pageSize)` — forwarding anything smaller than the
+          // scope page's own pageSize would silently truncate the response.
+          pageSize: String(query.data.pageSize),
+        })}`
+      );
+    } catch {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    if (!casesResponse.ok) {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    const casesParsed = caseAtomResponseSchema.safeParse(
+      await casesResponse.json().catch(() => undefined)
+    );
+    if (!casesParsed.success) {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service returned an invalid response",
+        retryable: true,
+      });
+    }
+
+    const casesById = new Map(
+      casesParsed.data.cases.map((record) => {
+        const caseDto = toCaseDto(record);
+        return [caseDto.id, caseDto] as const;
+      })
+    );
+
+    // The scope route's order (newest Attempt first) is authoritative; the
+    // `?ids=` response comes back ordered by the Case atom's own createdAt,
+    // so items are re-collected in scope order rather than passed through.
+    const items = scopeParsed.data.items.flatMap((scopeItem) => {
+      const caseDto = casesById.get(scopeItem.caseId);
+      if (!caseDto) return [];
+      return [
+        scopeItem.participation === "CURRENT"
+          ? caseDto
+          : HistoricalContractorCaseDtoSchema.parse({
+              ...caseDto,
+              postalSector: postalSector(caseDto.postalCode),
+            }),
+      ];
+    });
+
+    return c.json({
+      data: { items, page: query.data.page, pageSize: query.data.pageSize },
+    });
+  });
+
   app.get("/api/cases/:caseId", async (c) => {
     const actor = resolveActor(c.get("jwtPayload"));
     if (!actor) {
@@ -2715,6 +3701,155 @@ export function createGatewayApp({
       });
     }
 
+    // 151-D Task 2 — a redaction boundary, not a plumbing detail: the case
+    // atom's public route runs `publicCase()`, which strips
+    // completionOperationId/completionReport/completionProofItemIds for
+    // every reader. An Officer reviewing a COMPLETED Case needs those, so
+    // the Officer alone reads the internal, un-redacted route (service
+    // token) — Resident and Contractor stay on the public route below and
+    // must never see completion internals.
+    if (actor.role === "OFFICER") {
+      let officerResponse: Response;
+      try {
+        officerResponse = await fetchImpl(
+          `${caseAtomUrl}/internal/cases/${caseId.data}`,
+          { headers: { Authorization: `Bearer ${workerServiceToken}` } }
+        );
+      } catch {
+        return error(c, 503, {
+          code: "CASE_ATOM_UNAVAILABLE",
+          message: "Case service is unavailable",
+          retryable: true,
+        });
+      }
+      if (officerResponse.status === 404) {
+        return error(c, 404, {
+          code: "CASE_NOT_FOUND",
+          message: "Case was not found",
+          retryable: false,
+        });
+      }
+      if (!officerResponse.ok) {
+        return error(c, 503, {
+          code: "CASE_ATOM_UNAVAILABLE",
+          message: "Case service is unavailable",
+          retryable: true,
+        });
+      }
+      const parsedOfficerCase = internalCaseAtomResponseSchema.safeParse(
+        await officerResponse.json().catch(() => undefined)
+      );
+      if (!parsedOfficerCase.success || !parsedOfficerCase.data.case) {
+        return error(c, 503, {
+          code: "CASE_ATOM_UNAVAILABLE",
+          message: "Case service returned an invalid response",
+          retryable: true,
+        });
+      }
+      const officerCaseDto = toOfficerCaseDto(parsedOfficerCase.data.case);
+
+      // 151-D Task 1 — full state: the existing current-Attempt/Appointment
+      // envelope stays (existing behaviour, `found()` — informational for
+      // an Officer, since access was already settled above and nothing here
+      // gates authorization), and the four full-history sections are added
+      // alongside it via the same per-source fetchers the timeline uses.
+      // An UNAVAILABLE source degrades to `[]` for the same reason: purely
+      // additive display data, not an authorization check.
+      const [
+        caseAssignmentLookup,
+        attemptsLookup,
+        appointmentSource,
+        proofItemSource,
+        derivedEffectSource,
+        officerAttentionSource,
+      ] = await Promise.all([
+        lookupCaseAssignment(assignmentAtomUrl, fetchImpl, caseId.data),
+        lookupAttemptHistory(assignmentAtomUrl, fetchImpl, caseId.data),
+        fetchAppointmentSource(appointmentAtomUrl, fetchImpl, caseId.data),
+        fetchProofItemSource(
+          proofAtomUrl,
+          fetchImpl,
+          workerServiceToken,
+          caseId.data
+        ),
+        fetchDerivedEffectSource(
+          alertAtomUrl,
+          fetchImpl,
+          workerServiceToken,
+          caseId.data
+        ),
+        fetchOfficerAttentionSource(caseAtomUrl, fetchImpl, caseId.data),
+      ]);
+      const caseAssignment = found(caseAssignmentLookup);
+      const appointment = found(
+        await lookupAppointment(
+          appointmentAtomUrl,
+          fetchImpl,
+          caseId.data,
+          caseAssignment?.currentAttempt?.id
+        )
+      );
+
+      return c.json({
+        data: {
+          ...officerCaseDto,
+          assignment: caseAssignment
+            ? {
+                ...caseAssignment.assignment,
+                currentAttempt: caseAssignment.currentAttempt,
+                appointment,
+              }
+            : null,
+          attempts:
+            attemptsLookup.status === "FOUND"
+              ? caseDetailSection(
+                  attemptsLookup.data.map(allocationAttemptEvent),
+                  actor,
+                  null,
+                  AllocationAttemptDtoSchema
+                )
+              : [],
+          appointments:
+            appointmentSource.status === "FOUND"
+              ? caseDetailSection(
+                  appointmentSource.events,
+                  actor,
+                  null,
+                  AppointmentDtoSchema
+                )
+              : [],
+          proofItems:
+            proofItemSource.status === "FOUND"
+              ? caseDetailSection(
+                  proofItemSource.events,
+                  actor,
+                  null,
+                  ProofItemDtoSchema
+                )
+              : [],
+          effects:
+            derivedEffectSource.status === "FOUND"
+              ? caseDetailSection(
+                  derivedEffectSource.events,
+                  actor,
+                  null,
+                  DerivedEffectSummarySchema
+                )
+              : [],
+          officerAttention:
+            officerAttentionSource.status === "FOUND"
+              ? caseDetailSection(
+                  officerAttentionSource.events,
+                  actor,
+                  null,
+                  OfficerAttentionDtoSchema
+                )
+              : [],
+        },
+      });
+    }
+
+    // RESIDENT and CONTRACTOR: the public route, `publicCase()`-redacted.
     let response: Response;
     try {
       response = await fetchImpl(`${caseAtomUrl}/api/cases/${caseId.data}`);
@@ -2743,45 +3878,31 @@ export function createGatewayApp({
     }
 
     const caseDto = toCaseDto(parsed.data.cases[0]);
-    if (actor.role === "RESIDENT" && caseDto.residentId !== actor.accountId) {
-      return error(c, 404, {
-        code: "CASE_NOT_FOUND",
-        message: "Case was not found",
-        retryable: false,
-      });
-    }
 
-    const caseAssignment = await lookupCaseAssignment(
-      assignmentAtomUrl,
-      fetchImpl,
-      caseId.data
-    );
-
-    if (actor.role === "CONTRACTOR") {
-      const isNamedOnCurrentAttempt =
-        caseAssignment?.currentAttempt?.contractorId === actor.contractorId;
-      if (!actor.contractorId || !isNamedOnCurrentAttempt) {
+    if (actor.role === "RESIDENT") {
+      if (caseDto.residentId !== actor.accountId) {
         return error(c, 404, {
           code: "CASE_NOT_FOUND",
           message: "Case was not found",
           retryable: false,
         });
       }
-    }
-
-    const appointment = await lookupAppointment(
-      appointmentAtomUrl,
-      fetchImpl,
-      caseId.data,
-      caseAssignment?.currentAttempt?.id
-    );
-
-    // A Resident gets the Appointment flat and narrowed — they need its id and
-    // interval to Reschedule it (PRS-146), and nothing else the Assignment
-    // envelope carries: not its id, not an Attempt they may never see. The
-    // Reschedule route narrows its success body the same way, so neither hands
-    // back what the other strips. Officers and Contractors keep the envelope.
-    if (actor.role === "RESIDENT") {
+      const caseAssignment = found(
+        await lookupCaseAssignment(assignmentAtomUrl, fetchImpl, caseId.data)
+      );
+      const appointment = found(
+        await lookupAppointment(
+          appointmentAtomUrl,
+          fetchImpl,
+          caseId.data,
+          caseAssignment?.currentAttempt?.id
+        )
+      );
+      // A Resident gets the Appointment flat and narrowed — they need its id
+      // and interval to Reschedule it (PRS-146), and nothing else the
+      // Assignment envelope carries: not its id, not an Attempt they may
+      // never see. The Reschedule route narrows its success body the same
+      // way, so neither hands back what the other strips.
       return c.json({
         data: {
           ...caseDto,
@@ -2790,18 +3911,351 @@ export function createGatewayApp({
       });
     }
 
+    // CONTRACTOR: current vs historical (151-D Task 3), reusing the exact
+    // participation derivation the timeline route already uses (AC7 before
+    // AC8 — the Attempt history is authorization here, checked before any
+    // other secondary source is touched) rather than a second copy of it.
+    const attemptsLookup = await lookupAttemptHistory(
+      assignmentAtomUrl,
+      fetchImpl,
+      caseId.data
+    );
+    if (attemptsLookup.status === "UNAVAILABLE") {
+      // Never grants on an unreachable atom (AC7 fails closed) — but 404ing
+      // it would tell a legitimately-assigned Contractor their own Case
+      // does not exist. 503 defers the read instead of answering it wrong.
+      return error(c, 503, {
+        code: "ASSIGNMENT_ATOM_UNAVAILABLE",
+        message: "Assignment service is unavailable",
+        retryable: true,
+      });
+    }
+    const everHeldCase = attemptsLookup.data.some(
+      (attempt) => attempt.contractorId === actor.contractorId
+    );
+    if (!actor.contractorId || !everHeldCase) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+      });
+    }
+    const newestContractorAttempt = newestAttempt(attemptsLookup.data);
+    const participation: "CURRENT" | "HISTORICAL" =
+      newestContractorAttempt !== undefined &&
+      newestContractorAttempt.contractorId === actor.contractorId &&
+      (newestContractorAttempt.status === "PENDING_ACCEPTANCE" ||
+        newestContractorAttempt.status === "ACCEPTED")
+        ? "CURRENT"
+        : "HISTORICAL";
+
+    // Only now, after authorization, do the remaining sources fan out —
+    // each an existing per-source timeline fetcher, filtered through the
+    // same `includeTimelineEventForRole` participation rule (Task 3: no
+    // third copy of the CURRENT/HISTORICAL rule). Row filtering, not field
+    // dropping — a replacement Contractor's rows are excluded wholesale,
+    // never partially redacted, so no replacement id can survive nested
+    // inside a surviving row's `detail` or `operationId`.
+    const [
+      appointmentSource,
+      proofItemSource,
+      derivedEffectSource,
+      caseAssignmentLookup,
+    ] = await Promise.all([
+      fetchAppointmentSource(appointmentAtomUrl, fetchImpl, caseId.data),
+      fetchProofItemSource(
+        proofAtomUrl,
+        fetchImpl,
+        workerServiceToken,
+        caseId.data
+      ),
+      fetchDerivedEffectSource(
+        alertAtomUrl,
+        fetchImpl,
+        workerServiceToken,
+        caseId.data
+      ),
+      lookupCaseAssignment(assignmentAtomUrl, fetchImpl, caseId.data),
+    ]);
+
+    // The `assignment` envelope is a CURRENT Contractor's own live work —
+    // their Attempt, their Appointment — and is what every action control in
+    // `contractor/.../case-audit-trail.tsx` derives from (Accept, Start Work,
+    // No Access, Complete). A HISTORICAL Contractor gets `null` instead:
+    // there `currentAttempt` belongs to the *replacement*, so returning it
+    // would leak exactly what AC6 forbids. The narrowing is scoped to the
+    // participation that actually leaks, not applied to both.
+    const contractorAssignment =
+      participation === "CURRENT" && caseAssignmentLookup.status === "FOUND"
+        ? {
+            ...caseAssignmentLookup.data.assignment,
+            currentAttempt: caseAssignmentLookup.data.currentAttempt,
+            appointment: found(
+              await lookupAppointment(
+                appointmentAtomUrl,
+                fetchImpl,
+                caseId.data,
+                caseAssignmentLookup.data.currentAttempt?.id
+              )
+            ),
+          }
+        : null;
+
+    // A HISTORICAL Contractor's Case fields are narrowed the same way the
+    // Contractor Case list already narrows them (151-B): Resident identity
+    // and full address dropped, `postalSector` in their place. No
+    // `officerAttention` section for either participation — internal
+    // attention is never a Contractor's to see (AC5/AC6).
+    const contractorCaseDto =
+      participation === "CURRENT"
+        ? caseDto
+        : HistoricalContractorCaseDtoSchema.parse({
+            ...caseDto,
+            postalSector: postalSector(caseDto.postalCode),
+          });
+
     return c.json({
       data: {
-        ...caseDto,
-        assignment: caseAssignment
-          ? {
-              ...caseAssignment.assignment,
-              currentAttempt: caseAssignment.currentAttempt,
-              appointment,
-            }
-          : null,
+        ...contractorCaseDto,
+        assignment: contractorAssignment,
+        attempts: caseDetailSection(
+          attemptsLookup.data.map(allocationAttemptEvent),
+          actor,
+          participation,
+          AllocationAttemptDtoSchema
+        ),
+        appointments:
+          appointmentSource.status === "FOUND"
+            ? caseDetailSection(
+                appointmentSource.events,
+                actor,
+                participation,
+                AppointmentDtoSchema
+              )
+            : [],
+        proofItems:
+          proofItemSource.status === "FOUND"
+            ? caseDetailSection(
+                proofItemSource.events,
+                actor,
+                participation,
+                ProofItemDtoSchema
+              )
+            : [],
+        effects:
+          derivedEffectSource.status === "FOUND"
+            ? caseDetailSection(
+                derivedEffectSource.events,
+                actor,
+                participation,
+                DerivedEffectSummarySchema
+              )
+            : [],
       },
     });
+  });
+
+  app.get("/api/cases/:caseId/timeline", async (c) => {
+    const actor = resolveActor(c.get("jwtPayload"));
+    if (!actor) {
+      return error(c, 401, {
+        code: "INVALID_TOKEN",
+        message: "Token subject is invalid",
+        retryable: false,
+      });
+    }
+
+    const caseId = z.uuid().safeParse(c.req.param("caseId"));
+    if (!caseId.success) {
+      return error(c, 400, {
+        code: "VALIDATION_ERROR",
+        message: "Case ID must be a UUID",
+        retryable: false,
+      });
+    }
+
+    // AC7 before AC8, step 1: the Case atom primary lookup.
+    let caseResponse: Response;
+    try {
+      caseResponse = await fetchImpl(`${caseAtomUrl}/api/cases/${caseId.data}`);
+    } catch {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    if (!caseResponse.ok) {
+      return error(c, 503, {
+        code: "CASE_ATOM_UNAVAILABLE",
+        message: "Case service is unavailable",
+        retryable: true,
+      });
+    }
+    const parsedCase = caseAtomResponseSchema.safeParse(
+      await caseResponse.json().catch(() => undefined)
+    );
+    if (!parsedCase.success || parsedCase.data.cases.length === 0) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+      });
+    }
+    const caseDto = toCaseDto(parsedCase.data.cases[0]);
+
+    // AC7 before AC8, step 2: ownership/participation authorization — strictly
+    // before any secondary source is touched, so a partial fan-out can never
+    // leak whether an unauthorized actor's Case even exists.
+    if (actor.role === "RESIDENT" && caseDto.residentId !== actor.accountId) {
+      return error(c, 404, {
+        code: "CASE_NOT_FOUND",
+        message: "Case was not found",
+        retryable: false,
+      });
+    }
+
+    let participation: "CURRENT" | "HISTORICAL" | null = null;
+    // Set only for a Contractor, and reused in the fan-out below — the
+    // Attempt history is fetched exactly once even though it is both the
+    // authorization source and the ALLOCATION_ATTEMPT timeline source.
+    let contractorAttempts: AllocationAttemptDto[] | undefined;
+
+    if (actor.role === "CONTRACTOR") {
+      // Unlike every other route, the Attempt history is a PRIMARY source
+      // here — it is the only way to know whether this Contractor ever held
+      // the Case. An unreachable assignment atom cannot fall back to "not
+      // authorized" (that would let a transient outage hide a Contractor's
+      // own Case forever); it defers with 503 instead, never granting.
+      // For OFFICER (no branch needed below — AccountRoleSchema is an
+      // exhaustive 3-value enum and resolveActor() already 401s anything
+      // else) and RESIDENT above, the identical call is only a secondary
+      // timeline source, and an UNAVAILABLE there just joins
+      // `missingSources`.
+      const attemptsLookup = await lookupAttemptHistory(
+        assignmentAtomUrl,
+        fetchImpl,
+        caseId.data
+      );
+      if (attemptsLookup.status === "UNAVAILABLE") {
+        return error(c, 503, {
+          code: "ASSIGNMENT_ATOM_UNAVAILABLE",
+          message: "Assignment service is unavailable",
+          retryable: true,
+        });
+      }
+      contractorAttempts = attemptsLookup.data;
+      const everHeldCase = contractorAttempts.some(
+        (attempt) => attempt.contractorId === actor.contractorId
+      );
+      if (!actor.contractorId || !everHeldCase) {
+        return error(c, 404, {
+          code: "CASE_NOT_FOUND",
+          message: "Case was not found",
+          retryable: false,
+        });
+      }
+      const newest = newestAttempt(contractorAttempts);
+      participation =
+        newest !== undefined &&
+        newest.contractorId === actor.contractorId &&
+        (newest.status === "PENDING_ACCEPTANCE" || newest.status === "ACCEPTED")
+          ? "CURRENT"
+          : "HISTORICAL";
+    }
+
+    // AC7 before AC8, step 3: only now, after authorization, does the
+    // remaining fan-out run — every source resolves independently and an
+    // UNAVAILABLE one degrades to `missingSources` rather than the request
+    // outcome.
+    const allocationAttemptSourcePromise: Promise<TimelineSourceLookup> =
+      contractorAttempts
+        ? Promise.resolve({
+            status: "FOUND",
+            events: contractorAttempts.map(allocationAttemptEvent),
+          })
+        : lookupAttemptHistory(assignmentAtomUrl, fetchImpl, caseId.data).then(
+            (lookup): TimelineSourceLookup =>
+              lookup.status === "FOUND"
+                ? {
+                    status: "FOUND",
+                    events: lookup.data.map(allocationAttemptEvent),
+                  }
+                : { status: "UNAVAILABLE" }
+          );
+
+    const [
+      caseHistorySource,
+      allocationAttemptSource,
+      assignmentStatusSource,
+      appointmentSource,
+      proofItemSource,
+      derivedEffectSource,
+      officerAttentionSource,
+    ] = await Promise.all([
+      fetchCaseHistorySource(caseAtomUrl, fetchImpl, caseId.data),
+      allocationAttemptSourcePromise,
+      fetchAssignmentStatusSource(assignmentAtomUrl, fetchImpl, caseId.data),
+      fetchAppointmentSource(appointmentAtomUrl, fetchImpl, caseId.data),
+      fetchProofItemSource(
+        proofAtomUrl,
+        fetchImpl,
+        workerServiceToken,
+        caseId.data
+      ),
+      fetchDerivedEffectSource(
+        alertAtomUrl,
+        fetchImpl,
+        workerServiceToken,
+        caseId.data
+      ),
+      fetchOfficerAttentionSource(caseAtomUrl, fetchImpl, caseId.data),
+    ]);
+
+    const sources: Array<[TimelineEventSource, TimelineSourceLookup]> = [
+      ["CASE_HISTORY", caseHistorySource],
+      ["ALLOCATION_ATTEMPT", allocationAttemptSource],
+      ["ASSIGNMENT_STATUS", assignmentStatusSource],
+      ["APPOINTMENT", appointmentSource],
+      ["PROOF_ITEM", proofItemSource],
+      ["DERIVED_EFFECT", derivedEffectSource],
+      ["OFFICER_ATTENTION", officerAttentionSource],
+    ];
+
+    // `missingSources` reports atom reachability, not row content — it is
+    // built from the fixed seven-value `TimelineEventSource` enum before any
+    // role/participation filtering runs below, and every role fetches the
+    // same seven sources regardless of what it is later allowed to see. A
+    // name landing here can never disclose a Case fact (a Contractor id, a
+    // row count, anything derived from data) to a role that is not supposed
+    // to see it — it is only ever one of these seven fixed literals.
+    const missingSources: TimelineEventSource[] = [];
+    const collected: TimelineEvent[] = [];
+    for (const [name, outcome] of sources) {
+      if (outcome.status === "UNAVAILABLE") {
+        missingSources.push(name);
+      } else {
+        collected.push(...outcome.events);
+      }
+    }
+
+    // Task 4's role filter runs after normalization, over the one shared
+    // shape; a Resident's surviving rows are then narrowed by
+    // `redactForResident` (reachability and content are separate decisions —
+    // see the comment on each); then the deterministic sort; then
+    // `contractorId` — internal-only, never in the contract DTO — is
+    // stripped before the response leaves.
+    const items: TimelineEventDto[] = collected
+      .filter((event) =>
+        includeTimelineEventForRole(event, actor, participation)
+      )
+      .map((event) =>
+        actor.role === "RESIDENT" ? redactForResident(event) : event
+      )
+      .toSorted(compareTimelineEvents)
+      .map(({ contractorId: _contractorId, ...event }) => event);
+
+    return c.json({ data: { items, missingSources } });
   });
 
   return app;

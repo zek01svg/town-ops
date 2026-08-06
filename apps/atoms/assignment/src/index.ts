@@ -34,6 +34,7 @@ import {
 import { env } from "./env";
 import * as assignmentService from "./service";
 import {
+  contractorCaseListSchema,
   getAssignmentByCaseSchema,
   getAssignmentByIdSchema,
   reassignAssignmentSchema,
@@ -117,6 +118,37 @@ const assignmentsRouter = new Hono()
     }
   )
   .get(
+    "/contractor/:contractor_id/cases",
+    describeRoute({
+      description:
+        "Authoritative Contractor Case scope: every Case this Contractor " +
+        "has held an Attempt on, current vs historical (PRS-151)",
+      responses: {
+        200: {
+          description: "Paginated Cases with CURRENT/HISTORICAL participation",
+        },
+      },
+    }),
+    validator("param", z.object({ contractor_id: z.uuid() }), (result, c) => {
+      if (!result.success) return c.json({ error: "Validation failed" }, 400);
+      return undefined;
+    }),
+    validator("query", contractorCaseListSchema, (result, c) => {
+      if (!result.success) return c.json({ error: "Validation failed" }, 400);
+      return undefined;
+    }),
+    async (c) => {
+      const { contractor_id } = c.req.valid("param");
+      const { page, pageSize } = c.req.valid("query");
+      const result = await assignmentService.listCasesForContractor({
+        contractorId: contractor_id,
+        page,
+        pageSize,
+      });
+      return c.json(result, 200);
+    }
+  )
+  .get(
     "/contractor/:contractor_id",
     describeRoute({
       description: "Get all assignments for a contractor",
@@ -171,6 +203,30 @@ const assignmentsRouter = new Hono()
         },
         200
       );
+    }
+  )
+  .get(
+    "/by-case/:case_id/attempts",
+    describeRoute({
+      description:
+        "Every allocation Attempt for a Case's Assignment, oldest first " +
+        "(PRS-151) — unlike /by-case/:case_id, includes BREACHED/WITHDRAWN",
+      responses: {
+        200: { description: "Attempt history for the Case" },
+      },
+    }),
+    validator(
+      "param",
+      z.object({ case_id: getAssignmentByCaseSchema }),
+      (result, c) => {
+        if (!result.success) return c.json({ error: "Validation failed" }, 400);
+        return undefined;
+      }
+    ),
+    async (c) => {
+      const { case_id } = c.req.valid("param");
+      const attempts = await assignmentService.getAttemptsByCaseId(case_id);
+      return c.json({ attempts }, 200);
     }
   )
   .get(

@@ -21,3 +21,8 @@ export const getAssignmentByCaseSchema = z
 export const getAssignmentByIdSchema = z
   .string()
   .uuid("Invalid assignment ID format");
+
+export const contractorCaseListSchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(25),
+});

@@ -5,7 +5,6 @@ import { useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-import { auditQueries } from "../api/audit-queries";
 import {
   useCancelCaseMutation,
   useRepairEffectMutation,
@@ -63,13 +62,24 @@ export function isCaseCancellable(status: CaseItem["status"]) {
 }
 
 export function CaseAuditTrail({ caseId, caseData }: Props) {
-  const { data: events = [], isLoading } = useQuery(
-    auditQueries.timeline(caseId)
-  );
-  const { data: appointment } = useQuery(
+  const {
+    data: timeline,
+    isLoading,
+    isError,
+  } = useQuery(caseQueries.timeline(caseId));
+  const events = timeline?.events ?? [];
+  const missingSources = timeline?.missingSources ?? [];
+  // Both of these throw on a failed read now rather than suppressing to
+  // `null`/`[]`, so their error state has to be rendered — otherwise the
+  // Reschedule and Effect Repair panels just don't appear, which is
+  // indistinguishable from "no appointment"/"no effects" and is exactly the
+  // ambiguity PRS-151-F exists to remove.
+  const { data: appointment, isError: isAppointmentError } = useQuery(
     caseQueries.gatewayAppointment(caseId)
   );
-  const { data: effects = [] } = useQuery(caseQueries.effects(caseId));
+  const { data: effects = [], isError: isEffectsError } = useQuery(
+    caseQueries.effects(caseId)
+  );
   const replaceAppointment = useReplaceAppointmentMutation();
   const cancelCase = useCancelCaseMutation();
   const repairEffect = useRepairEffectMutation();
@@ -344,6 +354,18 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
         </div>
       )}
 
+      {(isAppointmentError || isEffectsError) && (
+        <div className="border border-destructive/40 bg-destructive/5 p-4 flex flex-col gap-2">
+          <span className="text-[10px] font-label uppercase tracking-widest font-bold text-destructive">
+            Could Not Load Case Details
+          </span>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+            Reschedule and effect repair are unavailable. Try refreshing this
+            page.
+          </p>
+        </div>
+      )}
+
       {/* Reschedule */}
       {appointment && (
         <div className="flex flex-col gap-3 border border-border p-4 bg-card">
@@ -443,9 +465,19 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
         </span>
       </div>
 
+      {missingSources.length > 0 && (
+        <div className="border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[10px] font-label uppercase tracking-widest text-amber-400">
+          Could not load: {missingSources.join(", ")}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="text-[10px] font-label uppercase tracking-widest text-muted-foreground text-center py-8">
           Loading history…
+        </div>
+      ) : isError ? (
+        <div className="text-[10px] font-label uppercase tracking-widest text-destructive text-center py-8">
+          Could not load activity history.
         </div>
       ) : events.length === 0 ? (
         <div className="text-[10px] font-label uppercase tracking-widest text-muted-foreground text-center py-8">

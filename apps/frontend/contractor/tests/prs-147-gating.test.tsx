@@ -7,25 +7,11 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { CaseAuditTrail } from "../src/features/case/components/case-audit-trail";
 
 const mocks = vi.hoisted(() => ({
-  fetchWithAuth: vi.fn(),
   getSession: vi.fn(),
 }));
 
 vi.mock("../src/libr/auth", () => ({
   auth: { getSession: mocks.getSession },
-}));
-
-vi.mock("../src/libr/auth-token", () => ({
-  fetchWithAuth: mocks.fetchWithAuth,
-}));
-
-vi.mock("../src/features/case/api/audit-queries", () => ({
-  auditQueries: {
-    timeline: (caseId: string) => ({
-      queryKey: ["audit", caseId],
-      queryFn: async () => [],
-    }),
-  },
 }));
 
 vi.mock("../src/features/case/api/mutations", () => ({
@@ -61,8 +47,30 @@ function renderTrail(
   appointmentStatus: "IN_PROGRESS" | "SCHEDULED",
   appointmentContractorId = contractorId
 ) {
-  mocks.fetchWithAuth.mockResolvedValue(
-    Response.json({
+  // Two distinct Gateway routes are hit per render: the case/assignment
+  // envelope (`useGatewayAssignment`) and the timeline (`caseQueries.timeline`)
+  // — both now reach `fetch` through `gatewayFetch` (`@townops/ui/libr/gateway`),
+  // which calls its own sibling `fetchWithAuth` directly rather than the copy
+  // re-exported from this app's `../src/libr/auth-token`, so mocking that
+  // local module no longer intercepts anything. Spying on `globalThis.fetch`
+  // is the one seam every layer funnels through regardless of which copy of
+  // `auth-token` is in play — the same idiom `prs-151.test.ts` already uses.
+  //
+  // `mockImplementation` (never `mockResolvedValue`) is load-bearing: a
+  // shared `Response` instance can only have its body read once, so whichever
+  // consumer's `res.json()` runs second throws. Keying a *fresh* `Response`
+  // per call off the URL is what makes this safe under concurrent requests.
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    if (url.includes("/timeline")) {
+      return Response.json({ data: { items: [], missingSources: [] } });
+    }
+    return Response.json({
       data: {
         assignment: {
           id: "33333333-3333-4333-8333-333333333333",
@@ -80,8 +88,8 @@ function renderTrail(
           },
         },
       },
-    })
-  );
+    });
+  });
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -115,8 +123,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
-  mocks.fetchWithAuth.mockReset();
   mocks.getSession.mockReset();
+  vi.restoreAllMocks();
 });
 
 const completionGateCases: Array<{

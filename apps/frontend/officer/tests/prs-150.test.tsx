@@ -38,17 +38,12 @@ vi.mock("lucide-react", () => ({
   User: () => null,
 }));
 
-// Real queryKey shapes (matching auditKeys.timeline / caseKeys.gatewayCase /
+// Real queryKey shapes (matching caseKeys.timeline / caseKeys.gatewayCase /
 // caseKeys.effects) so the useQuery mock below can route by key instead of
 // by call order.
-vi.mock("../src/features/case/api/audit-queries", () => ({
-  auditQueries: {
-    timeline: (caseId: string) => ({ queryKey: ["audit", "timeline", caseId] }),
-  },
-}));
-
 vi.mock("../src/features/case/api/queries", () => ({
   caseQueries: {
+    timeline: (caseId: string) => ({ queryKey: ["audit", "timeline", caseId] }),
     gatewayAppointment: (caseId: string) => ({
       queryKey: ["gateway-case", caseId],
     }),

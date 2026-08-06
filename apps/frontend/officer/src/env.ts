@@ -17,30 +17,6 @@ export const env: Env = {
     runtimeEnv?.VITE_GATEWAY_URL ??
     import.meta.env.VITE_GATEWAY_URL ??
     "http://localhost:6010",
-  VITE_CASE_ATOM_URL:
-    runtimeEnv?.VITE_CASE_ATOM_URL ??
-    import.meta.env.VITE_CASE_ATOM_URL ??
-    "http://localhost:5001",
-  VITE_ASSIGNMENT_ATOM_URL:
-    runtimeEnv?.VITE_ASSIGNMENT_ATOM_URL ??
-    import.meta.env.VITE_ASSIGNMENT_ATOM_URL ??
-    "http://localhost:5003",
-  VITE_APPOINTMENT_ATOM_URL:
-    runtimeEnv?.VITE_APPOINTMENT_ATOM_URL ??
-    import.meta.env.VITE_APPOINTMENT_ATOM_URL ??
-    "http://localhost:5004",
-  VITE_PROOF_ATOM_URL:
-    runtimeEnv?.VITE_PROOF_ATOM_URL ??
-    import.meta.env.VITE_PROOF_ATOM_URL ??
-    "http://localhost:5005",
-  VITE_ALERT_ATOM_URL:
-    runtimeEnv?.VITE_ALERT_ATOM_URL ??
-    import.meta.env.VITE_ALERT_ATOM_URL ??
-    "http://localhost:5006",
-  VITE_CONTRACTOR_ATOM_URL:
-    runtimeEnv?.VITE_CONTRACTOR_ATOM_URL ??
-    import.meta.env.VITE_CONTRACTOR_ATOM_URL ??
-    "http://localhost:5009",
   VITE_OPEN_CASE_URL:
     runtimeEnv?.VITE_OPEN_CASE_URL ??
     import.meta.env.VITE_OPEN_CASE_URL ??

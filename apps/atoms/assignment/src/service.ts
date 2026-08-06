@@ -6,7 +6,7 @@ import type {
   CommitAllocationInput,
   MarkAssignmentInProgressInput,
 } from "@townops/orchestration-contract";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import db from "./database/db";
 import {
@@ -17,6 +17,8 @@ import {
 } from "./database/schema";
 
 type AssignmentStatus = (typeof assignments.$inferSelect)["status"];
+type AllocationAttemptStatus =
+  (typeof allocationAttempts.$inferSelect)["status"];
 
 function publicAssignment(assignment: typeof assignments.$inferSelect) {
   const { completionOperationId: _, ...result } = assignment;
@@ -69,7 +71,7 @@ export async function getAssignmentCompletionOperation(assignmentId: string) {
 export async function getStatusHistoryByAssignmentId(assignmentId: string) {
   return db.query.assignmentStatusHistory.findMany({
     where: eq(assignmentStatusHistory.assignmentId, assignmentId),
-    orderBy: (t, { asc }) => [asc(t.changedAt)],
+    orderBy: (t) => [asc(t.changedAt)],
   });
 }
 
@@ -195,6 +197,97 @@ export async function getAssignmentWithCurrentAttempt(caseId: string) {
     assignment: publicAssignment(assignment),
     currentAttempt: currentAttempt ?? null,
   };
+}
+
+/**
+ * Every allocation Attempt for a Case's Assignment, oldest first (PRS-151).
+ * Unlike `getAssignmentWithCurrentAttempt` above, this is the full history —
+ * BREACHED and WITHDRAWN Attempts included, not just the live one. Returns
+ * an empty list rather than 404 when the Case has no Assignment yet.
+ */
+export async function getAttemptsByCaseId(caseId: string) {
+  const [assignment] = await db
+    .select({ id: assignments.id })
+    .from(assignments)
+    .where(eq(assignments.caseId, caseId));
+  if (!assignment) return [];
+
+  return db
+    .select()
+    .from(allocationAttempts)
+    .where(eq(allocationAttempts.assignmentId, assignment.id))
+    .orderBy(asc(allocationAttempts.createdAt));
+}
+
+/**
+ * The authoritative Contractor Case scope (PRS-151), one row per Case the
+ * Contractor has ever held an Attempt on. Deliberately not
+ * `getAssignmentsByContractorId` above — that filters on
+ * `assignments.contractor_id`, which `commitAllocationAttempt` never sets
+ * (only legacy `createAssignment`/`reassignAssignment` do), so it returns
+ * nothing for a Temporal-created Case and cannot name a historical
+ * Contractor at all. `participation` is CURRENT only when this Contractor
+ * holds the Case's own newest Attempt and that Attempt is still live
+ * (PENDING_ACCEPTANCE/ACCEPTED) — a Contractor whose Attempt was breached
+ * and replaced is HISTORICAL even though they were once current.
+ */
+export async function listCasesForContractor(input: {
+  contractorId: string;
+  page: number;
+  pageSize: number;
+}) {
+  const casePage = await db
+    .select({ caseId: assignments.caseId, assignmentId: assignments.id })
+    .from(allocationAttempts)
+    .innerJoin(assignments, eq(assignments.id, allocationAttempts.assignmentId))
+    .where(eq(allocationAttempts.contractorId, input.contractorId))
+    .groupBy(assignments.caseId, assignments.id)
+    .orderBy(sql`max(${allocationAttempts.createdAt}) desc`, assignments.id)
+    .limit(input.pageSize)
+    .offset((input.page - 1) * input.pageSize);
+
+  if (casePage.length === 0) {
+    return { items: [], page: input.page, pageSize: input.pageSize };
+  }
+
+  // One extra query for the whole page's Attempts, ordered newest-first in
+  // SQL and reduced to "first seen per assignment" in JS — two queries
+  // total, not a per-case lookup loop.
+  const assignmentIds = casePage.map((row) => row.assignmentId);
+  const attemptsByRecency = await db
+    .select({
+      assignmentId: allocationAttempts.assignmentId,
+      contractorId: allocationAttempts.contractorId,
+      status: allocationAttempts.status,
+    })
+    .from(allocationAttempts)
+    .where(inArray(allocationAttempts.assignmentId, assignmentIds))
+    .orderBy(desc(allocationAttempts.createdAt), allocationAttempts.id);
+
+  const newestByAssignment = new Map<
+    string,
+    { contractorId: string; status: AllocationAttemptStatus }
+  >();
+  for (const attempt of attemptsByRecency) {
+    if (!newestByAssignment.has(attempt.assignmentId)) {
+      newestByAssignment.set(attempt.assignmentId, attempt);
+    }
+  }
+
+  const items = casePage.map((row) => {
+    const newest = newestByAssignment.get(row.assignmentId);
+    const isCurrent =
+      newest !== undefined &&
+      newest.contractorId === input.contractorId &&
+      (newest.status === "PENDING_ACCEPTANCE" || newest.status === "ACCEPTED");
+    return {
+      caseId: row.caseId,
+      assignmentId: row.assignmentId,
+      participation: isCurrent ? "CURRENT" : "HISTORICAL",
+    };
+  });
+
+  return { items, page: input.page, pageSize: input.pageSize };
 }
 
 /**

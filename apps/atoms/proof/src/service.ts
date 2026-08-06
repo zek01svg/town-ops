@@ -126,7 +126,7 @@ export async function markProofReady(input: {
 
 export async function listReadyProofItems(input: {
   caseId: string;
-  contractorId: string;
+  contractorId?: string;
 }) {
   return db
     .select()
@@ -134,7 +134,9 @@ export async function listReadyProofItems(input: {
     .where(
       and(
         eq(proofItems.caseId, input.caseId),
-        eq(proofItems.contractorId, input.contractorId),
+        input.contractorId
+          ? eq(proofItems.contractorId, input.contractorId)
+          : undefined,
         isNotNull(proofItems.readyAt)
       )
     );

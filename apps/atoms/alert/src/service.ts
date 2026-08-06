@@ -38,17 +38,36 @@ export class EffectUnknownNotEligibleError extends Error {
   }
 }
 
-export type EffectSummary = Omit<typeof derivedEffects.$inferSelect, "payload">;
+export type EffectSummary = Omit<
+  typeof derivedEffects.$inferSelect,
+  "payload"
+> & {
+  contractorId: string | null;
+  scoreDelta: number | null;
+};
 
 function now() {
   return new Date().toISOString();
 }
 
+/**
+ * Strips the immutable `payload` but still projects out its
+ * `contractorId`/`scoreDelta` for PERFORMANCE_ENTRY effects (PRS-151) — the
+ * Gateway's per-Case timeline needs those without exposing the rest of the
+ * payload (an EMAIL's `to`/`subject`/`html`, or a PERFORMANCE_ENTRY's
+ * `reason`).
+ */
 export function toEffectSummary(
   row: typeof derivedEffects.$inferSelect
 ): EffectSummary {
-  const { payload: _payload, ...value } = row;
-  return value;
+  const { payload, ...value } = row;
+  return {
+    ...value,
+    contractorId:
+      payload.type === "PERFORMANCE_ENTRY" ? payload.contractorId : null,
+    scoreDelta:
+      payload.type === "PERFORMANCE_ENTRY" ? payload.scoreDelta : null,
+  };
 }
 
 function samePayload(left: EffectPayload, right: EffectPayload) {

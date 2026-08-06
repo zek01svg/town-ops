@@ -19,7 +19,7 @@ export const internalProofUploadSchema = z.object({
 });
 
 export const internalProofListSchema = z.object({
-  contractorId: z.uuid(),
+  contractorId: z.uuid().optional(),
 });
 
 export const internalProofLookupSchema = z.object({

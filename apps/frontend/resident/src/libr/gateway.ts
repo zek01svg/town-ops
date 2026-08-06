@@ -4,6 +4,7 @@ import {
   MeDtoSchema,
   OperationSchema,
   ResidentAppointmentDtoSchema,
+  TimelineEventDtoSchema,
 } from "@townops/orchestration-contract";
 import type {
   CaseDto,
@@ -13,18 +14,14 @@ import type {
   ResidentAppointmentDto,
   ResidentOpenCaseInput,
 } from "@townops/orchestration-contract";
+import { gatewayFetch } from "@townops/ui/libr/gateway";
+import type { TimelineEvent } from "@townops/ui/libr/timeline";
+import { toTimelineEvents } from "@townops/ui/libr/timeline";
 import { z } from "zod/v4";
 
 import { env } from "../env";
-import { clearAuth, getAuthHeader } from "./auth-token";
 
 type Envelope<T> = { data: T; operation?: Operation };
-
-const errorResponseSchema = z.object({
-  error: z
-    .object({ message: z.string().optional(), code: z.string().optional() })
-    .optional(),
-});
 
 const residentCaseDtoSchema = CaseDtoSchema.extend({
   appointment: ResidentAppointmentDtoSchema.nullable(),
@@ -33,6 +30,20 @@ const residentCaseDtoSchema = CaseDtoSchema.extend({
 const replacementDataSchema = z.object({
   appointment: ResidentAppointmentDtoSchema,
   case: CaseDtoSchema,
+});
+
+const casesListDataSchema = z.object({
+  items: z.array(CaseDtoSchema),
+  page: z.number(),
+  pageSize: z.number(),
+});
+
+const timelineDataSchema = z.object({
+  items: z.array(TimelineEventDtoSchema),
+  // Which of the seven atom sources went unreachable — surfaced by
+  // `getTimeline` below so the Resident sees a warning, not a shorter
+  // timeline that looks complete.
+  missingSources: z.array(z.string()),
 });
 
 /**
@@ -61,31 +72,18 @@ async function request<T>(
   dataSchema: z.ZodType<T>
 ): Promise<Envelope<T>> {
   const { idempotencyKey, headers, ...rest } = init;
-  const response = await fetch(`${env.VITE_GATEWAY_URL}${path}`, {
-    ...rest,
-    headers: {
-      ...getAuthHeader(),
-      ...(rest.body ? { "Content-Type": "application/json" } : {}),
-      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
-      ...headers,
+  const body = await gatewayFetch(
+    `${env.VITE_GATEWAY_URL}${path}`,
+    {
+      ...rest,
+      headers: {
+        ...(rest.body ? { "Content-Type": "application/json" } : {}),
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+        ...headers,
+      },
     },
-  });
-
-  if (response.status === 401) {
-    clearAuth();
-    throw new Error("Your session has expired. Please sign in again.");
-  }
-
-  const body = await response.json().catch(() => undefined);
-  if (!response.ok) {
-    const error = errorResponseSchema.safeParse(body);
-    throw Object.assign(
-      new Error(
-        error.data?.error?.message ?? `Request failed (${response.status})`
-      ),
-      { code: error.data?.error?.code }
-    );
-  }
+    env.VITE_AUTH_URL
+  );
   const envelope = z
     .object({ data: dataSchema, operation: OperationSchema.optional() })
     .safeParse(body);
@@ -114,6 +112,47 @@ export function openCase(input: ResidentOpenCaseInput, idempotencyKey: string) {
 export async function getCase(caseId: string) {
   return (await request(`/api/cases/${caseId}`, {}, residentCaseDtoSchema))
     .data;
+}
+
+/**
+ * Lists the signed-in Resident's own Cases. No `residentId` travels in this
+ * request — the Gateway's `GET /api/cases` sets it from the bearer token's
+ * actor and re-filters the atom's response server-side. A client-supplied one
+ * would be the bug, not the scoping.
+ *
+ * ponytail: one page of `pageSize=100`. The Gateway returns no `total`, so
+ * real pagination needs that added first.
+ */
+export async function listCases() {
+  return (await request("/api/cases?pageSize=100", {}, casesListDataSchema))
+    .data.items;
+}
+
+/**
+ * A Case's merged, ascending activity timeline. The Gateway already redacts
+ * this for a Resident (no PERFORMANCE_ENTRY effects, no OFFICER_ATTENTION, no
+ * Contractor identity), so nothing is filtered again here. `missingSources`
+ * names which of the seven atom sources went unreachable, so a Resident sees
+ * a warning instead of a silently shorter timeline.
+ */
+export async function getTimeline(
+  caseId: string
+): Promise<{ events: TimelineEvent[]; missingSources: string[] }> {
+  const envelope = await request(
+    `/api/cases/${caseId}/timeline`,
+    {},
+    timelineDataSchema
+  );
+  // `detail: z.unknown()` makes the key optional on the inferred DTO type
+  // (undefined is a valid `unknown`) — this re-asserts it present so the
+  // structural `TimelineEventInput` (`detail: unknown`, required) that
+  // `toTimelineEvents` is pinned to still matches.
+  return {
+    events: toTimelineEvents(
+      envelope.data.items.map((event) => ({ ...event, detail: event.detail }))
+    ),
+    missingSources: envelope.data.missingSources,
+  };
 }
 
 /**

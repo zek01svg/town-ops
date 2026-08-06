@@ -1,4 +1,5 @@
 import { useQuery, queryOptions, useQueryClient } from "@tanstack/react-query";
+import { gatewayFetch } from "@townops/ui/libr/gateway";
 import { Clock, History, User, CheckCircle, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod/v4";
@@ -7,14 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { env } from "@/env";
 import { auth } from "@/libr/auth";
-import { fetchWithAuth } from "@/libr/auth-token";
 
-import { auditQueries } from "../api/audit-queries";
 import {
   useAcceptJobMutation,
   useNoAccessMutation,
   useStartWorkMutation,
 } from "../api/mutations";
+import { caseQueries } from "../api/queries";
 import { caseKeys } from "../api/query-keys";
 import type { CaseItem } from "../types";
 import { CloseJobSheet } from "./close-job-sheet";
@@ -98,14 +98,14 @@ function useGatewayAssignment(caseId: string) {
       enabled: !!caseId && !!localStorage.getItem("jwt"),
       retry: false,
       queryFn: async () => {
-        const res = await fetchWithAuth(
+        const body = await gatewayFetch(
           `${env.VITE_GATEWAY_URL}/api/cases/${caseId}`,
           {},
           env.VITE_AUTH_URL
         );
-        if (!res.ok) return null;
-        const parsed = gatewayCaseSchema.safeParse(await res.json());
-        return parsed.success ? (parsed.data.data?.assignment ?? null) : null;
+        const parsed = gatewayCaseSchema.safeParse(body);
+        if (!parsed.success) throw new Error("Invalid case response");
+        return parsed.data.data?.assignment ?? null;
       },
     })
   );
@@ -129,10 +129,15 @@ interface Props {
 }
 
 export function CaseAuditTrail({ caseId, caseData }: Props) {
-  const { data: events = [], isLoading } = useQuery(
-    auditQueries.timeline(caseId)
-  );
-  const { data: assignment } = useGatewayAssignment(caseId);
+  const {
+    data: timeline,
+    isLoading,
+    isError,
+  } = useQuery(caseQueries.timeline(caseId));
+  const events = timeline?.events ?? [];
+  const hasMissingSources = (timeline?.missingSources.length ?? 0) > 0;
+  const { data: assignment, isError: isAssignmentError } =
+    useGatewayAssignment(caseId);
   const acceptJob = useAcceptJobMutation();
   const noAccess = useNoAccessMutation();
   const startWork = useStartWorkMutation();
@@ -321,6 +326,17 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
           </div>
         )}
 
+        {isAssignmentError && (
+          <div className="border border-destructive/40 bg-destructive/5 p-4 flex flex-col gap-2">
+            <span className="text-[10px] font-label uppercase tracking-widest font-bold text-destructive">
+              Could Not Load Job Status
+            </span>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+              Try refreshing this page.
+            </p>
+          </div>
+        )}
+
         {isPendingAcceptance && (
           <div
             className={`border p-4 flex flex-col gap-3 ${isOverdue ? "border-destructive/50 bg-destructive/5" : "border-amber-500/50 bg-amber-500/5"}`}
@@ -458,9 +474,19 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
           </span>
         </div>
 
+        {hasMissingSources && (
+          <div className="border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[10px] font-label uppercase tracking-widest text-amber-400">
+            Some history could not be loaded.
+          </div>
+        )}
+
         {isLoading ? (
           <div className="text-[10px] font-label uppercase tracking-widest text-muted-foreground text-center py-8">
             Loading history...
+          </div>
+        ) : isError ? (
+          <div className="text-[10px] font-label uppercase tracking-widest text-destructive text-center py-8">
+            Could not load activity history.
           </div>
         ) : events.length === 0 ? (
           <div className="text-[10px] font-label uppercase tracking-widest text-muted-foreground text-center py-8">

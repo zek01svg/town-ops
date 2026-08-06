@@ -14,6 +14,7 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
   const q = {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
     set: vi.fn().mockReturnThis(),
     values: vi.fn().mockReturnThis(),
     returning: vi.fn().mockReturnThis(),
@@ -165,6 +166,112 @@ describe("Alert Atom API Endpoints", () => {
     it("should return 400 for invalid recipientId UUID", async () => {
       const res = await app.request("/api/alerts/recipient/not-a-uuid");
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe("GET /internal/effects/case/:caseId — toEffectSummary projection (PRS-151)", () => {
+    it("projects null contractorId/scoreDelta for an EMAIL summary and never leaks payload", async () => {
+      const emailRow = {
+        id: "effect-1",
+        caseId: VALID_UUID_1,
+        type: "EMAIL",
+        purpose: "ATTEMPT_ASSIGNMENT_NOTIFICATION",
+        status: "SENT",
+        payload: {
+          type: "EMAIL",
+          to: "resident@example.com",
+          subject: "Case update",
+          html: "<p>secret-html-body</p>",
+        },
+        providerId: null,
+        providerIdempotencyKey: "effect-1",
+        attempts: 1,
+        lastError: null,
+        nextRetryAt: null,
+        waiverActorId: null,
+        waiverReason: null,
+        createdAt: "2030-01-01T00:00:00.000Z",
+        updatedAt: "2030-01-01T00:00:00.000Z",
+      };
+      mockQuery.then.mockImplementationOnce((resolve) => resolve([emailRow]));
+
+      const res = await app.request(`/internal/effects/case/${VALID_UUID_1}`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.effects).toEqual([
+        {
+          id: "effect-1",
+          caseId: VALID_UUID_1,
+          type: "EMAIL",
+          purpose: "ATTEMPT_ASSIGNMENT_NOTIFICATION",
+          status: "SENT",
+          providerId: null,
+          providerIdempotencyKey: "effect-1",
+          attempts: 1,
+          lastError: null,
+          nextRetryAt: null,
+          waiverActorId: null,
+          waiverReason: null,
+          contractorId: null,
+          scoreDelta: null,
+          createdAt: "2030-01-01T00:00:00.000Z",
+          updatedAt: "2030-01-01T00:00:00.000Z",
+        },
+      ]);
+      expect(JSON.stringify(body)).not.toContain("secret-html-body");
+    });
+
+    it("projects contractorId/scoreDelta for a PERFORMANCE_ENTRY summary and never leaks payload", async () => {
+      const performanceRow = {
+        id: "effect-2",
+        caseId: VALID_UUID_1,
+        type: "PERFORMANCE_ENTRY",
+        purpose: "ATTEMPT_BREACH_PERFORMANCE",
+        status: "SENT",
+        payload: {
+          type: "PERFORMANCE_ENTRY",
+          contractorId: VALID_UUID_2,
+          scoreDelta: -5,
+          reason: "secret-internal-reason",
+        },
+        providerId: null,
+        providerIdempotencyKey: "effect-2",
+        attempts: 1,
+        lastError: null,
+        nextRetryAt: null,
+        waiverActorId: null,
+        waiverReason: null,
+        createdAt: "2030-01-01T00:00:00.000Z",
+        updatedAt: "2030-01-01T00:00:00.000Z",
+      };
+      mockQuery.then.mockImplementationOnce((resolve) =>
+        resolve([performanceRow])
+      );
+
+      const res = await app.request(`/internal/effects/case/${VALID_UUID_1}`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.effects).toEqual([
+        {
+          id: "effect-2",
+          caseId: VALID_UUID_1,
+          type: "PERFORMANCE_ENTRY",
+          purpose: "ATTEMPT_BREACH_PERFORMANCE",
+          status: "SENT",
+          providerId: null,
+          providerIdempotencyKey: "effect-2",
+          attempts: 1,
+          lastError: null,
+          nextRetryAt: null,
+          waiverActorId: null,
+          waiverReason: null,
+          contractorId: VALID_UUID_2,
+          scoreDelta: -5,
+          createdAt: "2030-01-01T00:00:00.000Z",
+          updatedAt: "2030-01-01T00:00:00.000Z",
+        },
+      ]);
+      expect(JSON.stringify(body)).not.toContain("secret-internal-reason");
     });
   });
 });

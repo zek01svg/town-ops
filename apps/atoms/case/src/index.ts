@@ -32,6 +32,7 @@ import { insertCaseSchema, selectCaseSchema } from "./database/schema";
 import { env } from "./env";
 import * as caseService from "./service";
 import {
+  caseListSchema,
   getCaseSchema,
   markCaseAssignedSchema,
   officerAttentionListSchema,
@@ -90,7 +91,7 @@ const casesRouter = new Hono()
   .get(
     "/",
     describeRoute({
-      description: "Retrieve all cases",
+      description: "List cases with optional filters and pagination",
       responses: {
         200: {
           description: "List of cases",
@@ -100,13 +101,16 @@ const casesRouter = new Hono()
             },
           },
         },
+        400: { description: "Validation failed" },
       },
     }),
-    async (c: Context) => {
-      const caseRows = await caseService.getAllCases();
+    validator("query", caseListSchema),
+    async (c) => {
+      const query = c.req.valid("query");
+      const caseRows = await caseService.listCases(query);
       logger.info(
         { route: "/api/cases", rowCount: caseRows.length },
-        "Retrieved all cases"
+        "Retrieved cases"
       );
       return c.json({ cases: caseRows.map(publicCase) }, 200);
     }
@@ -147,6 +151,22 @@ const casesRouter = new Hono()
         "Case lookup executed"
       );
       return c.json({ cases: caseRows.map(publicCase) }, 200);
+    }
+  )
+  .get(
+    "/:id/history",
+    describeRoute({
+      description: "Get the audit trail for a case",
+      responses: {
+        200: { description: "Case history, oldest first" },
+        400: { description: "Invalid UUID provided" },
+      },
+    }),
+    validator("param", z.object({ id: getCaseSchema })),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const history = await caseService.getCaseHistoryByCaseId(id);
+      return c.json({ history }, 200);
     }
   )
   .put(

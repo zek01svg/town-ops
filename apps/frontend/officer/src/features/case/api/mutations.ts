@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { gatewayFetch } from "@townops/ui/libr/gateway";
 import { z } from "zod/v4";
 
 import { env } from "@/env";
 import { handleBreachClient, openCaseClient } from "@/libr/api";
-import { clearAuth, fetchWithAuth, getAuthHeader } from "@/libr/auth-token";
+import { clearAuth, getAuthHeader } from "@/libr/auth-token";
 
 import type { OpenCaseInput } from "../validation-schemas";
 import { caseKeys } from "./query-keys";
@@ -33,10 +34,6 @@ export function useOpenCaseMutation() {
   });
 }
 
-const gatewayErrorSchema = z.object({
-  error: z.object({ message: z.string().optional() }).optional(),
-});
-
 export type ReplaceAppointmentInput = {
   caseId: string;
   appointmentId: string;
@@ -55,8 +52,8 @@ export type ReplaceAppointmentInput = {
 export function useReplaceAppointmentMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: ReplaceAppointmentInput) => {
-      const res = await fetchWithAuth(
+    mutationFn: (input: ReplaceAppointmentInput) =>
+      gatewayFetch(
         `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/appointments/${input.appointmentId}/replacement`,
         {
           method: "PUT",
@@ -71,17 +68,7 @@ export function useReplaceAppointmentMutation() {
           }),
         },
         env.VITE_AUTH_URL
-      );
-      if (!res.ok) {
-        const body = gatewayErrorSchema.safeParse(
-          await res.json().catch(() => ({}))
-        );
-        throw new Error(
-          body.data?.error?.message ?? `The reschedule failed (${res.status})`
-        );
-      }
-      return res.json();
-    },
+      ),
     onSuccess: (_, vars) => {
       void qc.invalidateQueries({ queryKey: caseKeys.all });
       void qc.invalidateQueries({
@@ -100,8 +87,8 @@ export type CancelCaseInput = {
 export function useCancelCaseMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: CancelCaseInput) => {
-      const res = await fetchWithAuth(
+    mutationFn: (input: CancelCaseInput) =>
+      gatewayFetch(
         `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/cancel`,
         {
           method: "PUT",
@@ -112,17 +99,7 @@ export function useCancelCaseMutation() {
           body: JSON.stringify({ reason: input.reason }),
         },
         env.VITE_AUTH_URL
-      );
-      if (!res.ok) {
-        const body = gatewayErrorSchema.safeParse(
-          await res.json().catch(() => ({}))
-        );
-        throw new Error(
-          body.data?.error?.message ?? `The cancellation failed (${res.status})`
-        );
-      }
-      return res.json();
-    },
+      ),
     onSuccess: (_, vars) => {
       void qc.invalidateQueries({ queryKey: caseKeys.all });
       void qc.invalidateQueries({
@@ -165,14 +142,14 @@ export function useHandleBreachMutation() {
 export function useRepairEffectMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
+    mutationFn: (input: {
       caseId: string;
       effectId: string;
       action: "retry" | "waive";
       reason?: string;
       acknowledgeDuplicateRisk?: boolean;
-    }) => {
-      const res = await fetchWithAuth(
+    }) =>
+      gatewayFetch(
         `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/effects/${encodeURIComponent(input.effectId)}/${input.action}`,
         {
           method: "POST",
@@ -187,17 +164,7 @@ export function useRepairEffectMutation() {
           ),
         },
         env.VITE_AUTH_URL
-      );
-      if (!res.ok) {
-        const body = gatewayErrorSchema.safeParse(
-          await res.json().catch(() => ({}))
-        );
-        throw new Error(
-          body.data?.error?.message ?? `Effect repair failed (${res.status})`
-        );
-      }
-      return res.json();
-    },
+      ),
     onSuccess: (_, input) => {
       void qc.invalidateQueries({ queryKey: caseKeys.effects(input.caseId) });
     },

@@ -2,14 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import type { ResidentAppointmentDto } from "@townops/orchestration-contract";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
-import { z } from "zod/v4";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useReplaceAppointmentMutation } from "@/features/case/api/mutations";
-import { getCase } from "@/libr/gateway";
+import { caseKeys } from "@/features/case/api/query-keys";
+import { getCase, listCases } from "@/libr/gateway";
 
 /**
  * Why the Reschedule cannot be submitted, or null when it can. Prose rather
@@ -49,17 +49,22 @@ export function rescheduleBlocker(
 }
 
 export function ResidentDashboard() {
-  const [caseId, setCaseId] = useState("");
+  const [caseId, setCaseId] = useState<string | null>(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [reason, setReason] = useState("");
   const replacementKey = useRef<string | undefined>(undefined);
 
-  const isCaseId = z.uuid().safeParse(caseId).success;
+  const cases = useQuery({ queryKey: caseKeys.list, queryFn: listCases });
+  const caseList = cases.data ?? [];
+
   const caseQuery = useQuery({
-    queryKey: ["case", caseId],
-    queryFn: () => getCase(caseId),
-    enabled: isCaseId,
+    queryKey: caseKeys.detail(caseId ?? ""),
+    queryFn: () => {
+      if (!caseId) throw new Error("Case ID is required.");
+      return getCase(caseId);
+    },
+    enabled: caseId !== null,
     retry: false,
   });
 
@@ -76,7 +81,7 @@ export function ResidentDashboard() {
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!appointment || blockedFor) return;
+    if (!caseId || !appointment || blockedFor) return;
     const idempotencyKey = replacementKey.current ?? crypto.randomUUID();
     replacementKey.current = idempotencyKey;
     mutation.mutate(
@@ -122,19 +127,45 @@ export function ResidentDashboard() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <label
-                htmlFor="case-id"
-                className="block text-xs uppercase font-label tracking-widest text-primary"
-              >
-                Case ID
+              <label className="block text-xs uppercase font-label tracking-widest text-primary">
+                Select a Case
               </label>
-              <Input
-                id="case-id"
-                value={caseId}
-                onChange={(e) => setCaseId(e.target.value)}
-                placeholder="e.g. 123e4567-e89b-12d3..."
-                className="rounded-none border-border bg-surface-container"
-              />
+              {cases.isLoading ? (
+                <p className="text-xs text-muted-foreground uppercase tracking-widest">
+                  Loading your cases…
+                </p>
+              ) : cases.isError ? (
+                <p className="text-xs text-destructive uppercase tracking-widest">
+                  {cases.error.message}
+                </p>
+              ) : caseList.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  You have no cases yet.
+                </p>
+              ) : (
+                <div className="divide-y divide-border border border-border">
+                  {caseList.map((record) => (
+                    <button
+                      key={record.id}
+                      type="button"
+                      onClick={() => setCaseId(record.id)}
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${
+                        caseId === record.id ? "bg-muted" : ""
+                      }`}
+                    >
+                      <span className="font-label uppercase tracking-widest">
+                        {record.category} · {record.priority}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className="rounded-none border-border text-[10px] uppercase"
+                      >
+                        {record.status}
+                      </Badge>
+                    </button>
+                  ))}
+                </div>
+              )}
               {caseQuery.isError && (
                 <p className="text-xs text-destructive">
                   {caseQuery.error.message}
@@ -167,7 +198,7 @@ export function ResidentDashboard() {
               </div>
             )}
 
-            {isCaseId && !caseQuery.isPending && !appointment && (
+            {caseId !== null && !caseQuery.isPending && !appointment && (
               <p className="text-xs text-muted-foreground">
                 This case has no visit booked yet.
               </p>
