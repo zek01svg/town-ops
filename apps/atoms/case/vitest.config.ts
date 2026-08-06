@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from "node:url";
 
 import { defineConfig, mergeConfig } from "vitest/config";
 
-import baseConfig, { isUnitRun } from "../../../tooling/vitest/vitest.config";
+import { baseConfig, isUnitRun } from "../../../vitest.config";
 
 export default mergeConfig(
   baseConfig,

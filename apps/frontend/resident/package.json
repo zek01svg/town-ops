@@ -10,7 +10,7 @@
     "build:docker": "bun run build && docker build -t resident-frontend .",
     "preview": "vite preview",
     "clean": "rimraf build node_modules .tanstack coverage",
-    "lint": "bun run oxlint -c ../../../tooling/oxlint/oxlint.config.ts",
+    "lint": "bun run oxlint -c ../../../oxlint.config.ts",
     "test": "bun run load-env -- vitest run tests --coverage",
     "load-env": "dotenv -e .env"
   },
@@ -34,7 +34,6 @@
     "@townops/shared-ts": "workspace:*",
     "@townops/ui": "workspace:*",
     "better-auth": "catalog:",
-    "dotenv": "catalog:",
     "hono": "catalog:",
     "lucide-react": "catalog:",
     "react": "catalog:react19",

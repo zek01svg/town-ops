@@ -1,0 +1,97 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true
+  },
+  "plugins": [
+    "typescript",
+    "react",
+    "jsx-a11y",
+    "unicorn",
+    "import",
+    "promise"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn"
+  },
+  "env": {
+    "es2024": true
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/.turbo/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/routeTree.gen.ts",
+    "pnpm-lock.yaml"
+  ],
+  "rules": {
+    "no-console": ["warn", { "allow": ["warn", "error", "info"] }],
+    "no-debugger": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "unicorn/no-null": "off",
+    "no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+    ],
+    "typescript/consistent-type-imports": [
+      "warn",
+      { "prefer": "type-imports", "fixStyle": "separate-type-imports" }
+    ],
+    "typescript/no-unnecessary-condition": [
+      "warn",
+      { "allowConstantLoopConditions": true }
+    ],
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-explicit-any": "error",
+    "import/no-unassigned-import": "off",
+    "import/no-duplicates": "error",
+    "import/first": "error",
+    "import/extensions": "off",
+    "import/consistent-type-specifier-style": ["error", "prefer-top-level"],
+    "no-restricted-imports": [
+      "error",
+      {
+        "name": "zod",
+        "message": "Use `import { z } from 'zod/v4'` instead to ensure v4."
+      }
+    ],
+    "react/react-in-jsx-scope": "off",
+    "react/no-children-prop": "off",
+    "jsx-a11y/label-has-associated-control": "off"
+  },
+  "overrides": [
+    {
+      "files": ["apps/frontend/**/*.ts", "apps/frontend/**/*.tsx"],
+      "env": {
+        "browser": true
+      },
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn",
+        "react/react-in-jsx-scope": "off",
+        "jsx-a11y/alt-text": "error",
+        "jsx-a11y/anchor-is-valid": "warn",
+        "react/no-children-prop": "off",
+        "jsx-a11y/label-has-associated-control": "off"
+      }
+    },
+    {
+      "files": [
+        "apps/atoms/**/*.ts",
+        "apps/composites/**/*.ts",
+        "packages/**/*.ts"
+      ],
+      "env": {
+        "node": true
+      },
+      "rules": {
+        "no-restricted-globals": ["error", "window", "document", "navigator"]
+      }
+    }
+  ]
+}

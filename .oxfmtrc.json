@@ -1,14 +1,13 @@
 {
-  "$schema": "../../node_modules/oxfmt/configuration_schema.json",
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "ignorePatterns": [
-    "**/*.py",
-    "**/*.toml",
-    "node_modules/**",
-    ".turbo/**",
-    "dist/**",
-    "build/**",
-    "coverage/**",
-    "routeTree.gen.ts"
+    "**/node_modules/**",
+    "**/.turbo/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/routeTree.gen.ts",
+    "pnpm-lock.yaml"
   ],
   "arrowParens": "always",
   "bracketSameLine": false,

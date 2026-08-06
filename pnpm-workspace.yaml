@@ -1,6 +1,18 @@
 packages:
   - "apps/**"
   - "packages/**"
+# `packages/ui` declares @tanstack/react-query as a peer (`>=5`), which pnpm
+# auto-installs — resolving it to a newer patch than the catalog pin the apps
+# use. That put two copies of @tanstack/query-core in the tree, so the
+# `QueryClient` from `@townops/ui`'s `getQueryClient()` was a structurally
+# different type from the one each app's `QueryClientProvider` expects, and
+# `tsc` (which runs inside every frontend `build`, and so inside CI) failed.
+# Same class of hazard as the React dedupe every Vite config already carries.
+overrides:
+  "@tanstack/react-query": 5.101.2
+  "@tanstack/react-query-devtools": 5.101.2
+  "@tanstack/react-router": 1.170.18
+
 allowBuilds:
   "@swc/core": false
   cpu-features: false
@@ -57,7 +69,6 @@ catalog:
   better-auth: 1.6.23
   class-variance-authority: ^0.7.1
   clsx: 2.1.1
-  dotenv: 17.4.2
   dotenv-cli: ^11.0.0
   drizzle-kit: ^0.31.10
   drizzle-orm: ^0.45.2

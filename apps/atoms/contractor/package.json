@@ -11,7 +11,7 @@
     "build": "bun build --production --minify --target=bun --outdir=build src/index.ts src/database/migrate.ts",
     "build:docker": "bun run build && docker build -t contractor-atom .",
     "clean": "rimraf node_modules",
-    "lint": "bun run oxlint -c ../../../tooling/oxlint/oxlint.config.ts",
+    "lint": "bun run oxlint -c ../../../oxlint.config.ts",
     "test": "bun run load-env -- vitest run tests",
     "load-env": "dotenv -e .env",
     "db:pull": "bun run load-env -- bun drizzle-kit pull",

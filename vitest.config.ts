@@ -9,7 +9,7 @@ export const baseConfig = defineConfig({
       "dist",
       ".next",
       "playwright",
-      "../../tests/e2e",
+      "tests/e2e",
     ],
     coverage: {
       provider: "istanbul" as const,

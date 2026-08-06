@@ -1,18 +1,15 @@
-import path from "path";
-
 import { defineConfig, devices } from "@playwright/test";
 
-import dotenv from "../../node_modules/dotenv/lib/main.js";
-
-dotenv.config({ path: path.resolve(process.cwd(), ".env"), quiet: true });
-
-const OFFICER_URL = process.env.OFFICER_URL ?? "http://localhost:4001";
-const CONTRACTOR_URL = process.env.CONTRACTOR_URL ?? "http://localhost:4000";
-const RESIDENT_URL = process.env.RESIDENT_URL ?? "http://localhost:4002";
+// Compose publishes the frontends on 3001/3002/3003 (docker-compose.yml:516-541);
+// the suite assumes a running stack, since there is no `webServer` below.
+// Override for `vite dev` (5173/5174/5175) via the env vars.
+const OFFICER_URL = process.env.OFFICER_URL ?? "http://localhost:3001";
+const CONTRACTOR_URL = process.env.CONTRACTOR_URL ?? "http://localhost:3002";
+const RESIDENT_URL = process.env.RESIDENT_URL ?? "http://localhost:3003";
 
 export default defineConfig({
-  testDir: "../../tests/e2e",
-  fullyParallel: false, // scenarios share state (RabbitMQ/DB); run sequentially
+  testDir: "./tests/e2e",
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
@@ -30,7 +27,6 @@ export default defineConfig({
   },
 
   projects: [
-    // ── Auth setup (one per app) ────────────────────────────────────────────
     {
       name: "officer-setup",
       testMatch: /.*officer\.setup\.ts/,
@@ -41,8 +37,6 @@ export default defineConfig({
       testMatch: /.*contractor\.setup\.ts/,
       use: { baseURL: CONTRACTOR_URL },
     },
-
-    // ── Test suites ─────────────────────────────────────────────────────────
     {
       name: "officer",
       testMatch: /.*officer.*\.spec\.ts/,

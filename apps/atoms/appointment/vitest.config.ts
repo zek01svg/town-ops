@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 
-import baseVitestConfig from "../../../tooling/vitest/vitest.config";
+import baseVitestConfig from "../../../vitest.config";
 
 export default defineConfig({
   ...baseVitestConfig,
