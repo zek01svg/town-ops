@@ -1,11 +1,9 @@
 {
   "recommendations": [
-    "esbenp.prettier-vscode",
     "bradlc.vscode-tailwindcss",
     "hashicorp.terraform",
     "mechatroner.rainbow-csv",
     "hediet.vscode-drawio",
-    "humao.rest-client",
-    "vsciot-vscode.vscode-rabbitmq"
+    "humao.rest-client"
   ]
 }
