@@ -24,7 +24,7 @@ TownOps is a monorepo for resident-owned estate maintenance Cases. It uses pnpm 
 - Install: `pnpm install --frozen-lockfile`
 - Develop all workspaces: `pnpm dev`
 - Format check: `pnpm format:check`
-- Lint: `pnpm lint:js`
+- Lint: `pnpm lint:check`
 - Workspace tests: `pnpm test`
 - Build: `pnpm build`
 - Scoped work: `pnpm --filter <workspace-package> <script>`
@@ -60,7 +60,9 @@ Single-context: root `CONTEXT.md` and relevant entries in `docs/adr/` when that 
 - Offload research, exploration, and parallel analysis to subagents
 - For complex problems, throw more compute at it via subagents
 - One task per subagent for focused execution
-- For new features/requirements, run the `builder` → `tester` → `reviewer` subagent pipeline
+- For new features/requirements, run the `builder` → `reviewer` pipeline. Builder writes the code and its tests test-first and runs the scoped suite; reviewer is read-only and judges both, including whether the tests can actually fail. Loop until reviewer PASS.
+- **Resume the same builder via `SendMessage` for fix loops.** A fresh `Agent` spawn re-reads the spec and every touched file from cold; resuming keeps that context. Only cold-spawn for a genuinely new increment.
+- **The parent owns the full-lane run.** Builder runs only their scoped workspace commands; the parent runs the root suite and `pnpm lint:js` before committing.
 
 ### 3. Self-Improvement Loop
 
