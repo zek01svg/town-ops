@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.6",
-    "@temporalio/client": "1.20.3",
+    "@temporalio/client": "catalog:",
     "@townops/orchestration-contract": "workspace:*",
     "hono": "catalog:",
     "zod": "catalog:"

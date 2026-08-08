@@ -18,7 +18,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@temporalio/client": "1.20.3",
+    "@temporalio/client": "catalog:",
     "@temporalio/common": "1.20.3",
     "@temporalio/testing": "1.20.3",
     "typescript": "catalog:",
