@@ -14,12 +14,14 @@ const workerServiceToken = "a".repeat(32);
 
 describe("provisionResidentProfile Activity", () => {
   it("sends the Bearer token and exactly {accountId, fullName, email}, no extra fields", async () => {
-    const fetchImpl = vi.fn().mockResolvedValueOnce(
-      Response.json(
-        { resident: { id: input.accountId, ...input } },
-        { status: 201 }
-      )
-    );
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { resident: { id: input.accountId, ...input } },
+          { status: 201 }
+        )
+      );
     const provisionResidentProfile = createProvisionResidentActivity({
       residentAtomUrl: "http://resident-atom:5008",
       workerServiceToken,
@@ -43,11 +45,10 @@ describe("provisionResidentProfile Activity", () => {
       }
     );
     const [, options] = fetchImpl.mock.calls[0];
-    expect(Object.keys(JSON.parse(options.body as string)).toSorted()).toEqual([
-      "accountId",
-      "email",
-      "fullName",
-    ]);
+    const body: unknown = options.body;
+    expect(
+      Object.keys(JSON.parse(typeof body === "string" ? body : "")).toSorted()
+    ).toEqual(["accountId", "email", "fullName"]);
   });
 
   it("treats a 4xx Resident atom response as a non-retryable ApplicationFailure", async () => {
