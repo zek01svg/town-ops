@@ -108,9 +108,6 @@ catalogs:
     '@testcontainers/postgresql':
       specifier: ^12.0.4
       version: 12.1.0
-    '@testcontainers/rabbitmq':
-      specifier: ^12.0.4
-      version: 12.1.0
     '@testing-library/react':
       specifier: ^16.3.2
       version: 16.3.2
@@ -227,9 +224,6 @@ importers:
 
   .:
     dependencies:
-      '@cloudamqp/amqp-client':
-        specifier: ^4.0.0
-        version: 4.0.0
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.4)(bun-types@1.3.14)(kysely@0.29.4)(pg@8.22.0)
@@ -250,9 +244,6 @@ importers:
         specifier: 'catalog:'
         version: 0.11.12(hono@4.12.31)
       '@testcontainers/postgresql':
-        specifier: 'catalog:'
-        version: 12.1.0(supports-color@8.1.1)
-      '@testcontainers/rabbitmq':
         specifier: 'catalog:'
         version: 12.1.0(supports-color@8.1.1)
       '@testing-library/react':
@@ -343,9 +334,6 @@ importers:
       '@testcontainers/postgresql':
         specifier: 'catalog:'
         version: 12.1.0(supports-color@8.1.1)
-      '@testcontainers/rabbitmq':
-        specifier: 'catalog:'
-        version: 12.1.0(supports-color@8.1.1)
       '@types/pg':
         specifier: 'catalog:'
         version: 8.20.4
@@ -402,9 +390,6 @@ importers:
         specifier: 'catalog:'
         version: 0.11.12(hono@4.12.31)
       '@testcontainers/postgresql':
-        specifier: 'catalog:'
-        version: 12.1.0(supports-color@8.1.1)
-      '@testcontainers/rabbitmq':
         specifier: 'catalog:'
         version: 12.1.0(supports-color@8.1.1)
       '@types/pg':
@@ -1742,10 +1727,6 @@ packages:
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
-
-  '@cloudamqp/amqp-client@4.0.0':
-    resolution: {integrity: sha512-fxNGQcwnNHW+gQfs/LBNsKXSEkK9fesA9++9op44jc0ieLjoNfdruOIjodqKuZceHoEgKaFKH6m7perLb2fU2A==}
-    engines: {node: '>=18.0.0'}
 
   '@csstools/color-helpers@6.1.0':
     resolution: {integrity: sha512-064IFJdjTfUqnjpCVpMOdbr8FLQBhinbZj6yRv2An2E41O/pLEXqfFRWqGq/SxlE5PEUYTlvWsG2r8MswAVvkg==}
@@ -4768,9 +4749,6 @@ packages:
 
   '@testcontainers/postgresql@12.1.0':
     resolution: {integrity: sha512-Pjf2VSVNirEPfz36nidyrVAnZvc2YhajOznY4VgyEsvfTd5qiMNOuPq96drREvxAUtXl5SFLX7vXj7sSq4aTcA==}
-
-  '@testcontainers/rabbitmq@12.1.0':
-    resolution: {integrity: sha512-u5CrKsrVFJVZpWesyG4I3MAu7Qj3lF5i17EX667g4evJ3K2q8RHkdCs8/9CR4ofKA8Yse/60ci4+Ty56gvG1XA==}
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -8844,8 +8822,6 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@cloudamqp/amqp-client@4.0.0': {}
-
   '@csstools/color-helpers@6.1.0': {}
 
   '@csstools/css-calc@3.3.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
@@ -11741,15 +11717,6 @@ snapshots:
       - supports-color
 
   '@testcontainers/postgresql@12.1.0(supports-color@8.1.1)':
-    dependencies:
-      testcontainers: 12.1.0(supports-color@8.1.1)
-    transitivePeerDependencies:
-      - bare-abort-controller
-      - bare-buffer
-      - react-native-b4a
-      - supports-color
-
-  '@testcontainers/rabbitmq@12.1.0(supports-color@8.1.1)':
     dependencies:
       testcontainers: 12.1.0(supports-color@8.1.1)
     transitivePeerDependencies:

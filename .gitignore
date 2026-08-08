@@ -277,7 +277,6 @@ out/
 
 # Local Data
 pgdata/
-rabbitmq_data/
 *.log
 
 # OS Junk

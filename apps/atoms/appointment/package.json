@@ -35,7 +35,6 @@
     "@hono/standard-validator": "catalog:",
     "@scalar/hono-api-reference": "catalog:",
     "@testcontainers/postgresql": "catalog:",
-    "@testcontainers/rabbitmq": "catalog:",
     "@types/pg": "catalog:",
     "dotenv-cli": "catalog:",
     "drizzle-kit": "catalog:",

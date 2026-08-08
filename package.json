@@ -8,7 +8,7 @@
   ],
   "type": "module",
   "scripts": {
-    "prepare": "lefthook install",
+    "prepare": "lefthook install || echo lefthook install skipped",
     "format:check": "oxfmt --config .oxfmtrc.json --check .",
     "lint:check": "oxlint --config .oxlintrc.json",
     "clean": "pnpm dlx rimraf node_modules pnpm-lock.yaml",
@@ -22,7 +22,6 @@
     "test:e2e:resident": "playwright test --config playwright.config.ts --project resident"
   },
   "dependencies": {
-    "@cloudamqp/amqp-client": "^4.0.0",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "catalog:",
     "pg": "catalog:"
@@ -32,7 +31,6 @@
     "@playwright/test": "^1.62.1",
     "@scalar/hono-api-reference": "catalog:",
     "@testcontainers/postgresql": "catalog:",
-    "@testcontainers/rabbitmq": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/pg": "catalog:",
     "@types/react": "catalog:react19",

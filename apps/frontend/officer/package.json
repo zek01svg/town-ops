@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "start": "NODE_ENV=production bun build/index.js",
-    "build": "bun run load-env -- vite build && tsc && bun build --minify --sourcemap --target=bun --outdir=build server/index.ts",
+    "build": "bun run load-env -- vite build && tsc && bun build --production --minify --sourcemap --target=bun --outdir=build server/index.ts",
     "build:docker": "bun run build && docker build -t officer-frontend .",
     "preview": "vite preview",
     "clean": "rimraf build node_modules .tanstack coverage",

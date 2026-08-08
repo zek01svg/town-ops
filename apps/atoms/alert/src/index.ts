@@ -29,7 +29,6 @@ import {
   failEffectSchema,
   reserveEffectSchema,
 } from "./validation-schemas";
-import { startAlertQueueWorker } from "./worker";
 
 const app = new Hono();
 
@@ -372,8 +371,6 @@ const internalEffectsRouter = new Hono()
   );
 
 app.route("/internal/effects", internalEffectsRouter);
-
-startAlertQueueWorker();
 
 export { app };
 

@@ -9,11 +9,15 @@ const { mockEmailsSend } = vi.hoisted(() => ({
 
 vi.mock("resend", () => {
   return {
-    Resend: vi.fn().mockImplementation(function (this: any) {
-      this.emails = {
-        send: mockEmailsSend,
-      };
-    }),
+    Resend: vi
+      .fn()
+      .mockImplementation(
+        function (this: { emails: { send: typeof mockEmailsSend } }) {
+          this.emails = {
+            send: mockEmailsSend,
+          };
+        }
+      ),
   };
 });
 
@@ -28,7 +32,6 @@ vi.mock("../../src/env", () => ({
   env: {
     RESEND_API_KEY: "re_123",
     DATABASE_URL: "postgres://root:password@localhost:5432/testdb",
-    RABBITMQ_URL: "amqp://localhost",
     JWKS_URI: "http://localhost",
   },
 }));

@@ -34,21 +34,6 @@ services:
     entrypoint: ["/bin/sh"]
     command: /scripts/create-databases.sh
 
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    restart: unless-stopped
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   temporal-postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -189,12 +174,9 @@ services:
         condition: service_healthy
       postgres-init:
         condition: service_completed_successfully
-      rabbitmq:
-        condition: service_healthy
     environment:
       PORT: 5002
       DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_alert
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       RESEND_API_KEY: ${RESEND_API_KEY}
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
       # Empty OTEL vars satisfy shared-ts env validation and disable tracing
@@ -407,12 +389,17 @@ services:
 
   # ─── Frontends ────────────────────────────────────────────────────────────────
 
+  # The empty OTEL vars are required, not decorative: shared-ts env validation
+  # declares both as non-optional strings, so an unset value crash-loops the
+  # server on boot. Empty disables tracing locally, same as every atom above.
   officer-frontend:
     build: apps/frontend/officer
     restart: unless-stopped
     environment:
       PORT: 3000
       VITE_GATEWAY_URL: http://localhost:6010
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "3001:3000"
 
@@ -422,6 +409,8 @@ services:
     environment:
       PORT: 3000
       VITE_GATEWAY_URL: http://localhost:6010
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "3002:3000"
 
@@ -431,6 +420,8 @@ services:
     environment:
       PORT: 3000
       VITE_GATEWAY_URL: http://localhost:6010
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "3003:3000"
 
