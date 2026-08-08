@@ -19,6 +19,11 @@ const config = z
     PROOF_ATOM_URL: z.url().default("http://localhost:5007"),
     ALERT_ATOM_URL: z.url().default("http://localhost:5002"),
     WORKER_SERVICE_TOKEN: z.string().min(32),
+    GATEWAY_UPDATE_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(20_000),
   })
   .parse(process.env);
 
@@ -57,6 +62,7 @@ const app = createGatewayApp({
   alertAtomUrl: config.ALERT_ATOM_URL,
   workerServiceToken: config.WORKER_SERVICE_TOKEN,
   authenticate: jwk({ jwks_uri: config.JWKS_URI, alg: ["EdDSA"] }),
+  updateTimeoutMs: config.GATEWAY_UPDATE_TIMEOUT_MS,
 });
 
 serve({ fetch: app.fetch, port: config.PORT });

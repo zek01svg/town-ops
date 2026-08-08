@@ -74,7 +74,8 @@ function appointmentDto(
   assignmentId: string,
   attemptId: string,
   appointmentId: string,
-  status: AppointmentDto["status"]
+  status: AppointmentDto["status"],
+  endTime = scheduledEnd
 ): AppointmentDto {
   return {
     id: appointmentId,
@@ -83,7 +84,7 @@ function appointmentDto(
     attemptId,
     contractorId,
     startTime: scheduledStart,
-    endTime: scheduledEnd,
+    endTime,
     status,
     reason: null,
     operationId: `appointment/${appointmentId}`,
@@ -95,7 +96,8 @@ function acceptedResult(
   caseId: string,
   assignmentId: string,
   attemptId: string,
-  appointmentId: string
+  appointmentId: string,
+  appointmentEndTime = scheduledEnd
 ): AcceptAllocationResult {
   const now = "2030-01-01T00:00:00.000Z";
   const attempt: AllocationAttemptDto = {
@@ -122,7 +124,8 @@ function acceptedResult(
         assignmentId,
         attemptId,
         appointmentId,
-        "SCHEDULED"
+        "SCHEDULED",
+        appointmentEndTime
       ),
     },
   };
@@ -353,7 +356,28 @@ function startOperation(
   });
 }
 
-describe("Case cancellation lifecycle races (PRS-148)", () => {
+function committedAttempt(
+  assignmentId: string,
+  attemptId: string,
+  deadlineAt: string
+): AllocationAttemptDto {
+  return {
+    id: attemptId,
+    assignmentId,
+    contractorId,
+    source: "MANUAL_ASSIGN",
+    status: "PENDING_ACCEPTANCE",
+    acceptanceSlaMs: 60_000,
+    deadlineAt,
+    actorId: "00000000-0000-0000-0000-000000000000",
+    actorRole: "SYSTEM",
+    reason: null,
+    operationId: `allocate/${attemptId}`,
+    createdAt: "2030-01-01T00:00:00.000Z",
+  };
+}
+
+describe("Case lifecycle races (PRS-148 cancellation, PRS-152 AC9)", () => {
   let env: TestWorkflowEnvironment;
 
   beforeAll(async () => {
@@ -1004,6 +1028,333 @@ describe("Case cancellation lifecycle races (PRS-148)", () => {
         "initial-accept",
         "cancel-appointment-began",
         "cancel-appointment-committed",
+        "cancel-assignment",
+        "cancel-case",
+      ]);
+    });
+  }, 30_000);
+
+  /**
+   * AC9, allocation timer versus Officer command. The Officer's allocation is
+   * held mid-commit until the *previous* Attempt's acceptance deadline has
+   * elapsed, so the two come due at once. The Workflow runs allocation on its
+   * main loop, which is what makes them mutually exclusive: the superseded
+   * Attempt is never breached, exactly one Attempt is committed per command,
+   * and the deadline re-arms on the Attempt the Officer just committed.
+   */
+  it("supersedes an elapsed acceptance deadline with a concurrent Officer allocation, then breaches only the new Attempt", async () => {
+    const caseId = randomUUID();
+    const assignmentId = randomUUID();
+    const firstAttemptId = randomUUID();
+    const secondAttemptId = randomUUID();
+    const commitGate = deferred<void>();
+    const breaches: string[] = [];
+    const attentions: string[] = [];
+    let commits = 0;
+    let firstDeadlineAt = Number.POSITIVE_INFINITY;
+    const { worker, taskQueue, client } = await createWorker({
+      isCaseTerminal: async () => false,
+      fetchAllocationSnapshot: async () => ({
+        epoch: 0,
+        candidates: [{ contractorId, activeAssignments: 0, totalScore: 0 }],
+      }),
+      commitAllocationAttempt: async (input: {
+        expectedEpoch: number;
+      }): Promise<CommitAllocationResult> => {
+        commits++;
+        const isFirst = commits === 1;
+        if (!isFirst) await commitGate.promise;
+        const now = "2030-01-01T00:00:00.000Z";
+        const deadlineAt = new Date(Date.now() + (isFirst ? 3_000 : 2_000));
+        if (isFirst) firstDeadlineAt = deadlineAt.getTime();
+        return {
+          outcome: "COMMITTED",
+          assignment: {
+            id: assignmentId,
+            caseId,
+            createdAt: now,
+            updatedAt: now,
+          },
+          attempt: committedAttempt(
+            assignmentId,
+            isFirst ? firstAttemptId : secondAttemptId,
+            deadlineAt.toISOString()
+          ),
+          epoch: input.expectedEpoch + 1,
+        };
+      },
+      markCaseAssigned: async () => "ASSIGNED" as const,
+      breachAllocationAttempt: async (input: { attemptId: string }) => {
+        breaches.push(input.attemptId);
+        return { outcome: "BREACHED" as const };
+      },
+      markCaseBreached: async () => "PENDING" as const,
+      raiseOfficerAttention: async (input: { kind: string }) => {
+        attentions.push(input.kind);
+        return undefined;
+      },
+      ...immediateDerivedEffectActivities(),
+    });
+
+    await worker.runUntil(async () => {
+      await expect(
+        startOperation(
+          client,
+          taskQueue,
+          caseId,
+          UPDATE_NAMES.allocateContractor,
+          manualAllocationCommand(caseId)
+        )
+      ).resolves.toMatchObject({
+        kind: "SUCCESS",
+        data: { attempt: { id: firstAttemptId } },
+      });
+
+      const officerPending = client.workflow
+        .getHandle(`case/${caseId}`)
+        .executeUpdate(UPDATE_NAMES.allocateContractor, {
+          args: [manualAllocationCommand(caseId)],
+          updateId: randomUUID(),
+        });
+      expect(await waitUntil(() => commits > 1)).toBe(true);
+      // The first Attempt's deadline passes while the Officer's allocation is
+      // mid-commit — the race this test exists for.
+      expect(await waitUntil(() => Date.now() >= firstDeadlineAt)).toBe(true);
+      commitGate.resolve();
+
+      await expect(officerPending).resolves.toMatchObject({
+        kind: "SUCCESS",
+        data: { attempt: { id: secondAttemptId } },
+      });
+      expect(breaches).toEqual([]);
+
+      expect(await waitUntil(() => breaches.length > 0)).toBe(true);
+      expect(breaches).toEqual([secondAttemptId]);
+      expect(commits).toBe(2);
+      expect(await waitUntil(() => attentions.length > 0)).toBe(true);
+      expect(attentions).toEqual(["NO_ELIGIBLE_CONTRACTOR"]);
+      await client.workflow.getHandle(`case/${caseId}`).terminate();
+    });
+  }, 30_000);
+
+  /**
+   * AC9, Appointment end versus No Access. The report is admitted inside the
+   * window and then held past the Appointment's own end, so expiry comes due
+   * with the handler still running. `appointmentLifecycleGuard` is what makes
+   * the admitted report own the outcome — expiry must never mark this
+   * Appointment MISSED behind it.
+   */
+  it("lets a No Access report admitted before the Appointment end win the expiry race", async () => {
+    const caseId = randomUUID();
+    const assignmentId = randomUUID();
+    const attemptId = randomUUID();
+    const appointmentId = randomUUID();
+    const noAccessGate = deferred<void>();
+    // Anchored to the moment the Appointment is actually established, not to
+    // the top of the test: the open -> allocate -> accept setup is itself
+    // several round trips, and a window measured from test start has to cover
+    // all of them. Under full-suite load that overran, expiry won before the
+    // report was ever admitted, and the test flaked. Measured from here the
+    // budget covers one Update admission, which is what the race is about.
+    let appointmentEndsAt = "";
+    const calls: string[] = [];
+    const { worker, taskQueue, client } = await createWorker({
+      acceptAllocation: async () => {
+        appointmentEndsAt = new Date(Date.now() + 5_000).toISOString();
+        return acceptedResult(
+          caseId,
+          assignmentId,
+          attemptId,
+          appointmentId,
+          appointmentEndsAt
+        );
+      },
+      reportNoAccessAppointment: async () => {
+        calls.push("no-access-began");
+        await noAccessGate.promise;
+        calls.push("no-access-committed");
+        return {
+          outcome: "NO_ACCESS" as const,
+          appointment: appointmentDto(
+            caseId,
+            assignmentId,
+            attemptId,
+            appointmentId,
+            "NO_ACCESS"
+          ),
+        };
+      },
+      markCaseNoAccess: async () => {
+        calls.push("no-access-case");
+        return {
+          outcome: "PENDING_RESIDENT_INPUT" as const,
+          case: caseDto(caseId, "PENDING_RESIDENT_INPUT"),
+        };
+      },
+      markAppointmentMissed: async () => {
+        calls.push("missed");
+        return {
+          outcome: "MISSED" as const,
+          appointment: appointmentDto(
+            caseId,
+            assignmentId,
+            attemptId,
+            appointmentId,
+            "MISSED"
+          ),
+        };
+      },
+      raiseOfficerAttention: async () => {
+        calls.push("attention");
+        return undefined;
+      },
+      ...immediateDerivedEffectActivities(),
+    });
+
+    await worker.runUntil(async () => {
+      await establishScheduledAppointment(
+        client,
+        taskQueue,
+        caseId,
+        assignmentId,
+        attemptId,
+        appointmentId
+      );
+      const noAccessPending = client.workflow
+        .getHandle(`case/${caseId}`)
+        .executeUpdate(UPDATE_NAMES.reportNoAccess, {
+          args: [noAccessCommand(caseId, appointmentId)],
+          updateId: randomUUID(),
+        });
+      expect(await waitUntil(() => calls.includes("no-access-began"))).toBe(
+        true
+      );
+      expect(
+        await waitUntil(() => Date.now() >= Date.parse(appointmentEndsAt))
+      ).toBe(true);
+      expect(calls).toEqual(["no-access-began"]);
+      noAccessGate.resolve();
+
+      await expect(noAccessPending).resolves.toMatchObject({
+        kind: "SUCCESS",
+        data: { appointment: { id: appointmentId, status: "NO_ACCESS" } },
+      });
+      expect(await waitUntil(() => calls.includes("missed"), 500)).toBe(false);
+      expect(calls).toEqual([
+        "no-access-began",
+        "no-access-committed",
+        "no-access-case",
+      ]);
+      await client.workflow.getHandle(`case/${caseId}`).terminate();
+    });
+  }, 30_000);
+
+  /**
+   * AC9, replacement versus cancellation. Unlike the sequential scenario above,
+   * the cancellation arrives while the replacement Activity is still in flight.
+   * It must wait for that handler rather than releasing the slot underneath it,
+   * so the Appointment it ultimately cancels is the replacement.
+   */
+  it("holds a cancellation issued mid-replacement until the new slot is booked", async () => {
+    const caseId = randomUUID();
+    const assignmentId = randomUUID();
+    const attemptId = randomUUID();
+    const appointmentId = randomUUID();
+    const replacementAppointmentId = randomUUID();
+    const replacementGate = deferred<AppointmentDto>();
+    const calls: string[] = [];
+    const { worker, taskQueue, client } = await createWorker({
+      acceptAllocation: async () =>
+        acceptedResult(caseId, assignmentId, attemptId, appointmentId),
+      replaceAppointmentSlot: async (input: { appointmentId: string }) => {
+        calls.push(`replacement-slot:${input.appointmentId}`);
+        const appointment = await replacementGate.promise;
+        calls.push(`replacement-committed:${appointment.id}`);
+        return { outcome: "REPLACED" as const, appointment };
+      },
+      markCaseAppointmentReplaced: async () => {
+        calls.push("replacement-case-committed");
+        return {
+          outcome: "REPLACED" as const,
+          case: caseDto(caseId, "ASSIGNED"),
+        };
+      },
+      ...cancellationActivities(
+        caseId,
+        assignmentId,
+        attemptId,
+        replacementAppointmentId,
+        calls
+      ),
+    });
+
+    await worker.runUntil(async () => {
+      await establishScheduledAppointment(
+        client,
+        taskQueue,
+        caseId,
+        assignmentId,
+        attemptId,
+        appointmentId
+      );
+      const replacementPending = client.workflow
+        .getHandle(`case/${caseId}`)
+        .executeUpdate(UPDATE_NAMES.replaceAppointment, {
+          args: [replacementCommand(caseId, appointmentId)],
+          updateId: randomUUID(),
+        });
+      expect(
+        await waitUntil(() =>
+          calls.includes(`replacement-slot:${appointmentId}`)
+        )
+      ).toBe(true);
+
+      const cancellationPending = client.workflow
+        .getHandle(`case/${caseId}`)
+        .executeUpdate(UPDATE_NAMES.cancelCase, {
+          args: [cancelCommand(caseId)],
+          updateId: randomUUID(),
+        });
+      try {
+        // Nothing of the cancellation Saga may run while the replacement holds
+        // the Appointment: releasing the old slot here would cancel an
+        // Appointment the atom is about to retire anyway, and leave the
+        // replacement booked behind a CANCELLED Case.
+        expect(
+          await waitUntil(
+            () => calls.includes("cancel-appointment:CANCELLED"),
+            500
+          )
+        ).toBe(false);
+        expect(calls).toEqual([`replacement-slot:${appointmentId}`]);
+      } finally {
+        // Released even when the assertions above fail: `runUntil` shuts the
+        // Worker down on the way out and waits for in-flight Activities, so a
+        // still-held gate would turn an assertion failure into a test timeout.
+        replacementGate.resolve(
+          replacementAppointmentDto(
+            caseId,
+            assignmentId,
+            attemptId,
+            replacementAppointmentId
+          )
+        );
+      }
+      await expect(replacementPending).resolves.toMatchObject({
+        kind: "SUCCESS",
+        data: {
+          appointment: { id: replacementAppointmentId, status: "SCHEDULED" },
+        },
+      });
+      await expect(cancellationPending).resolves.toMatchObject({
+        kind: "SUCCESS",
+        data: { case: { status: "CANCELLED" } },
+      });
+      expect(calls).toEqual([
+        `replacement-slot:${appointmentId}`,
+        `replacement-committed:${replacementAppointmentId}`,
+        "replacement-case-committed",
+        "cancel-appointment:CANCELLED",
         "cancel-assignment",
         "cancel-case",
       ]);

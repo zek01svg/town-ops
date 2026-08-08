@@ -381,6 +381,7 @@ services:
       PROOF_ATOM_URL: http://proof-atom:5007
       ALERT_ATOM_URL: http://alert-atom:5002
       WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      GATEWAY_UPDATE_TIMEOUT_MS: ${GATEWAY_UPDATE_TIMEOUT_MS:-20000}
     ports:
       - "6010:6010"
 
@@ -388,6 +389,8 @@ services:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
+      args:
+        BUILD_ID: ${BUILD_ID:-dev}
     restart: unless-stopped
     depends_on:
       case-atom:

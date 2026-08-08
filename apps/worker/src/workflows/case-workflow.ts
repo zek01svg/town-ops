@@ -1,10 +1,13 @@
 import {
   allHandlersFinished,
   condition,
+  continueAsNew,
   defineUpdate,
   log,
+  patched,
   proxyActivities,
   setHandler,
+  workflowInfo,
 } from "@temporalio/workflow";
 import {
   ACCEPTANCE_SLA_BREACH_SCORE_DELTA,
@@ -31,6 +34,7 @@ import type {
   AllocationSnapshot,
   BreachAllocationAttemptInput,
   BreachAllocationAttemptResult,
+  CaseCarryOver,
   CaseDto,
   CancelAppointmentInput,
   CancelAppointmentResult,
@@ -1016,12 +1020,67 @@ async function runMissedAppointment(
 }
 
 /**
+ * Nine of the Workflow's ten idempotency caches hold the same
+ * `{payloadHash, result}` shape keyed by idempotency key, so one pair of
+ * helpers carries all of them across Continue-As-New (PRS-152). `pending` is
+ * never carried: it exists only while a handler is awaiting, and
+ * Continue-As-New is gated on every handler having finished.
+ */
+type OperationCache<T> = Map<string, { payloadHash: string; result?: T }>;
+type CarriedOperation<T> = { key: string; payloadHash: string; result?: T };
+
+function dumpOperations<T>(cache: OperationCache<T>): CarriedOperation<T>[] {
+  return [...cache].map(([key, { payloadHash, result }]) => ({
+    key,
+    payloadHash,
+    result,
+  }));
+}
+
+function restoreOperations<T>(
+  cache: OperationCache<T>,
+  carried: CarriedOperation<T>[] | undefined
+) {
+  for (const { key, payloadHash, result } of carried ?? []) {
+    cache.set(key, { payloadHash, result });
+  }
+}
+
+/**
+ * The carry-over as this Worker reads it. `DerivedEffectIntent` belongs to the
+ * Worker's Activities, not to the contract, so the contract carries the intent
+ * opaquely and this names it back — with no assertion, and no second
+ * definition of the shape.
+ */
+type WorkerCarryOver = Omit<CaseCarryOver, "effects"> & {
+  effects: (Omit<CaseCarryOver["effects"][number], "intent"> & {
+    intent: DerivedEffectIntent;
+  })[];
+};
+
+/**
  * Durable owner of the opening operation for one Case.
  *
  * The workflow remains open for later PRS-81 lifecycle updates. Its first
  * Update writes a Case through the Case atom exactly once per operation ID.
+ *
+ * A long-lived Case Continues-As-New (PRS-152) under the same Workflow ID,
+ * handing the next run its `carryOver` — see `snapshot()` below.
  */
-export async function CaseWorkflow({ caseId }: { caseId: string }) {
+export async function CaseWorkflow({
+  caseId,
+  carryOver,
+  continueAsNewAfterEvents,
+}: {
+  caseId: string;
+  carryOver?: WorkerCarryOver;
+  // ponytail: the server only sets continueAsNewSuggested at thousands of
+  // events, which no test can drive in reasonable time. This optional
+  // override lowers the bar to a plain history-length check; the Gateway
+  // omits it, so production runs on the server's suggestion alone. It is
+  // deliberately not carried over, so one start Continues-As-New once.
+  continueAsNewAfterEvents?: number;
+}): Promise<void> {
   const operations = new Map<string, Operation>();
   const manualOperations = new Map<string, ManualOperation>();
   const acceptanceOperations = new Map<string, AcceptanceOperation>();
@@ -1033,27 +1092,33 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   >();
   const completionOperations = new Map<string, CompletionOperation>();
   const cancellationOperations = new Map<string, CancellationOperation>();
-  let closeAfterCompletion = false;
-  let cancellationStarted = false;
+  let closeAfterCompletion = carryOver?.closeAfterCompletion ?? false;
+  let cancellationStarted = carryOver?.cancellationStarted ?? false;
   // In-Workflow only — never exposed as a Query/read model. Tracks which
   // Contractors this Workflow already committed or attempted, across
   // allocation passes for this Case's whole lifetime.
-  const attemptedContractorIds = new Set<string>();
-  const allocationQueue: AllocationRequest[] = [];
-  let allocation: AllocationState = { status: "IDLE" };
-  let automaticRetryAt: number | undefined;
-  let automaticRetryDelayMs = INITIAL_ALLOCATION_RETRY_MS;
-  let automaticAllocationActive = false;
+  const attemptedContractorIds = new Set(carryOver?.attemptedContractorIds);
+  const allocationQueue: AllocationRequest[] = [
+    ...(carryOver?.allocationQueue ?? []),
+  ];
+  let allocation: AllocationState = carryOver?.allocation ?? { status: "IDLE" };
+  let automaticRetryAt: number | undefined = carryOver?.automaticRetryAt;
+  let automaticRetryDelayMs =
+    carryOver?.automaticRetryDelayMs ?? INITIAL_ALLOCATION_RETRY_MS;
+  let automaticAllocationActive = carryOver?.automaticAllocationActive ?? false;
   let allocationMutationGuard = 0;
   let automaticAllocationSource: "AUTO_ASSIGN" | "BREACH_REASSIGN" =
-    "AUTO_ASSIGN";
-  let allocationContext: AllocationContext | undefined;
+    carryOver?.automaticAllocationSource ?? "AUTO_ASSIGN";
+  let allocationContext: AllocationContext | undefined =
+    carryOver?.allocationContext;
   // The Attempt currently awaiting acceptance, if any (PRS-144). Armed by
   // every path that commits or discovers a PENDING_ACCEPTANCE Attempt;
-  // cleared on acceptance and on breach.
-  let currentAttempt: CommittedAttempt | undefined;
-  let accepted = false;
-  let currentAppointment: CurrentAppointment | undefined;
+  // cleared on acceptance and on breach. Its deadline is absolute epoch ms, so
+  // it stays valid across Continue-As-New.
+  let currentAttempt: CommittedAttempt | undefined = carryOver?.currentAttempt;
+  let accepted = carryOver?.accepted ?? false;
+  let currentAppointment: CurrentAppointment | undefined =
+    carryOver?.currentAppointment;
   // Every lifecycle transition increments this so a timerless Workflow wait
   // still re-evaluates immediately when an Appointment is armed or cleared.
   let appointmentStateRevision = 0;
@@ -1069,9 +1134,87 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   let acceptanceGuard = 0;
   let completionGuard = 0;
   let appointmentExpiryGuard = 0;
-  const effects = new Map<string, EffectRuntime>();
+  const effects = new Map<string, EffectRuntime>(
+    // `inFlight` is never carried — see the Continue-As-New gate below.
+    (carryOver?.effects ?? []).map((carried) => [
+      carried.intent.id,
+      { ...carried, inFlight: false },
+    ])
+  );
   const effectRepairOperations = new Map<string, EffectRepairOperation>();
   let effectRevision = 0;
+
+  restoreOperations(operations, carryOver?.operations);
+  restoreOperations(manualOperations, carryOver?.manualOperations);
+  restoreOperations(acceptanceOperations, carryOver?.acceptanceOperations);
+  restoreOperations(startWorkOperations, carryOver?.startWorkOperations);
+  restoreOperations(noAccessOperations, carryOver?.noAccessOperations);
+  restoreOperations(
+    replaceAppointmentOperations,
+    carryOver?.replaceAppointmentOperations
+  );
+  restoreOperations(completionOperations, carryOver?.completionOperations);
+  restoreOperations(cancellationOperations, carryOver?.cancellationOperations);
+  restoreOperations(effectRepairOperations, carryOver?.effectRepairOperations);
+
+  /**
+   * The state one run hands to the next. Everything omitted is a transient
+   * guard or revision counter that legitimately resets, and each is provably
+   * zero at the gate: the handler-incremented ones because
+   * `allHandlersFinished()` is false while any is non-zero, the
+   * loop-incremented ones because their `finally` clears them inside the same
+   * iteration that raised them.
+   *
+   * ponytail: the carry-over grows with commands-per-Case and is never pruned.
+   * A Case takes a bounded number of commands — one open, a handful of
+   * allocations, one acceptance, one start, one completion, plus effect
+   * repairs — so it stays well under Temporal's 2 MB payload limit. The
+   * binding constraint is the cached openCase result: it embeds a full CaseDto
+   * whose description alone is capped at 10,000 characters, so worst case is
+   * on the order of two hundred cached operations. Add eviction, oldest
+   * idempotency key first, only if a real Case ever approaches that.
+   */
+  function snapshot(): WorkerCarryOver {
+    return {
+      operations: dumpOperations(operations),
+      manualOperations: dumpOperations(manualOperations),
+      acceptanceOperations: dumpOperations(acceptanceOperations),
+      startWorkOperations: dumpOperations(startWorkOperations),
+      noAccessOperations: dumpOperations(noAccessOperations),
+      replaceAppointmentOperations: dumpOperations(
+        replaceAppointmentOperations
+      ),
+      completionOperations: dumpOperations(completionOperations),
+      cancellationOperations: dumpOperations(cancellationOperations),
+      effectRepairOperations: dumpOperations(effectRepairOperations),
+      effects: [...effects.values()].map(
+        ({ intent, attempts, nextRetryAt, status, manualRetry }) => ({
+          intent,
+          attempts,
+          nextRetryAt,
+          status,
+          manualRetry,
+        })
+      ),
+      attemptedContractorIds: [...attemptedContractorIds],
+      // A MANUAL request holds the resolve function of a promise an Update
+      // handler is awaiting, so none can exist once every handler finished.
+      allocationQueue: allocationQueue.filter(
+        (request) => request.kind === "AUTOMATIC"
+      ),
+      allocation,
+      allocationContext,
+      currentAttempt,
+      currentAppointment,
+      accepted,
+      closeAfterCompletion,
+      cancellationStarted,
+      automaticRetryAt,
+      automaticRetryDelayMs,
+      automaticAllocationActive,
+      automaticAllocationSource,
+    };
+  }
 
   function queueEffect(intent: DerivedEffectIntent) {
     if (effects.has(intent.id)) return;
@@ -1701,15 +1844,14 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
           id: command.effectId,
           acknowledgeDuplicateRisk: command.input.acknowledgeDuplicateRisk,
         })
-        .then(
-          (result): EffectRepairResult =>
-            result.kind === "NOT_FOUND"
-              ? { kind: "EFFECT_NOT_FOUND" }
-              : result.kind === "ACK_REQUIRED"
-                ? { kind: "DUPLICATE_RISK_ACKNOWLEDGEMENT_REQUIRED" }
-                : result.kind === "NOT_REPAIRABLE"
-                  ? { kind: "EFFECT_NOT_REPAIRABLE" }
-                  : { kind: "SUCCESS", effect: result.effect }
+        .then((result): EffectRepairResult =>
+          result.kind === "NOT_FOUND"
+            ? { kind: "EFFECT_NOT_FOUND" }
+            : result.kind === "ACK_REQUIRED"
+              ? { kind: "DUPLICATE_RISK_ACKNOWLEDGEMENT_REQUIRED" }
+              : result.kind === "NOT_REPAIRABLE"
+                ? { kind: "EFFECT_NOT_REPAIRABLE" }
+                : { kind: "SUCCESS", effect: result.effect }
         );
       operation.result = await operation.pending;
       if (operation.result.kind === "SUCCESS") {
@@ -1759,11 +1901,10 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
           actorId: command.actorId,
           reason: command.input.reason,
         })
-        .then(
-          (waived): EffectRepairResult =>
-            waived
-              ? { kind: "SUCCESS", effect: waived }
-              : { kind: "EFFECT_NOT_FOUND" }
+        .then((waived): EffectRepairResult =>
+          waived
+            ? { kind: "SUCCESS", effect: waived }
+            : { kind: "EFFECT_NOT_FOUND" }
         );
       operation.result = await operation.pending;
       if (operation.result.kind === "SUCCESS") {
@@ -1867,9 +2008,39 @@ export async function CaseWorkflow({ caseId }: { caseId: string }) {
   // has returned, and returning here out from under it fails the Update
   // with AcceptedUpdateCompletedWorkflow. Do not drop this guard.
   while (true) {
-    startReadyEffects();
     if (closeAfterCompletion && effectsSettled() && allHandlersFinished())
       return;
+    // The only correct call site: continueAsNew from inside an Update handler
+    // fails that Update. `patched` is load-bearing, not decorative — Workflows
+    // already in flight have histories with no ContinueAsNew command at points
+    // where the gate below was true, and emitting one unguarded fails replay.
+    // The effect check extends allHandlersFinished(): startReadyEffects floats
+    // `void runEffect(effect)` from this loop, outside any handler, so a
+    // Continue-As-New while one is in flight would abandon a live delivery.
+    // It runs before startReadyEffects so a ready-but-unstarted effect carries
+    // over as data and the new run dispatches it.
+    //
+    // `patched` is last on purpose: it is the only operand with a side effect
+    // (it records a marker command the first time it runs), and this loop
+    // iterates far more often than it continues as new. Ordering is safe for
+    // replay because every operand ahead of it replays identically —
+    // continueAsNewSuggested and historyLength are both taken from the
+    // persisted WorkflowTaskStarted attributes as history is applied
+    // (sdk-core workflow_machines.rs), not sampled live.
+    if (
+      (workflowInfo().continueAsNewSuggested ||
+        (continueAsNewAfterEvents !== undefined &&
+          workflowInfo().historyLength >= continueAsNewAfterEvents)) &&
+      allHandlersFinished() &&
+      ![...effects.values()].some((effect) => effect.inFlight) &&
+      patched("prs-152-continue-as-new")
+    ) {
+      await continueAsNew<typeof CaseWorkflow>({
+        caseId,
+        carryOver: snapshot(),
+      });
+    }
+    startReadyEffects();
     if (cancellationStarted && !closeAfterCompletion) {
       await condition(() => !cancellationStarted || closeAfterCompletion);
       continue;

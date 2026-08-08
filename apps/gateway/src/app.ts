@@ -2956,32 +2956,55 @@ export function createGatewayApp({
         startWorkflowOperation,
       }
     );
+    void update.catch(() => undefined);
+
+    let result: EffectRepairResult;
     try {
-      const result: EffectRepairResult = EffectRepairResultSchema.parse(
+      result = EffectRepairResultSchema.parse(
         await withTimeout(update, updateTimeoutMs)
       );
-      if (result.kind === "SUCCESS")
-        return c.json({ data: result.effect, operation });
-      return error(
-        c,
-        result.kind === "EFFECT_NOT_FOUND" || result.kind === "CASE_MISMATCH"
-          ? 404
-          : 409,
-        {
-          code: result.kind,
-          message: "Effect repair is not available",
-          retryable: false,
+    } catch (caught) {
+      if (
+        caught instanceof Error &&
+        caught.message === "workflow update timed out"
+      ) {
+        c.header("Retry-After", "2");
+        return error(c, 504, {
+          code: "WORKFLOW_UPDATE_PENDING",
+          message: "Effect repair is still being processed",
+          retryable: true,
           operation,
-        }
-      );
-    } catch {
-      return error(c, 503, {
-        code: "WORKFLOW_UPDATE_PENDING",
-        message: "Effect repair is still being processed",
-        retryable: true,
+        });
+      }
+      if (isTemporalUnavailable(caught)) {
+        return error(c, 503, {
+          code: "TEMPORAL_UNAVAILABLE",
+          message: "Case workflow service is unavailable",
+          retryable: true,
+          operation,
+        });
+      }
+      return error(c, 500, {
+        code: "WORKFLOW_UPDATE_FAILED",
+        message: "Effect repair could not be completed",
+        retryable: false,
         operation,
       });
     }
+    if (result.kind === "SUCCESS")
+      return c.json({ data: result.effect, operation });
+    return error(
+      c,
+      result.kind === "EFFECT_NOT_FOUND" || result.kind === "CASE_MISMATCH"
+        ? 404
+        : 409,
+      {
+        code: result.kind,
+        message: "Effect repair is not available",
+        retryable: false,
+        operation,
+      }
+    );
   }
 
   app.post("/api/cases/:caseId/effects/:effectId/retry", (c) =>

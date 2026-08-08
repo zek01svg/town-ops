@@ -606,13 +606,34 @@ describe("Missed Appointment timer (PRS-149)", () => {
     const replacementAppointmentId = randomUUID();
     const recorded = newRecorder();
     let reserveEffectCalls = 0;
+    const settledEffects = immediateDerivedEffectActivities();
+    // ponytail: exactly one effect is made to fail, not every one. Failing
+    // several lands their retry deadlines within a couple of milliseconds of
+    // each other, so the main loop cancels and re-arms a sub-20ms condition
+    // timer in the very next Workflow Task — which trips a time-skipping
+    // test-server defect ("invalid history builder state for action",
+    // non-retryable InvalidArgument, execution abandoned) and flaked this test
+    // roughly 1 in 8 runs. One continuously-failing effect still produces the
+    // retry churn this guard races against. Restore the fail-everything stub
+    // once that server bug is fixed.
+    let failingEffectId: string | undefined;
     const { worker, taskQueue } = await createWorker({
       ...activities(recorded, { appointmentId, replacementAppointmentId }),
-      reserveEffect: async () => {
+      ...settledEffects,
+      reserveEffect: async (
+        input: Parameters<typeof settledEffects.reserveEffect>[0]
+      ) => {
+        failingEffectId ??= input.id;
+        if (input.id !== failingEffectId) {
+          return settledEffects.reserveEffect(input);
+        }
         reserveEffectCalls++;
         throw new Error("reserveEffect must not block appointment expiry");
       },
-      dispatchEmailEffect: async () => {
+      dispatchEmailEffect: async (input: { id: string }) => {
+        if (input.id !== failingEffectId) {
+          return settledEffects.dispatchEmailEffect(input);
+        }
         throw new Error(
           "dispatchEmailEffect must not block appointment expiry"
         );

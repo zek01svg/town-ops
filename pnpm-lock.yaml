@@ -1635,6 +1635,9 @@ importers:
       '@temporalio/client':
         specifier: 1.20.3
         version: 1.20.3
+      '@temporalio/common':
+        specifier: 1.20.3
+        version: 1.20.3
       '@temporalio/testing':
         specifier: 1.20.3
         version: 1.20.3(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.23)

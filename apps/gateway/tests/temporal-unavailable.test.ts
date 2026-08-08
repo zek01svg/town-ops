@@ -416,36 +416,83 @@ describe("Gateway degraded-service contract: mutations 503 TEMPORAL_UNAVAILABLE"
   });
 });
 
-describe("Gateway degraded-service contract: the two named exceptions", () => {
-  // repairEffect (app.ts:2959-2984) serves both /retry and /waive from one
-  // handler with a single catch-all: it never distinguishes a genuine
-  // Temporal outage from any other rejection, folding both into
-  // WORKFLOW_UPDATE_PENDING at 503 — the same status a real
-  // `*_ATOM_UNAVAILABLE` uses, which is exactly the collision F3's
-  // `get-query-client.ts` branch order has to resolve (code before status).
-  it("POST /api/cases/:caseId/effects/:effectId/retry folds a Temporal outage into WORKFLOW_UPDATE_PENDING, not TEMPORAL_UNAVAILABLE", async () => {
-    const { app } = createApp(vi.fn().mockRejectedValue(unavailable));
+/**
+ * PRS-152, AC10: repairEffect (app.ts) serves both /retry and /waive from one
+ * handler, and used to fold *every* rejection into WORKFLOW_UPDATE_PENDING at
+ * 503 — reporting a genuine Update failure to the client as "still
+ * processing", the silently-ignored condition AC10 forbids. It now follows
+ * the same three-way split as the other eight Update sites, so it is no
+ * longer an exception to the contract above.
+ */
+const repairRoute = (action: "retry" | "waive") =>
+  `/api/cases/${successResult.data.id}/effects/${encodeURIComponent("some-effect-id")}/${action}`;
+const repairInit = (action: "retry" | "waive") => ({
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Idempotency-Key": randomUUID(),
+  },
+  body: JSON.stringify(
+    action === "retry"
+      ? { acknowledgeDuplicateRisk: true }
+      : { reason: "Duplicate alert" }
+  ),
+});
 
-    const response = await app.request(
-      `/api/cases/${successResult.data.id}/effects/${encodeURIComponent("some-effect-id")}/retry`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": randomUUID(),
-        },
-        body: JSON.stringify({ acknowledgeDuplicateRisk: true }),
-      }
-    );
+describe("Gateway degraded-service contract: effect repair", () => {
+  for (const action of ["retry", "waive"] as const) {
+    it(`POST /api/cases/:caseId/effects/:effectId/${action} 503s TEMPORAL_UNAVAILABLE on a Temporal outage`, async () => {
+      const { app } = createApp(vi.fn().mockRejectedValue(unavailable));
 
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({
-      error: { code: "WORKFLOW_UPDATE_PENDING", retryable: true },
+      const response = await app.request(
+        repairRoute(action),
+        repairInit(action)
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        error: { code: "TEMPORAL_UNAVAILABLE", retryable: true },
+      });
     });
-  });
 
-  // POST /api/cases/:caseId/proof-items never calls the workflow client at
-  // all (it only ever talks to the Proof atom), so it is excluded from the
-  // uniform-503 loop above rather than asserted against — there is nothing
-  // Temporal-shaped to prove about a route that never touches Temporal.
+    // The regression this catches: the old catch-all returned 503
+    // WORKFLOW_UPDATE_PENDING / retryable:true here, telling the Officer a
+    // failed repair was still in flight. Both the status and `retryable`
+    // flip if the three-way split is reverted.
+    it(`POST /api/cases/:caseId/effects/:effectId/${action} 500s WORKFLOW_UPDATE_FAILED on a genuine Update failure`, async () => {
+      const { app } = createApp(
+        vi.fn().mockRejectedValue(new Error("update handler threw"))
+      );
+
+      const response = await app.request(
+        repairRoute(action),
+        repairInit(action)
+      );
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({
+        error: { code: "WORKFLOW_UPDATE_FAILED", retryable: false },
+      });
+    });
+
+    it(`POST /api/cases/:caseId/effects/:effectId/${action} 504s with a Retry-After while the Update is still pending`, async () => {
+      const { app } = createApp(vi.fn().mockReturnValue(new Promise(() => {})));
+
+      const response = await app.request(
+        repairRoute(action),
+        repairInit(action)
+      );
+
+      expect(response.status).toBe(504);
+      expect(response.headers.get("Retry-After")).toBe("2");
+      expect(await response.json()).toMatchObject({
+        error: { code: "WORKFLOW_UPDATE_PENDING", retryable: true },
+      });
+    });
+  }
+
+  // POST /api/cases/:caseId/proof-items remains the one genuine exception to
+  // the uniform-503 loop above: it never calls the workflow client at all
+  // (it only ever talks to the Proof atom), so there is nothing
+  // Temporal-shaped to prove about it.
 });

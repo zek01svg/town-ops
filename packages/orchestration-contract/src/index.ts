@@ -1590,3 +1590,106 @@ export function canonicalWaiveEffectPayload(
 ) {
   return JSON.stringify({ caseId, effectId, reason: input.reason });
 }
+
+// ─── Continue-As-New carry-over (PRS-152) ──────────────────────────────────
+//
+// Defined here, at the end of the file rather than beside UPDATE_NAMES,
+// because CarriedEffectSchema below reuses DerivedEffectStatusSchema — a
+// forward reference from line ~270 would be a temporal-dead-zone error at
+// import time.
+
+/**
+ * One entry of a CaseWorkflow idempotency cache, carrying that Update's own
+ * result union so a repeated command replays the identical outcome. The
+ * in-flight `pending` promise is deliberately absent — it exists only while a
+ * handler is awaiting, and Continue-As-New is gated on every handler having
+ * finished.
+ */
+const carriedOperation = <Result extends z.ZodType>(result: Result) =>
+  z.object({
+    key: z.string(),
+    payloadHash: z.string(),
+    result: result.optional(),
+  });
+
+/**
+ * One outstanding derived effect. `intent` is carried opaquely because its
+ * type belongs to the Worker's Activities, not to this contract; `inFlight` is
+ * absent because an effect can only be mid-delivery inside the Workflow's own
+ * `runEffect`, and Continue-As-New is gated on none being in flight.
+ */
+const CarriedEffectSchema = z.object({
+  intent: z.unknown(),
+  attempts: z.number(),
+  nextRetryAt: z.number().optional(),
+  status: DerivedEffectStatusSchema,
+  manualRetry: z.boolean(),
+});
+
+const CarriedAttemptSchema = z.object({
+  attemptId: z.string(),
+  assignmentId: z.string(),
+  contractorId: z.string(),
+  deadlineAt: z.number(),
+});
+
+/**
+ * Only AUTOMATIC allocation requests are carried. A MANUAL one holds the
+ * resolve function of a promise an Update handler is awaiting, so it cannot
+ * exist once every handler has finished.
+ */
+const CarriedAllocationRequestSchema = z.object({
+  kind: z.literal("AUTOMATIC"),
+  source: z.enum(["AUTO_ASSIGN", "BREACH_REASSIGN"]),
+  category: z.string(),
+  postalCode: z.string(),
+});
+
+const CarriedAllocationStateSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("IDLE") }),
+  z.object({ status: z.literal("ALLOCATED"), attempt: CarriedAttemptSchema }),
+  z.object({ status: z.literal("TERMINAL") }),
+  z.object({ status: z.literal("NO_CANDIDATE") }),
+  z.object({ status: z.literal("FAILED"), reason: z.string() }),
+]);
+
+/**
+ * The compact CaseWorkflow state one run hands to the next: every idempotency
+ * cache, the outstanding derived effects, the Contractors already attempted,
+ * and the currently armed timers. Absolute timestamps stay epoch ms — they
+ * remain valid in the new run, so nothing is rebased to a duration. Transient
+ * guards and revision counters are not here: they legitimately reset, and each
+ * is provably zero at the Continue-As-New gate.
+ */
+export const CaseCarryOverSchema = z.object({
+  operations: z.array(carriedOperation(OpenCaseResultSchema)),
+  manualOperations: z.array(carriedOperation(ManualAllocationResultSchema)),
+  acceptanceOperations: z.array(carriedOperation(AcceptAllocationResultSchema)),
+  startWorkOperations: z.array(carriedOperation(StartWorkResultSchema)),
+  noAccessOperations: z.array(carriedOperation(ReportNoAccessResultSchema)),
+  replaceAppointmentOperations: z.array(
+    carriedOperation(ReplaceAppointmentResultSchema)
+  ),
+  completionOperations: z.array(carriedOperation(CompleteCaseResultSchema)),
+  cancellationOperations: z.array(carriedOperation(CancelCaseResultSchema)),
+  effectRepairOperations: z.array(carriedOperation(EffectRepairResultSchema)),
+  effects: z.array(CarriedEffectSchema),
+  attemptedContractorIds: z.array(z.string()),
+  allocationQueue: z.array(CarriedAllocationRequestSchema),
+  allocation: CarriedAllocationStateSchema,
+  allocationContext: z
+    .object({ category: z.string(), postalCode: z.string() })
+    .optional(),
+  currentAttempt: CarriedAttemptSchema.optional(),
+  currentAppointment: z
+    .object({ appointmentId: z.string(), endAt: z.number() })
+    .optional(),
+  accepted: z.boolean(),
+  closeAfterCompletion: z.boolean(),
+  cancellationStarted: z.boolean(),
+  automaticRetryAt: z.number().optional(),
+  automaticRetryDelayMs: z.number(),
+  automaticAllocationActive: z.boolean(),
+  automaticAllocationSource: z.enum(["AUTO_ASSIGN", "BREACH_REASSIGN"]),
+});
+export type CaseCarryOver = z.infer<typeof CaseCarryOverSchema>;

@@ -26,8 +26,17 @@ const config = z
     PROOF_ATOM_URL: z.url().default("http://localhost:5007"),
     ALERT_ATOM_URL: z.url().default("http://localhost:5002"),
     WORKER_SERVICE_TOKEN: z.string().min(32),
+    // Immutable build identity: a deployed image carries its git SHA, and a new
+    // SHA is a new image. `dev` keeps `pnpm dev` working.
+    BUILD_ID: z.string().min(1).default("dev"),
   })
   .parse(process.env);
+
+// ponytail: local dev runs unversioned. A versioned Worker never polls the
+// unversioned pool and nothing here promotes a deployment's current version, so
+// versioning on `dev` would leave `pnpm dev` draining nothing. Upgrade path:
+// set a real BUILD_ID and promote that version for the deployment.
+const versioned = config.BUILD_ID !== "dev";
 
 const connection = await NativeConnection.connect({
   address: config.TEMPORAL_ADDRESS,
@@ -39,6 +48,16 @@ const worker = await Worker.create({
   workflowsPath: fileURLToPath(
     new URL("./workflows/index.ts", import.meta.url)
   ),
+  ...(versioned && {
+    workerDeploymentOptions: {
+      useWorkerVersioning: true,
+      version: {
+        deploymentName: "townops-orchestration",
+        buildId: config.BUILD_ID,
+      },
+      defaultVersioningBehavior: "AUTO_UPGRADE",
+    } as const,
+  }),
   activities: {
     openCase: createOpenCaseActivity({
       residentAtomUrl: config.RESIDENT_ATOM_URL,
@@ -93,4 +112,22 @@ const worker = await Worker.create({
   },
 });
 
-await worker.run();
+// The Worker carries no logger or Sentry (unlike the atoms' shared-ts logger) —
+// PRS-152 deliberately does not add that dependency here. This turns a fatal run
+// failure into a logged non-zero exit instead of an unhandled top-level
+// rejection. Nothing is swallowed or retried. A determinism violation fails its
+// Workflow Task and the server retries it, so it surfaces on the Execution in
+// the Temporal UI rather than here — see docs/deployment.md.
+try {
+  await worker.run();
+} catch (error) {
+  // Log the error itself, not a flattened message/stack: Temporal errors are
+  // cause-chained and the chain is what makes a fatal failure diagnosable.
+  // `exitCode` rather than `exit()` so the async stderr pipe still flushes.
+  console.error("[worker] worker run failed", {
+    buildId: config.BUILD_ID,
+    versioned,
+    error,
+  });
+  process.exitCode = 1;
+}

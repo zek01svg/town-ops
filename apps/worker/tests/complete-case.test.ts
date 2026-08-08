@@ -312,6 +312,16 @@ describe("Case completion workflow (PRS-147)", () => {
       derivedEffectAttentions: [],
     };
     const taskQueue = `${ORCHESTRATION_TASK_QUEUE}-${randomUUID()}`;
+    // Gate the derived effects unless the caller supplied their own, so the
+    // sample below is taken at a deterministic point. Released before the
+    // `runUntil` callback returns -- shutdown waits forever on an Activity
+    // parked on a promise that never settles.
+    let releaseEffects: (() => void) | undefined;
+    const effectGate =
+      options?.effectGate ??
+      new Promise<void>((resolve) => {
+        releaseEffects = resolve;
+      });
     const worker = await Worker.create({
       connection: env.nativeConnection,
       taskQueue,
@@ -325,12 +335,19 @@ describe("Case completion workflow (PRS-147)", () => {
           commandValue.caseId,
           validation === "ALREADY_COMPLETED" ? "COMPLETED" : "IN_PROGRESS"
         ),
-        options
+        { ...options, effectGate }
       ),
     });
     const client = new Client({ connection: env.nativeConnection });
     const workflowId = `case/${commandValue.caseId}`;
     let result: unknown;
+    // Sampled inside `runUntil` while the effects are still gated, so an
+    // assertion on it cannot race Worker shutdown. Reading `recorded.effectIds`
+    // after `runUntil` returns is that race: `dispatchPerformanceEffect`
+    // records the moment it is invoked, and shutdown drains in-flight
+    // Activities rather than dropping them, so the assertion held only when
+    // shutdown happened to win.
+    let effectIdsDuringRun: string[] = [];
 
     await worker.runUntil(async () => {
       result = await client.workflow.executeUpdateWithStart(
@@ -349,8 +366,10 @@ describe("Case completion workflow (PRS-147)", () => {
           ),
         }
       );
+      effectIdsDuringRun = [...recorded.effectIds];
+      releaseEffects?.();
     });
-    return { recorded, result };
+    return { recorded, result, effectIdsDuringRun };
   }
 
   it("rejects a preflight Appointment mismatch before any completion mutation", async () => {
@@ -621,13 +640,13 @@ describe("Case completion workflow (PRS-147)", () => {
       "assignment",
       "case",
     ]);
-    expect(first.recorded.effectIds).toEqual([]);
+    expect(first.effectIdsDuringRun).toEqual([]);
 
     const replay = await run(firstCommand, "ALREADY_COMPLETED");
 
     expect(replay.result).toMatchObject({ kind: "SUCCESS" });
     expect(replay.recorded.calls).toEqual([]);
-    expect(replay.recorded.effectIds).toEqual([]);
+    expect(replay.effectIdsDuringRun).toEqual([]);
   }, 30_000);
 
   it("returns core success when the post-commit performance effect cannot be reserved", async () => {
@@ -657,6 +676,16 @@ describe("Case completion workflow (PRS-147)", () => {
     };
     const taskQueue = `${ORCHESTRATION_TASK_QUEUE}-${randomUUID()}`;
     const workflowId = `case/${commandValue.caseId}`;
+    // Held for the whole run below. Without it, whether the completion's
+    // derived effects land before `runUntil` shuts the Worker down is a race —
+    // `dispatchPerformanceEffect` records the moment it is invoked, and Worker
+    // shutdown drains in-flight Activities rather than dropping them. It is
+    // released before the callback returns: shutdown waits forever on an
+    // Activity parked on a promise that never settles.
+    let releaseEffects: (() => void) | undefined;
+    const effectGate = new Promise<void>((resolve) => {
+      releaseEffects = resolve;
+    });
     const worker = await Worker.create({
       connection: env.nativeConnection,
       taskQueue,
@@ -666,7 +695,8 @@ describe("Case completion workflow (PRS-147)", () => {
       activities: activities(
         recorded,
         "READY",
-        caseDto(commandValue.caseId, "IN_PROGRESS")
+        caseDto(commandValue.caseId, "IN_PROGRESS"),
+        { effectGate }
       ),
     });
     const client = new Client({ connection: env.nativeConnection });
@@ -699,6 +729,11 @@ describe("Case completion workflow (PRS-147)", () => {
           args: [commandValue],
           updateId: repairedDeliveryId,
         });
+
+      // Both deliveries returned their core completion while every derived
+      // effect is still held: neither waited on one, and neither recorded one.
+      expect(recorded.effectIds).toEqual([]);
+      releaseEffects?.();
     });
 
     expect(firstDeliveryId).not.toBe(repairedDeliveryId);
@@ -710,7 +745,6 @@ describe("Case completion workflow (PRS-147)", () => {
       "assignment",
       "case",
     ]);
-    expect(recorded.effectIds).toEqual([]);
     expect(recorded.attentions).toEqual([]);
   }, 30_000);
 });
