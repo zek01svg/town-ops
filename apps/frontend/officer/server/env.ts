@@ -6,8 +6,6 @@ export const env = createEnv({
     VITE_APP_URL: z.url(),
     VITE_AUTH_URL: z.url(),
     VITE_GATEWAY_URL: z.url(),
-    VITE_OPEN_CASE_URL: z.url(),
-    VITE_HANDLE_BREACH_URL: z.url(),
     VITE_GOOGLE_MAPS_API_KEY: z.string().min(1),
   },
   server: {
@@ -19,10 +17,6 @@ export const env = createEnv({
     VITE_APP_URL: process.env.VITE_APP_URL ?? `http://localhost:4000`,
     VITE_AUTH_URL: process.env.VITE_AUTH_URL ?? `http://localhost:5008`,
     VITE_GATEWAY_URL: process.env.VITE_GATEWAY_URL ?? `http://localhost:6010`,
-    VITE_OPEN_CASE_URL:
-      process.env.VITE_OPEN_CASE_URL ?? `http://localhost:6001`,
-    VITE_HANDLE_BREACH_URL:
-      process.env.VITE_HANDLE_BREACH_URL ?? `http://localhost:6005`,
     VITE_GOOGLE_MAPS_API_KEY: process.env.VITE_GOOGLE_MAPS_API_KEY ?? "",
   },
   skipValidation:

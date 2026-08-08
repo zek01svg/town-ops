@@ -81,11 +81,7 @@
       }
     },
     {
-      "files": [
-        "apps/atoms/**/*.ts",
-        "apps/composites/**/*.ts",
-        "packages/**/*.ts"
-      ],
+      "files": ["apps/atoms/**/*.ts", "packages/**/*.ts"],
       "env": {
         "node": true
       },

@@ -32,7 +32,6 @@ jobs:
               - 'tsconfig.json'
             shared:
               - '.github/workflows/ci.yml'
-              - 'tooling/**'
 
   scan-for-secrets:
     name: Scan for secrets

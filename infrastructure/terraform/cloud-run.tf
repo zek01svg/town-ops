@@ -8,13 +8,6 @@ locals {
     "metrics-atom",
     "proof-atom",
     "resident-atom",
-    "accept-job-composite",
-    "assign-job-composite",
-    "close-case-composite",
-    "handle-breach-composite",
-    "handle-no-access-composite",
-    "open-case-composite",
-    "reschedule-job-composite",
   ]
 
   public_services = [

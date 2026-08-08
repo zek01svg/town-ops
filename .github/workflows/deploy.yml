@@ -91,27 +91,6 @@ jobs:
           - name: resident-atom
             path: apps/atoms/resident
             pkg: "@townops/resident-atom"
-          - name: accept-job-composite
-            path: apps/composites/accept-job
-            pkg: "@townops/accept-job-composite"
-          - name: assign-job-composite
-            path: apps/composites/assign-job
-            pkg: "@townops/assign-job-composite"
-          - name: close-case-composite
-            path: apps/composites/close-case
-            pkg: "@townops/close-case-composite"
-          - name: handle-breach-composite
-            path: apps/composites/handle-breach
-            pkg: "@townops/handle-breach-composite"
-          - name: handle-no-access-composite
-            path: apps/composites/handle-no-access
-            pkg: "@townops/handle-no-access-composite"
-          - name: open-case-composite
-            path: apps/composites/open-case
-            pkg: "@townops/open-case-composite"
-          - name: reschedule-job-composite
-            path: apps/composites/reschedule-job
-            pkg: "@townops/reschedule-job-composite"
           - name: contractor-frontend
             path: apps/frontend/contractor
             pkg: "@townops/contractor-frontend"
