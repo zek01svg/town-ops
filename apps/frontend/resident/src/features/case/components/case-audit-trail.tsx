@@ -31,11 +31,11 @@ const mockAuditTrail: AuditEvent[] = [
     type: "Acknowledged",
     actor: "Contractor Rep",
     timestamp: "45m ago",
-    description: "Job acknowledged and queued for dispatch.",
+    description: "Job acknowledged and scheduled for work.",
   },
   {
     id: "4",
-    type: "Dispatched",
+    type: "In Progress",
     actor: "Contractor Rep",
     timestamp: "10m ago",
     description: "Technician Ali (ID: T-442) en-route to location.",
@@ -91,7 +91,7 @@ export function CaseAuditTrail({ caseId }: { caseId: string }) {
             variant="outline"
             className="rounded-none border-emerald-500/30 bg-emerald-500/10 text-emerald-500 text-[10px] uppercase"
           >
-            Dispatched
+            In Progress
           </Badge>
         </div>
         <div className="flex justify-between items-center p-3 border border-border/50">

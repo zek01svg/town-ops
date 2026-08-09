@@ -2,15 +2,12 @@ import {
   index,
   integer,
   jsonb,
-  pgEnum,
   pgTable,
+  pgEnum,
   text,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { createSelectSchema, createInsertSchema } from "drizzle-zod";
-
-export const alertChannel = pgEnum("alert_channel", ["email", "sms"]);
 export const derivedEffectType = pgEnum("derived_effect_type", [
   "EMAIL",
   "PERFORMANCE_ENTRY",
@@ -22,18 +19,6 @@ export const derivedEffectStatus = pgEnum("derived_effect_status", [
   "UNKNOWN",
   "WAIVED",
 ]);
-export const alerts = pgTable("alerts", {
-  id: uuid().defaultRandom().primaryKey().notNull(),
-  caseId: uuid("case_id"),
-  recipientId: uuid("recipient_id").notNull(),
-  channel: alertChannel().default("email").notNull(),
-  message: text().notNull(),
-  sentAt: timestamp("sent_at", {
-    withTimezone: true,
-    mode: "string",
-  }).defaultNow(),
-});
-
 type DerivedEffectPayload =
   | { type: "EMAIL"; to: string; subject: string; html: string }
   | {
@@ -85,6 +70,3 @@ export const derivedEffects = pgTable(
     index("derived_effects_case_status_idx").on(table.caseId, table.status),
   ]
 );
-
-export const selectAlertSchema = createSelectSchema(alerts);
-export const insertAlertSchema = createInsertSchema(alerts);

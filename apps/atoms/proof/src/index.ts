@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { Scalar } from "@scalar/hono-api-reference";
 import { ProofItemDtoSchema } from "@townops/orchestration-contract";
 import {
   logger,
@@ -21,11 +20,9 @@ import { env } from "./env";
 import * as proofService from "./service";
 import { storage } from "./storage";
 import {
-  getProofSchema,
   internalProofUploadSchema,
   internalProofLookupSchema,
   internalProofListSchema,
-  uploadProofSchema,
 } from "./validation-schemas";
 
 const MAX_PROOF_FILE_BYTES = 10 * 1024 * 1024;
@@ -109,89 +106,6 @@ function proofDto(proof: {
     ready: proof.readyAt !== null,
   });
 }
-
-const proofRouter = new Hono()
-  .get(
-    "/:case_id",
-    describeRoute({ description: "Get proof for a case" }),
-    validator("param", getProofSchema),
-    async (c) => {
-      const { case_id } = c.req.valid("param");
-      const rows = await proofService.getProofByCaseId(case_id);
-      return c.json({ proof: rows }, 200);
-    }
-  )
-  .post(
-    "",
-    describeRoute({
-      description: "Upload proof image with form-data and create record",
-    }),
-    validator("form", uploadProofSchema),
-    async (c) => {
-      const { file, caseId, uploaderId, type, remarks } = c.req.valid("form");
-
-      if (!file || !(file instanceof File)) {
-        return c.json(
-          { error: "Missing or invalid file in upload trigger" },
-          400
-        );
-      }
-
-      const filePath = `${caseId}/${Date.now()}_proof_item`;
-
-      // Upload to S3-compatible storage
-      // storage.write throws on failure; app.onError returns 500.
-      await storage.write(filePath, file, {
-        type: file.type || "application/octet-stream",
-      });
-
-      // S3_PUBLIC_URL is the base under which objects are publicly served:
-      // MinIO path-style includes the bucket (…:9000/proofs), R2's public
-      // domain is already bucket-scoped. Keeping the bucket in config (not
-      // here) makes the MinIO→R2 swap config-only.
-      const mediaUrl = `${env.S3_PUBLIC_URL}/${filePath}`;
-
-      // 2. Create record in database using service
-      const proof = await proofService.storeSingleProofItem({
-        caseId,
-        uploaderId,
-        mediaUrl,
-        type: type,
-        remarks,
-      });
-
-      return c.json({ proof }, 201);
-    }
-  )
-  .post(
-    "/batch",
-    describeRoute({
-      description: "Store multiple proof items (JSON record only)",
-    }),
-    validator(
-      "json",
-      z.object({
-        caseId: z.string().uuid(),
-        uploaderId: z.string().uuid(),
-        items: z.array(
-          z.object({
-            mediaUrl: z.string().url(),
-            type: z.enum(["before", "after", "signature"]),
-            remarks: z.string().optional(),
-          })
-        ),
-      })
-    ),
-    async (c) => {
-      const body = c.req.valid("json");
-      const rows = await proofService.storeProofItems(
-        body.caseId,
-        body.uploaderId,
-        body.items
-      );
-      return c.json({ proof: rows }, 201);
-    }
-  );
 
 const internalProofRouter = new Hono()
   .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
@@ -336,7 +250,6 @@ const proofAtomRoutes = app
     describeRoute({ description: "Service health check" }),
     async (c: Context) => c.json({ status: "healthy" }, 200)
   )
-  .route("/api/proof", proofRouter)
   .route("/internal", internalProofRouter)
   .get(
     "/openapi",
@@ -352,8 +265,7 @@ const proofAtomRoutes = app
         ],
       },
     })
-  )
-  .get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
+  );
 
 export { app };
 export type ProofAtomType = typeof proofAtomRoutes;

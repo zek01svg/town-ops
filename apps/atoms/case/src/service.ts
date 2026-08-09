@@ -125,15 +125,6 @@ export async function getCaseHistoryByCaseId(caseId: string) {
 }
 
 /**
- * Create a new case.
- */
-export async function createCase(values: typeof cases.$inferInsert) {
-  const [newCase] = await db.insert(cases).values(values).returning();
-  if (!newCase) throw new Error("Case insert did not return a row");
-  return newCase;
-}
-
-/**
  * Create a Case once for a durable workflow operation.
  */
 export async function createCaseForOperation(input: CreateCaseActivityInput) {

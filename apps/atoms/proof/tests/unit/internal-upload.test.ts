@@ -37,12 +37,9 @@ vi.mock("@townops/shared-ts", () => ({
 
 vi.mock("../../src/service", () => ({
   claimProofUpload: mocks.claimProofUpload,
-  getProofByCaseId: vi.fn(),
   listReadyProofItems: vi.fn(),
   markProofReady: mocks.markProofReady,
   resolveReadyProofItem: vi.fn(),
-  storeProofItems: vi.fn(),
-  storeSingleProofItem: vi.fn(),
 }));
 
 vi.mock("../../src/storage", () => ({

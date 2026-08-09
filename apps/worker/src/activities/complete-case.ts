@@ -158,9 +158,12 @@ export function createCompleteCaseActivities({
     }
 
     const [appointmentResponse, assignmentResponse] = await Promise.all([
-      fetchImpl(`${appointmentAtomUrl}/api/appointments/${command.caseId}`),
+      fetchImpl(`${appointmentAtomUrl}/api/appointments/${command.caseId}`, {
+        headers: authHeaders(workerServiceToken),
+      }),
       fetchImpl(
-        `${assignmentAtomUrl}/api/assignments/by-case/${command.caseId}`
+        `${assignmentAtomUrl}/api/assignments/by-case/${command.caseId}`,
+        { headers: authHeaders(workerServiceToken) }
       ),
     ]);
     if (!appointmentResponse.ok) {

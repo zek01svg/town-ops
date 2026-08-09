@@ -1,13 +1,5 @@
 import { z } from "zod/v4";
 
-export const alertsByCaseSchema = z.object({
-  caseId: z.uuid(),
-});
-
-export const alertsByRecipientSchema = z.object({
-  recipientId: z.uuid(),
-});
-
 const effectPurposeSchema = z.enum([
   "ATTEMPT_ASSIGNMENT_NOTIFICATION",
   "ATTEMPT_BREACH_NOTIFICATION",

@@ -38,12 +38,8 @@ import type { CaseItem } from "@/features/case/types";
 
 const columnHelper = createColumnHelper<CaseItem>();
 
-export function OfficerDashboard() {
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
-  const [isAuditOpen, setIsAuditOpen] = useState(false);
-
-  const columns = [
+function createTableColumns(onAudit: (caseId: string) => void) {
+  return [
     columnHelper.accessor("id", {
       header: "Case ID",
       cell: (info) => (
@@ -79,46 +75,46 @@ export function OfficerDashboard() {
     }),
     columnHelper.accessor("createdAt", {
       header: "Created At",
-      cell: (info) => {
-        const value = info.getValue();
-        return (
-          <span className="flex items-center gap-1 text-muted-foreground text-xs font-mono">
-            <Clock className="h-4 w-4" />
-            {new Date(value).toLocaleTimeString()}
-          </span>
-        );
-      },
+      cell: (info) => (
+        <span className="flex items-center gap-1 text-muted-foreground text-xs font-mono">
+          <Clock className="h-4 w-4" />
+          {new Date(info.getValue()).toLocaleTimeString()}
+        </span>
+      ),
     }),
     columnHelper.accessor("status", {
       header: "Status",
-      cell: (info) => {
-        return (
-          <Badge className="rounded-none bg-muted text-foreground border-border uppercase text-[10px]">
-            {info.getValue()}
-          </Badge>
-        );
-      },
+      cell: (info) => (
+        <Badge className="rounded-none bg-muted text-foreground border-border uppercase text-[10px]">
+          {info.getValue()}
+        </Badge>
+      ),
     }),
     columnHelper.display({
       id: "actions",
-      cell: (info) => {
-        const rowData = info.row.original;
-        return (
-          <Button
-            variant="outline"
-            size="sm"
-            className="hover:bg-muted rounded-none border-border"
-            onClick={() => {
-              setSelectedCaseId(rowData.id);
-              setIsAuditOpen(true);
-            }}
-          >
-            View Audit
-          </Button>
-        );
-      },
+      cell: (info) => (
+        <Button
+          variant="outline"
+          size="sm"
+          className="hover:bg-muted rounded-none border-border"
+          onClick={() => onAudit(info.row.original.id)}
+        >
+          View Audit
+        </Button>
+      ),
     }),
   ];
+}
+
+export function OfficerDashboard() {
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [isAuditOpen, setIsAuditOpen] = useState(false);
+
+  const columns = createTableColumns((caseId) => {
+    setSelectedCaseId(caseId);
+    setIsAuditOpen(true);
+  });
 
   const table = useReactTable({
     data: mockCases,
@@ -143,14 +139,14 @@ export function OfficerDashboard() {
     },
     col2: {
       id: "col2",
-      title: "Dispatched",
+      title: "Assigned",
       parentId: "root",
       children: ["CASE-1002"],
       totalChildrenCount: 1,
     },
     col3: {
       id: "col3",
-      title: "Escalated",
+      title: "In Progress",
       parentId: "root",
       children: ["CASE-1003"],
       totalChildrenCount: 1,

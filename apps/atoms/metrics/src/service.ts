@@ -2,30 +2,7 @@ import type { RecordPerformanceEntryInput } from "@townops/orchestration-contrac
 import { eq, sql } from "drizzle-orm";
 
 import db from "./database/db";
-import { contractorMetrics } from "./database/schema";
-
-/**
- * Get metrics for a specific contractor.
- */
-export async function getMetricsByContractorId(contractorId: string) {
-  return db
-    .select()
-    .from(contractorMetrics)
-    .where(eq(contractorMetrics.contractorId, contractorId));
-}
-
-/**
- * Create a new contractor metric record.
- */
-export async function createMetric(
-  values: typeof contractorMetrics.$inferInsert
-) {
-  const [metric] = await db
-    .insert(contractorMetrics)
-    .values(values)
-    .returning();
-  return metric;
-}
+import { performanceEntries } from "./database/schema";
 
 /**
  * Total performance score per Contractor (PRS-139) — a plain SQL sum/group
@@ -35,11 +12,11 @@ export async function createMetric(
 export async function getScoreTotals() {
   return db
     .select({
-      contractorId: contractorMetrics.contractorId,
-      totalScore: sql<number>`sum(${contractorMetrics.scoreDelta})::int`,
+      contractorId: performanceEntries.contractorId,
+      totalScore: sql<number>`sum(${performanceEntries.scoreDelta})::int`,
     })
-    .from(contractorMetrics)
-    .groupBy(contractorMetrics.contractorId);
+    .from(performanceEntries)
+    .groupBy(performanceEntries.contractorId);
 }
 
 /**
@@ -54,24 +31,24 @@ export async function recordPerformanceEntry(
   input: RecordPerformanceEntryInput
 ) {
   const [inserted] = await db
-    .insert(contractorMetrics)
+    .insert(performanceEntries)
     .values({
       contractorId: input.contractorId,
       scoreDelta: input.scoreDelta,
       reason: input.reason,
       effectId: input.effectId,
     })
-    .onConflictDoNothing({ target: contractorMetrics.effectId })
+    .onConflictDoNothing({ target: performanceEntries.effectId })
     .returning();
   if (inserted) return inserted;
 
   const [existing] = await db
     .select()
-    .from(contractorMetrics)
-    .where(eq(contractorMetrics.effectId, input.effectId));
+    .from(performanceEntries)
+    .where(eq(performanceEntries.effectId, input.effectId));
   if (!existing) {
     throw new Error(
-      "Contractor metric was not found after an effect-id conflict"
+      "Performance entry was not found after an effect-id conflict"
     );
   }
   return existing;

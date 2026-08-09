@@ -32,12 +32,15 @@ import { CaseAuditTrail } from "@/features/case/components/case-audit-trail";
 import { CaseKanbanCard } from "@/features/case/components/case-kanban-card";
 import type { CaseContent } from "@/features/case/types";
 
-type ConfigMap = BoardProps["configMap"] & {
-  [key: string]: {
-    render: (props: any) => React.ReactNode;
-    isDraggable?: boolean;
-  };
+type CaseTableRow = {
+  id: string;
+  address: string;
+  description: string;
+  priority: string;
+  sla: string;
+  status: string;
 };
+type ConfigMap = BoardProps["configMap"];
 
 const initialData: BoardData = {
   root: {
@@ -57,7 +60,7 @@ const initialData: BoardData = {
   },
   dispatch: {
     id: "dispatch",
-    title: "Dispatched",
+    title: "Assigned",
     parentId: "root",
     children: ["case-2002"],
     totalChildrenCount: 1,
@@ -120,51 +123,17 @@ const initialData: BoardData = {
   },
 };
 
-const tableColumnHelper = createColumnHelper<any>();
+const tableColumnHelper = createColumnHelper<CaseTableRow>();
 
-export function ContractorDashboard() {
-  const [dataSource, setDataSource] = useState(initialData);
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
-  const [openAudit, setOpenAudit] = useState(false);
-
-  const configMap: ConfigMap = {
-    default: {
-      render: (props) => (
-        <CaseKanbanCard
-          id={props.data.id}
-          content={props.data.content}
-          variant="contractor"
-          onClick={() => {
-            setSelectedCaseId(props.data.id);
-            setOpenAudit(true);
-          }}
-        />
-      ),
-    },
-  };
-
-  const tableData = Object.values(dataSource)
-    .filter((item) => item.id.startsWith("case-"))
-    .map((item) => ({
-      id: item.id,
-      address: item.content?.address || "",
-      description: item.content?.description || "",
-      priority: item.content?.priority || "low",
-      sla: item.content?.sla || "",
-      status: dataSource[item.parentId as string]?.title || "Pending",
-    }));
-
-  const tableColumns = [
+function createTableColumns(onAudit: (caseId: string) => void) {
+  return [
     tableColumnHelper.accessor("id", {
       header: "Case ID",
       cell: (info) => (
         <Button
           variant="link"
           className="p-0 h-auto font-mono text-primary font-bold"
-          onClick={() => {
-            setSelectedCaseId(info.getValue());
-            setOpenAudit(true);
-          }}
+          onClick={() => onAudit(info.getValue())}
         >
           {info.getValue()}
         </Button>
@@ -179,7 +148,7 @@ export function ContractorDashboard() {
     tableColumnHelper.accessor("priority", {
       header: "Urgency",
       cell: (info) => {
-        const priority = info.getValue() as string;
+        const priority = info.getValue();
         let variant: "destructive" | "secondary" | "outline" | "default" =
           "secondary";
         let className = "uppercase text-[10px]";
@@ -222,16 +191,53 @@ export function ContractorDashboard() {
         <Button
           variant="outline"
           className="rounded-none border-border h-8 text-[10px] uppercase font-label tracking-widest text-primary font-bold hover:bg-primary/10"
-          onClick={() => {
-            setSelectedCaseId(info.row.original.id);
-            setOpenAudit(true);
-          }}
+          onClick={() => onAudit(info.row.original.id)}
         >
           Audit
         </Button>
       ),
     }),
   ];
+}
+
+export function ContractorDashboard() {
+  const [dataSource, setDataSource] = useState(initialData);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [openAudit, setOpenAudit] = useState(false);
+
+  const configMap: ConfigMap = {
+    default: {
+      render: (props) => (
+        <CaseKanbanCard
+          id={props.data.id}
+          content={props.data.content}
+          variant="contractor"
+          onClick={() => {
+            setSelectedCaseId(props.data.id);
+            setOpenAudit(true);
+          }}
+        />
+      ),
+    },
+  };
+
+  const tableData = Object.values(dataSource)
+    .filter((item) => item.id.startsWith("case-"))
+    .map((item) => ({
+      id: item.id,
+      address: item.content?.address || "",
+      description: item.content?.description || "",
+      priority: item.content?.priority || "low",
+      sla: item.content?.sla || "",
+      status: item.parentId
+        ? dataSource[item.parentId]?.title || "Pending"
+        : "Pending",
+    }));
+
+  const tableColumns = createTableColumns((caseId) => {
+    setSelectedCaseId(caseId);
+    setOpenAudit(true);
+  });
 
   const table = useReactTable({
     data: tableData,
@@ -239,7 +245,12 @@ export function ContractorDashboard() {
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const onCardMove = ({ cardId, fromColumnId, toColumnId, position }: any) => {
+  const onCardMove: NonNullable<BoardProps["onCardMove"]> = ({
+    cardId,
+    fromColumnId,
+    toColumnId,
+    position,
+  }) => {
     setDataSource((prev) => {
       const next = { ...prev };
       if (!next[fromColumnId] || !next[toColumnId]) return prev;
@@ -276,7 +287,7 @@ export function ContractorDashboard() {
             Contractor Operations Pipeline
           </h1>
           <p className="text-muted-foreground text-sm mt-2">
-            Organize and execute dispatched repairs jobs.
+            Organize and execute assigned repair jobs.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -294,7 +305,7 @@ export function ContractorDashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {["Backlog", "Dispatched", "In Progress", "Closed Today"].map(
+        {["Backlog", "Assigned", "In Progress", "Closed Today"].map(
           (title, i) => (
             <Card
               key={title}

@@ -38,51 +38,26 @@ const COLUMNS = [
     label: "Pending",
     statuses: ["pending", "pending_resident_input"],
   },
-  { id: "dispatch", label: "Dispatched", statuses: ["assigned", "dispatched"] },
+  { id: "assigned", label: "Assigned", statuses: ["assigned"] },
   {
     id: "inprogress",
     label: "In Progress",
-    statuses: ["in_progress", "escalated"],
+    statuses: ["in_progress"],
   },
   { id: "resolved", label: "Resolved", statuses: ["completed", "cancelled"] },
 ];
 
 const tableColumnHelper = createColumnHelper<CaseItem>();
 
-export function ContractorDashboard() {
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
-  const [openAudit, setOpenAudit] = useState(false);
-  const [search, setSearch] = useState("");
-
-  const {
-    data: cases = [],
-    isLoading,
-    isError,
-    error,
-  } = useQuery(caseQueries.all());
-  const errorMessage =
-    error instanceof Error ? error.message : "Failed to load cases.";
-
-  const filtered = search
-    ? cases.filter(
-        (c) =>
-          c.id.includes(search) ||
-          c.address.toLowerCase().includes(search.toLowerCase()) ||
-          c.category.toLowerCase().includes(search.toLowerCase())
-      )
-    : cases;
-
-  const tableColumns = [
+function createTableColumns(onAudit: (caseId: string) => void) {
+  return [
     tableColumnHelper.accessor("id", {
       header: "Case ID",
       cell: (info) => (
         <Button
           variant="link"
           className="p-0 h-auto font-mono text-primary font-bold"
-          onClick={() => {
-            setSelectedCaseId(info.getValue());
-            setOpenAudit(true);
-          }}
+          onClick={() => onAudit(info.getValue())}
         >
           {info.getValue()}
         </Button>
@@ -140,16 +115,42 @@ export function ContractorDashboard() {
         <Button
           variant="outline"
           className="rounded-none border-border h-8 text-[10px] uppercase font-label tracking-widest text-primary font-bold hover:bg-primary/10"
-          onClick={() => {
-            setSelectedCaseId(info.row.original.id);
-            setOpenAudit(true);
-          }}
+          onClick={() => onAudit(info.row.original.id)}
         >
           Audit
         </Button>
       ),
     }),
   ];
+}
+
+export function ContractorDashboard() {
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [openAudit, setOpenAudit] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const {
+    data: cases = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery(caseQueries.all());
+  const errorMessage =
+    error instanceof Error ? error.message : "Failed to load cases.";
+
+  const filtered = search
+    ? cases.filter(
+        (c) =>
+          c.id.includes(search) ||
+          c.address.toLowerCase().includes(search.toLowerCase()) ||
+          c.category.toLowerCase().includes(search.toLowerCase())
+      )
+    : cases;
+
+  const tableColumns = createTableColumns((caseId) => {
+    setSelectedCaseId(caseId);
+    setOpenAudit(true);
+  });
 
   const table = useReactTable({
     data: filtered,
@@ -160,12 +161,8 @@ export function ContractorDashboard() {
   const backlog = cases.filter(
     (c) => c.status === "pending" || c.status === "pending_resident_input"
   );
-  const dispatched = cases.filter((c) =>
-    ["assigned", "dispatched"].includes(c.status)
-  );
-  const inProgress = cases.filter((c) =>
-    ["in_progress", "escalated"].includes(c.status)
-  );
+  const assigned = cases.filter((c) => c.status === "assigned");
+  const inProgress = cases.filter((c) => c.status === "in_progress");
   const resolved = cases.filter((c) =>
     ["completed", "cancelled"].includes(c.status)
   );
@@ -196,7 +193,7 @@ export function ContractorDashboard() {
             Contractor Operations Pipeline
           </h1>
           <p className="text-muted-foreground text-sm mt-2">
-            Organize and execute dispatched repairs jobs.
+            Organize and execute assigned repair jobs.
           </p>
         </div>
       </div>
@@ -216,8 +213,8 @@ export function ContractorDashboard() {
             vc: "text-foreground",
           },
           {
-            title: "Dispatched",
-            value: isLoading ? "—" : String(dispatched.length),
+            title: "Assigned",
+            value: isLoading ? "—" : String(assigned.length),
             sub: "Allocated mechanics",
             vc: "text-blue-500",
             border: "border-t-4 border-t-blue-500",

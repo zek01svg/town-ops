@@ -90,7 +90,7 @@ export function CaseAuditTrail({ caseId, caseData }: Props) {
   const [reason, setReason] = useState("");
   const [cancellationReason, setCancellationReason] = useState("");
   // Keyed by effect id — a shared reason field would leave the previous
-  // effect's text pre-filled (and dispatched) when waiving the next one.
+  // effect's text pre-filled when waiving the next one.
   const [waiverReasons, setWaiverReasons] = useState<Record<string, string>>(
     {}
   );

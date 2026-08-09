@@ -72,6 +72,18 @@ describe("Case Atom API Endpoints", () => {
   });
 
   describe("GET /api/cases", () => {
+    it("requires the Worker service token", async () => {
+      const responses = await Promise.all([
+        app.request("/api/cases"),
+        app.request("/api/cases", {
+          headers: { Authorization: `Bearer ${"b".repeat(32)}` },
+        }),
+      ]);
+
+      expect(responses.map((response) => response.status)).toEqual([401, 401]);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
     it("should return 200 and a list of cases", async () => {
       const mockCases = [
         {
@@ -84,7 +96,9 @@ describe("Case Atom API Endpoints", () => {
       ];
       mockQuery.then.mockImplementationOnce((resolve) => resolve(mockCases));
 
-      const res = await app.request("/api/cases");
+      const res = await app.request("/api/cases", {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ cases: mockCases });
       expect(mockDb.select).toHaveBeenCalled();
@@ -97,7 +111,9 @@ describe("Case Atom API Endpoints", () => {
         reject(new Error("DB query failed"))
       );
 
-      const res = await app.request("/api/cases");
+      const res = await app.request("/api/cases", {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(500);
     });
   });
@@ -113,102 +129,21 @@ describe("Case Atom API Endpoints", () => {
       };
       mockQuery.then.mockImplementationOnce((resolve) => resolve([mockCase]));
 
-      const res = await app.request(`/api/cases/${VALID_UUID_1}`);
+      const res = await app.request(`/api/cases/${VALID_UUID_1}`, {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ cases: [mockCase] });
       expect(mockQuery.where).toHaveBeenCalled();
     });
 
     it("should return 400 for invalid UUID", async () => {
-      const res = await app.request("/api/cases/not-a-uuid");
+      const res = await app.request("/api/cases/not-a-uuid", {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(400);
       const json = await res.json();
       expect(json.error).toBeDefined();
-    });
-  });
-
-  describe("PUT /api/cases/update-case-status", () => {
-    it("should update case status and return 200", async () => {
-      const updatedCase = { id: VALID_UUID_1, status: "assigned" };
-      mockQuery.then.mockImplementationOnce((resolve) =>
-        resolve([updatedCase])
-      );
-
-      const payload = { id: VALID_UUID_1, status: "assigned" };
-      const res = await app.request("/api/cases/update-case-status", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ cases: updatedCase });
-      expect(mockDb.update).toHaveBeenCalled();
-    });
-
-    it("should return 400 for invalid status", async () => {
-      const payload = { id: VALID_UUID_1, status: "invalid-status" };
-      const res = await app.request("/api/cases/update-case-status", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(res.status).toBe(400);
-      const json = await res.json();
-      expect(json.error).toBeDefined();
-    });
-
-    it("should return 400 for invalid UUID", async () => {
-      const payload = { id: "not-a-uuid", status: "assigned" };
-      const res = await app.request("/api/cases/update-case-status", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(res.status).toBe(400);
-      const json = await res.json();
-      expect(json.error).toBeDefined();
-    });
-  });
-
-  describe("POST /api/cases/new-case", () => {
-    it("should create a new case and return 201", async () => {
-      const newCaseData = {
-        id: VALID_UUID_1,
-        residentId: VALID_UUID_2,
-        category: "LE",
-        status: "pending",
-      };
-      mockQuery.then.mockImplementationOnce((resolve) =>
-        resolve([newCaseData])
-      );
-
-      const payload = {
-        residentId: VALID_UUID_2,
-        category: "LE",
-        status: "pending",
-      };
-      const res = await app.request("/api/cases/new-case", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(res.status).toBe(201);
-      expect(await res.json()).toEqual({ cases: newCaseData });
-      expect(mockDb.insert).toHaveBeenCalled();
-    });
-
-    it("should return 400 for invalid payload", async () => {
-      const res = await app.request("/api/cases/new-case", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}), // Empty payload
-      });
-
-      expect(res.status).toBe(400);
     });
   });
 

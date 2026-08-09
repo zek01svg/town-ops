@@ -66,12 +66,9 @@ describe("Auth Atom API Endpoints", () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ status: "healthy" });
     });
-  });
 
-  describe("GET /scalar", () => {
-    it("should return 200 and render API reference", async () => {
-      const res = await app.request("/scalar");
-      expect(res.status).toBe(200);
+    it("does not expose Scalar", async () => {
+      expect((await app.request("/scalar")).status).toBe(404);
     });
   });
 

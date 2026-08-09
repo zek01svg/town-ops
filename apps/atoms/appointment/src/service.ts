@@ -85,16 +85,6 @@ export async function getAppointmentCompletionOperation(appointmentId: string) {
  * Create a new appointment.
  * @param values The appointment data.
  */
-export async function createAppointment(
-  values: typeof appointments.$inferInsert
-) {
-  const rows = await db.insert(appointments).values(values).returning();
-  const appointment = rows[0];
-  if (!appointment) return undefined;
-  const { completionOperationId: _, ...publicAppointment } = appointment;
-  return publicAppointment;
-}
-
 function claimDto(claim: typeof appointmentSlotClaims.$inferSelect) {
   return AppointmentSlotClaimDtoSchema.parse(claim);
 }

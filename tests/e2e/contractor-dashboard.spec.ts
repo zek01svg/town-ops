@@ -6,7 +6,7 @@
  * - Case audit trail shows assignment status and countdown
  * - Acknowledge Job button is visible for PENDING_ACCEPTANCE assignments
  * - Close Job sheet opens and validates required fields
- * - No Access button is visible on dispatched cases
+ * - No Access button is visible on scheduled cases
  */
 
 import { test, expect } from "@playwright/test";
@@ -23,7 +23,7 @@ test.describe("Contractor Dashboard", () => {
     page,
   }) => {
     await expect(page.getByText(/backlog/i).first()).toBeVisible();
-    await expect(page.getByText(/dispatched/i).first()).toBeVisible();
+    await expect(page.getByText(/assigned/i).first()).toBeVisible();
   });
 
   test("dashboard only shows cases assigned to logged-in contractor", async ({
@@ -82,10 +82,10 @@ test.describe("Contractor Dashboard", () => {
     ).toBeVisible();
   });
 
-  test("No Access button visible on dispatched case", async ({ page }) => {
+  test("No Access button visible on scheduled case", async ({ page }) => {
     const noAccessBtn = page.getByRole("button", { name: /no access/i });
     const count = await noAccessBtn.count();
-    test.skip(count === 0, "No dispatched cases — skipping no access test");
+    test.skip(count === 0, "No scheduled cases — skipping no access test");
 
     await expect(noAccessBtn.first()).toBeVisible();
   });

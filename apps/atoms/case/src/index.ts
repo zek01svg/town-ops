@@ -1,4 +1,3 @@
-import { Scalar } from "@scalar/hono-api-reference";
 import {
   CancelCaseTransitionInputSchema,
   CompleteCaseTransitionInputSchema,
@@ -28,7 +27,7 @@ import {
 import { cors } from "hono/cors";
 import { z } from "zod/v4";
 
-import { insertCaseSchema, selectCaseSchema } from "./database/schema";
+import { selectCaseSchema } from "./database/schema";
 import { env } from "./env";
 import * as caseService from "./service";
 import {
@@ -37,7 +36,6 @@ import {
   markCaseAssignedSchema,
   officerAttentionListSchema,
   raiseOfficerAttentionSchema,
-  updateCaseStatusSchema,
 } from "./validation-schemas";
 
 const app = new Hono();
@@ -88,6 +86,7 @@ app.onError((err, c) => {
 app.use("*", honoLogger());
 
 const casesRouter = new Hono()
+  .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
   .get(
     "/",
     describeRoute({
@@ -167,76 +166,6 @@ const casesRouter = new Hono()
       const { id } = c.req.valid("param");
       const history = await caseService.getCaseHistoryByCaseId(id);
       return c.json({ history }, 200);
-    }
-  )
-  .put(
-    "/update-case-status",
-    describeRoute({
-      description: "Update the status of a case",
-      responses: {
-        200: {
-          description: "Status updated",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ cases: selectCaseSchema })),
-            },
-          },
-        },
-        400: { description: "Validation failed" },
-      },
-    }),
-    validator("json", updateCaseStatusSchema),
-    async (c) => {
-      const body = c.req.valid("json");
-      const updatedCase = await caseService.updateCaseStatus(
-        body.id,
-        body.status
-      );
-
-      logger.info(
-        {
-          route: "/api/cases/update-case-status",
-          caseId: body.id,
-          status: body.status,
-        },
-        "Case status updated"
-      );
-      return c.json(
-        { cases: updatedCase ? publicCase(updatedCase) : null },
-        200
-      );
-    }
-  )
-  .post(
-    "/new-case",
-    describeRoute({
-      description: "Create a new case ticket",
-      responses: {
-        201: {
-          description: "Case created",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ cases: selectCaseSchema })),
-            },
-          },
-        },
-        400: { description: "Validation failed" },
-      },
-    }),
-    validator("json", insertCaseSchema),
-    async (c) => {
-      const body = c.req.valid("json");
-      const newCase = await caseService.createCase(body);
-
-      logger.info(
-        {
-          route: "/api/cases/new-case",
-          caseId: newCase.id,
-          category: body.category,
-        },
-        "New case created successfully"
-      );
-      return c.json({ cases: publicCase(newCase) }, 201);
     }
   );
 
@@ -448,13 +377,6 @@ const caseAtomRoutes = app
           { url: `http://localhost:${env.PORT}`, description: "Local Server" },
         ],
       },
-    })
-  )
-  .get(
-    "/scalar",
-    Scalar({
-      url: "/openapi",
-      theme: "deepSpace",
     })
   );
 

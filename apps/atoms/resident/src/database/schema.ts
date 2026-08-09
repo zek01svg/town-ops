@@ -9,7 +9,7 @@ import {
   boolean,
   index,
 } from "drizzle-orm/pg-core";
-import { createSelectSchema, createInsertSchema } from "drizzle-zod";
+import { createSelectSchema } from "drizzle-zod";
 import type { z } from "zod/v4";
 
 export const profiles = pgTable(
@@ -47,5 +47,4 @@ export const profiles = pgTable(
 );
 
 export const selectProfileSchema = createSelectSchema(profiles);
-export const insertProfileSchema = createInsertSchema(profiles);
 export type Profile = z.infer<typeof selectProfileSchema>;

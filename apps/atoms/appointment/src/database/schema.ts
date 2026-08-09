@@ -8,7 +8,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { createSelectSchema, createInsertSchema } from "drizzle-zod";
+import { createSelectSchema } from "drizzle-zod";
 
 export const appointmentStatus = pgEnum("appointment_status", [
   "scheduled",
@@ -31,11 +31,9 @@ export const appointments = pgTable(
     id: uuid().defaultRandom().primaryKey().notNull(),
     caseId: uuid("case_id").notNull(),
     assignmentId: uuid("assignment_id").notNull(),
-    // These are nullable for the legacy public create route. Internal slot
-    // confirmation always supplies them before publishing a scheduled slot.
     attemptId: uuid("attempt_id"),
     contractorId: uuid("contractor_id"),
-    operationId: text("operation_id"),
+    operationId: text("operation_id").notNull(),
     completionOperationId: text("completion_operation_id"),
     slotClaimId: uuid("slot_claim_id"),
     startTime: timestamp("start_time", {
@@ -125,5 +123,4 @@ export const appointmentSlotClaims = pgTable(
 );
 
 export const appointmentSelectSchema = createSelectSchema(appointments);
-export const appointmentInsertSchema = createInsertSchema(appointments);
 export type Appointment = typeof appointments.$inferSelect;

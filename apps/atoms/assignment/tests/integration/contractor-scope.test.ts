@@ -15,6 +15,7 @@ type Schema = typeof import("../../src/database/schema");
  * only meaningful against real PostgreSQL.
  */
 describe("Attempt history and Contractor Case scope (PRS-151)", () => {
+  const workerHeaders = { Authorization: `Bearer ${"a".repeat(32)}` };
   let db: typeof import("../../src/database/db").default;
   let schema: Schema;
   let service: typeof import("../../src/service");
@@ -53,9 +54,22 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
   }
 
   describe("GET /api/assignments/by-case/:case_id/attempts", () => {
+    it("requires the Worker service token", async () => {
+      const path = `/api/assignments/by-case/${crypto.randomUUID()}/attempts`;
+      const responses = await Promise.all([
+        app.request(path),
+        app.request(path, {
+          headers: { Authorization: `Bearer ${"b".repeat(32)}` },
+        }),
+      ]);
+
+      expect(responses.map((response) => response.status)).toEqual([401, 401]);
+    });
+
     it("returns [] when the Case has no Assignment yet", async () => {
       const res = await app.request(
-        `/api/assignments/by-case/${crypto.randomUUID()}/attempts`
+        `/api/assignments/by-case/${crypto.randomUUID()}/attempts`,
+        { headers: workerHeaders }
       );
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ attempts: [] });
@@ -76,7 +90,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
       if (replacement.outcome !== "COMMITTED") throw new Error("setup failed");
 
       const res = await app.request(
-        `/api/assignments/by-case/${caseId}/attempts`
+        `/api/assignments/by-case/${caseId}/attempts`,
+        { headers: workerHeaders }
       );
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -109,7 +124,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
       });
 
       const res = await app.request(
-        `/api/assignments/by-case/${caseId}/attempts`
+        `/api/assignments/by-case/${caseId}/attempts`,
+        { headers: workerHeaders }
       );
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -155,7 +171,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
       expect(assignmentRow.contractorId).toBeNull();
 
       const breachedRes = await app.request(
-        `/api/assignments/contractor/${breachedContractor}/cases`
+        `/api/assignments/contractor/${breachedContractor}/cases`,
+        { headers: workerHeaders }
       );
       expect(breachedRes.status).toBe(200);
       expect(await breachedRes.json()).toEqual({
@@ -171,7 +188,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
       });
 
       const currentRes = await app.request(
-        `/api/assignments/contractor/${replacementContractor}/cases`
+        `/api/assignments/contractor/${replacementContractor}/cases`,
+        { headers: workerHeaders }
       );
       expect(currentRes.status).toBe(200);
       expect(await currentRes.json()).toEqual({
@@ -189,7 +207,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
 
     it("returns an empty page for a Contractor with no Attempts", async () => {
       const res = await app.request(
-        `/api/assignments/contractor/${crypto.randomUUID()}/cases`
+        `/api/assignments/contractor/${crypto.randomUUID()}/cases`,
+        { headers: workerHeaders }
       );
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ items: [], page: 1, pageSize: 25 });
@@ -197,7 +216,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
 
     it("rejects a pageSize over 100", async () => {
       const res = await app.request(
-        `/api/assignments/contractor/${crypto.randomUUID()}/cases?pageSize=101`
+        `/api/assignments/contractor/${crypto.randomUUID()}/cases?pageSize=101`,
+        { headers: workerHeaders }
       );
       expect(res.status).toBe(400);
     });
@@ -246,7 +266,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
       expect(acceptRes.status).toBe(201);
 
       const currentRes = await app.request(
-        `/api/assignments/contractor/${replacementContractor}/cases`
+        `/api/assignments/contractor/${replacementContractor}/cases`,
+        { headers: workerHeaders }
       );
       expect(await currentRes.json()).toEqual({
         items: [
@@ -261,7 +282,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
       });
 
       const historicalRes = await app.request(
-        `/api/assignments/contractor/${breachedContractor}/cases`
+        `/api/assignments/contractor/${breachedContractor}/cases`,
+        { headers: workerHeaders }
       );
       expect(await historicalRes.json()).toEqual({
         items: [
@@ -316,7 +338,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
       expect(new Set(insertedAttempts.map((a) => a.createdAt)).size).toBe(1);
 
       const firstPage = await app.request(
-        `/api/assignments/contractor/${contractorId}/cases`
+        `/api/assignments/contractor/${contractorId}/cases`,
+        { headers: workerHeaders }
       );
       expect(firstPage.status).toBe(200);
       const firstBody = await firstPage.json();
@@ -325,7 +348,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
       expect(firstBody.items).toHaveLength(25);
 
       const secondPage = await app.request(
-        `/api/assignments/contractor/${contractorId}/cases?page=2`
+        `/api/assignments/contractor/${contractorId}/cases?page=2`,
+        { headers: workerHeaders }
       );
       expect(secondPage.status).toBe(200);
       const secondBody = await secondPage.json();
@@ -405,7 +429,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
       );
 
       const winnerRes = await app.request(
-        `/api/assignments/contractor/${winner.contractorId}/cases`
+        `/api/assignments/contractor/${winner.contractorId}/cases`,
+        { headers: workerHeaders }
       );
       expect(await winnerRes.json()).toEqual({
         items: [
@@ -417,7 +442,8 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
 
       for (const loser of losers) {
         const loserRes = await app.request(
-          `/api/assignments/contractor/${loser.contractorId}/cases`
+          `/api/assignments/contractor/${loser.contractorId}/cases`,
+          { headers: workerHeaders }
         );
         expect(await loserRes.json()).toEqual({
           items: [
@@ -435,31 +461,21 @@ describe("Attempt history and Contractor Case scope (PRS-151)", () => {
   });
 
   describe("Route collisions (PRS-151)", () => {
-    it("still reaches the legacy /contractor/:contractor_id (no /cases suffix), unshadowed by its new sibling", async () => {
-      const contractorId = crypto.randomUUID();
-      const res = await app.request(
-        `/api/assignments/contractor/${contractorId}`
-      );
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      // The legacy route's shape (`{ assignments: [...] }`) is distinct
-      // from the new scope route's (`{ items, page, pageSize }`) — proves
-      // which handler actually ran.
-      expect(body).toHaveProperty("assignments");
-      expect(body).not.toHaveProperty("items");
-    });
-
-    it("still reaches /api/assignments/:case_id and /:case_id/history, unshadowed by the new /by-case/* siblings", async () => {
+    it("reaches /api/assignments/by-case/:case_id and /:case_id/history without shadowing", async () => {
       const caseId = crypto.randomUUID();
       const committed = await commit({ caseId });
       if (committed.outcome !== "COMMITTED") throw new Error("setup failed");
 
-      const byCaseId = await app.request(`/api/assignments/${caseId}`);
+      const byCaseId = await app.request(`/api/assignments/by-case/${caseId}`, {
+        headers: workerHeaders,
+      });
       expect(byCaseId.status).toBe(200);
       const byCaseIdBody = await byCaseId.json();
-      expect(byCaseIdBody.assignments.id).toBe(committed.assignment.id);
+      expect(byCaseIdBody.assignment.id).toBe(committed.assignment.id);
 
-      const history = await app.request(`/api/assignments/${caseId}/history`);
+      const history = await app.request(`/api/assignments/${caseId}/history`, {
+        headers: workerHeaders,
+      });
       expect(history.status).toBe(200);
       const historyBody = await history.json();
       expect(historyBody).toHaveProperty("history");

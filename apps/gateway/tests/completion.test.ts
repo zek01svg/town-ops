@@ -152,14 +152,12 @@ describe("Gateway completion boundary (PRS-147)", () => {
       data: { id: proofItemId, contractorId },
       operation: { caseId, idempotencyKey: proofItemId },
     });
-    expect(fetchImpl).toHaveBeenLastCalledWith(
-      "http://localhost:5007/internal/proof-items",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          "Idempotency-Key": proofItemId,
-        }),
-      })
+    const [proofUrl, proofInit] =
+      fetchImpl.mock.calls[fetchImpl.mock.calls.length - 1] ?? [];
+    expect(proofUrl).toBe("http://localhost:5007/internal/proof-items");
+    expect(proofInit?.method).toBe("POST");
+    expect(new Headers(proofInit?.headers).get("Idempotency-Key")).toBe(
+      proofItemId
     );
   });
 

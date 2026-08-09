@@ -207,6 +207,15 @@ describe("complete-case activity preflight", () => {
       outcome: "READY",
     });
     expect(fetchImpl).toHaveBeenCalledTimes(5);
+    const publicCalls = fetchImpl.mock.calls.filter(([url]) =>
+      requestHref(url).includes("/api/")
+    );
+    expect(publicCalls).toHaveLength(2);
+    for (const [, init] of publicCalls) {
+      expect(init).toMatchObject({
+        headers: { Authorization: `Bearer ${workerServiceToken}` },
+      });
+    }
   });
 
   it("rejects an unlinked Appointment before any proof lookup or mutation", async () => {

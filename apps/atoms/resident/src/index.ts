@@ -1,4 +1,3 @@
-import { Scalar } from "@scalar/hono-api-reference";
 import { ProvisionResidentInputSchema } from "@townops/orchestration-contract";
 import {
   logger,
@@ -22,12 +21,7 @@ import { z } from "zod/v4";
 import { selectProfileSchema } from "./database/schema";
 import { env } from "./env";
 import * as residentService from "./service";
-import {
-  getResidentByIDSchema,
-  getResidentByPostalSchema,
-  newResidentSchema,
-  updateResidentSchema,
-} from "./validation-schemas";
+import { getResidentByIDSchema } from "./validation-schemas";
 
 const app = new Hono();
 
@@ -61,41 +55,7 @@ app.onError((err, c) => {
 app.use("*", honoLogger());
 
 const residentRouter = new Hono()
-  .get(
-    "/search",
-    describeRoute({
-      description: "Get a resident by its postal code",
-      responses: {
-        200: {
-          description: "Resident found",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({ residents: z.array(selectProfileSchema) })
-              ),
-            },
-          },
-        },
-        400: { description: "Invalid parameters" },
-      },
-    }),
-    validator("query", getResidentByPostalSchema),
-    async (c) => {
-      const { postalCode } = c.req.valid("query");
-      const residentRows =
-        await residentService.getResidentsByPostalCode(postalCode);
-
-      logger.info(
-        {
-          route: "/api/residents/search",
-          postalCode,
-          found: residentRows.length > 0,
-        },
-        "Resident lookup by postal code executed"
-      );
-      return c.json({ residents: residentRows }, 200);
-    }
-  )
+  .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
   .get(
     "/:id",
     describeRoute({
@@ -126,68 +86,6 @@ const residentRouter = new Hono()
         "Retrieved resident by ID"
       );
       return c.json({ residents: residentRows }, 200);
-    }
-  )
-  .post(
-    "/new-resident",
-    describeRoute({
-      description: "Create a new resident",
-      responses: {
-        201: {
-          description: "Resident created",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ resident: selectProfileSchema })),
-            },
-          },
-        },
-        400: { description: "Validation failed" },
-      },
-    }),
-    validator("json", newResidentSchema),
-    async (c) => {
-      const body = c.req.valid("json");
-      const resident = await residentService.createResident(body);
-
-      logger.info(
-        {
-          route: "/api/residents/new-resident",
-          residentId: resident.id,
-        },
-        "New resident created"
-      );
-      return c.json({ resident }, 201);
-    }
-  )
-  .put(
-    "/update-resident",
-    describeRoute({
-      description: "Update a resident",
-      responses: {
-        200: {
-          description: "Resident updated",
-          content: {
-            "application/json": {
-              schema: resolver(z.object({ resident: selectProfileSchema })),
-            },
-          },
-        },
-        400: { description: "Validation failed" },
-      },
-    }),
-    validator("json", updateResidentSchema),
-    async (c) => {
-      const body = c.req.valid("json");
-      const resident = await residentService.updateResident(body.id, body);
-
-      logger.info(
-        {
-          route: "/api/residents/update-resident",
-          residentId: body.id,
-        },
-        "Resident updated successfully"
-      );
-      return c.json({ resident }, 200);
     }
   );
 
@@ -255,13 +153,6 @@ const residentApiRoutes = app
           { url: `http://localhost:${env.PORT}`, description: "Local Server" },
         ],
       },
-    })
-  )
-  .get(
-    "/scalar",
-    Scalar({
-      url: "/openapi",
-      theme: "deepSpace",
     })
   );
 

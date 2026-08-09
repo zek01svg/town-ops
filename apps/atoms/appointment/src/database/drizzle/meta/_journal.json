@@ -15,6 +15,13 @@
       "when": 1785164685781,
       "tag": "0001_new_nocturne",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786254815045,
+      "tag": "0002_woozy_arachne",
+      "breakpoints": true
     }
   ]
 }

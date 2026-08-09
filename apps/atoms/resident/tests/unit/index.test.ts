@@ -68,12 +68,26 @@ describe("Resident Atom API Endpoints", () => {
   });
 
   describe("GET /api/residents/:id", () => {
+    it("requires the Worker service token", async () => {
+      const responses = await Promise.all([
+        app.request(`/api/residents/${VALID_UUID_1}`),
+        app.request(`/api/residents/${VALID_UUID_1}`, {
+          headers: { Authorization: `Bearer ${"b".repeat(32)}` },
+        }),
+      ]);
+
+      expect(responses.map((response) => response.status)).toEqual([401, 401]);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
     it("should return 200 and resident with given ID", async () => {
       mockQuery.then.mockImplementationOnce((resolve) =>
         resolve([TEST_RESIDENT])
       );
 
-      const res = await app.request(`/api/residents/${VALID_UUID_1}`);
+      const res = await app.request(`/api/residents/${VALID_UUID_1}`, {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ residents: [TEST_RESIDENT] });
       expect(mockDb.select).toHaveBeenCalled();
@@ -82,7 +96,9 @@ describe("Resident Atom API Endpoints", () => {
     });
 
     it("should return 400 for invalid UUID", async () => {
-      const res = await app.request("/api/residents/not-a-uuid");
+      const res = await app.request("/api/residents/not-a-uuid", {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(400);
       const json = await res.json();
       expect(json.error).toBeDefined();
@@ -93,104 +109,10 @@ describe("Resident Atom API Endpoints", () => {
         reject(new Error("DB query failed"))
       );
 
-      const res = await app.request(`/api/residents/${VALID_UUID_1}`);
+      const res = await app.request(`/api/residents/${VALID_UUID_1}`, {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(500);
-    });
-  });
-
-  describe("GET /api/residents/search", () => {
-    it("should return 200 and resident found by postal code", async () => {
-      mockQuery.then.mockImplementationOnce((resolve) =>
-        resolve([TEST_RESIDENT])
-      );
-
-      const res = await app.request("/api/residents/search?postalCode=123456");
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ residents: [TEST_RESIDENT] });
-      expect(mockDb.select).toHaveBeenCalled();
-      expect(mockQuery.where).toHaveBeenCalled();
-    });
-
-    it("should return 400 for invalid postal code length", async () => {
-      const res = await app.request("/api/residents/search?postalCode=12345"); // 5 chars
-      expect(res.status).toBe(400);
-    });
-  });
-
-  describe("POST /api/residents/new-resident", () => {
-    it("should create a new resident and return 201", async () => {
-      mockQuery.then.mockImplementationOnce((resolve) =>
-        resolve([TEST_RESIDENT])
-      );
-
-      const payload = {
-        id: VALID_UUID_1, // Assuming schema requires ID if no default
-        fullName: "John Doe",
-        email: "john.doe@example.com",
-        role: "resident",
-        contactNumber: "12345678",
-        postalCode: "123456",
-      };
-
-      const res = await app.request("/api/residents/new-resident", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(res.status).toBe(201);
-      expect(await res.json()).toEqual({ resident: TEST_RESIDENT });
-      expect(mockDb.insert).toHaveBeenCalled();
-    });
-
-    it("should return 400 for invalid payload", async () => {
-      const res = await app.request("/api/residents/new-resident", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName: "Missing Email" }),
-      });
-
-      expect(res.status).toBe(400);
-    });
-  });
-
-  describe("PUT /api/residents/update-resident", () => {
-    it("should update resident and return 200", async () => {
-      const updatedResident = { ...TEST_RESIDENT, fullName: "Jane Doe" };
-      mockQuery.then.mockImplementationOnce((resolve) =>
-        resolve([updatedResident])
-      );
-
-      const payload = {
-        id: VALID_UUID_1,
-        fullName: "Jane Doe",
-        email: "john.doe@example.com",
-        role: "resident",
-      };
-
-      const res = await app.request("/api/residents/update-resident", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ resident: updatedResident });
-      expect(mockDb.update).toHaveBeenCalled();
-    });
-
-    it("should return 400 for invalid payload (missing id)", async () => {
-      const payload = {
-        fullName: "Jane Doe",
-      };
-
-      const res = await app.request("/api/residents/update-resident", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(res.status).toBe(400);
     });
   });
 

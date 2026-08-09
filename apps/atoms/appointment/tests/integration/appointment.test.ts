@@ -72,37 +72,6 @@ describe("Appointment Atom Integration Tests", () => {
     });
   });
 
-  describe("CRUD flows", () => {
-    it("should create an appointment and list it back by caseId", async () => {
-      const payload = {
-        caseId: "123e4567-e89b-12d3-a456-426614174000",
-        assignmentId: "223e4567-e89b-12d3-a456-426614174001",
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 3600000).toISOString(),
-        status: "scheduled" as const,
-      };
-
-      // 1. Create
-      const postRes = await app.request("/api/appointments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(postRes.status).toBe(201);
-      const postData = await postRes.json();
-      expect(postData.appointment).toHaveProperty("id");
-      expect(postData.appointment.caseId).toBe(payload.caseId);
-
-      // 2. List
-      const getRes = await app.request(`/api/appointments/${payload.caseId}`);
-      expect(getRes.status).toBe(200);
-      const getData = await getRes.json();
-      expect(getData.appointments).toHaveLength(1);
-      expect(getData.appointments[0].id).toBe(postData.appointment.id);
-    });
-  });
-
   describe("internal slot claims", () => {
     it("rejects callers without the worker token and past slots", async () => {
       expect(
@@ -240,6 +209,7 @@ describe("Appointment Atom Integration Tests", () => {
           assignmentId: crypto.randomUUID(),
           attemptId: crypto.randomUUID(),
           contractorId,
+          operationId: `start/${crypto.randomUUID()}/appointment`,
           startTime: "2030-01-01T09:00:00.000Z",
           endTime: "2030-01-01T10:00:00.000Z",
           status: "in_progress",
@@ -306,7 +276,8 @@ describe("Appointment Atom Integration Tests", () => {
       });
 
       const publicRead = await app.request(
-        `/api/appointments/${appointment.caseId}`
+        `/api/appointments/${appointment.caseId}`,
+        { headers: { Authorization: `Bearer ${workerToken}` } }
       );
       expect(publicRead.status).toBe(200);
       expect((await publicRead.json()).appointments[0]).not.toHaveProperty(
@@ -323,6 +294,7 @@ describe("Appointment Atom Integration Tests", () => {
           assignmentId: crypto.randomUUID(),
           attemptId: crypto.randomUUID(),
           contractorId,
+          operationId: `start/${crypto.randomUUID()}/appointment`,
           startTime: "2030-01-01T09:00:00.000Z",
           endTime: "2030-01-01T10:00:00.000Z",
           status: "in_progress",

@@ -6,11 +6,11 @@ import {
   integer,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { createSelectSchema, createInsertSchema } from "drizzle-zod";
+import { createSelectSchema } from "drizzle-zod";
 import type { z } from "zod/v4";
 
-export const contractorMetrics = pgTable(
-  "contractor_metrics",
+export const performanceEntries = pgTable(
+  "performance_entries",
   {
     id: uuid().defaultRandom().primaryKey().notNull(),
     contractorId: uuid("contractor_id").notNull(),
@@ -18,8 +18,8 @@ export const contractorMetrics = pgTable(
     reason: text().notNull(),
     // Deterministic dedupe key for a durable Workflow effect (PRS-144), e.g.
     // `${attemptId}/acceptance-sla-breach`. Nullable — legacy rows and the
-    // legacy /api/metrics route never set it, and Postgres unique indexes
-    // permit any number of NULLs.
+    // existing rows may not set it, and Postgres unique indexes permit any
+    // number of NULLs.
     effectId: text("effect_id"),
     createdAt: timestamp("created_at", {
       withTimezone: true,
@@ -27,12 +27,10 @@ export const contractorMetrics = pgTable(
     }).defaultNow(),
   },
   (table) => [
-    uniqueIndex("contractor_metrics_effect_id_idx").on(table.effectId),
+    uniqueIndex("performance_entries_effect_id_idx").on(table.effectId),
   ]
 );
 
-export const contractorMetricsSelectSchema =
-  createSelectSchema(contractorMetrics);
-export const contractorMetricsInsertSchema =
-  createInsertSchema(contractorMetrics);
-export type ContractorMetric = z.infer<typeof contractorMetricsSelectSchema>;
+export const performanceEntriesSelectSchema =
+  createSelectSchema(performanceEntries);
+export type PerformanceEntry = z.infer<typeof performanceEntriesSelectSchema>;

@@ -60,7 +60,8 @@ describe("openCase Activity", () => {
     });
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
-      "http://resident-atom:5008/api/residents/" + input.input.residentId
+      "http://resident-atom:5008/api/residents/" + input.input.residentId,
+      { headers: { Authorization: `Bearer ${workerServiceToken}` } }
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,

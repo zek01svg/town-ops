@@ -14,6 +14,7 @@ let app: typeof import("../../src/index").app;
 const CASE_ID = "123e4567-e89b-12d3-a456-426614174101";
 const RESIDENT_ID = "123e4567-e89b-12d3-a456-426614174102";
 const ACTOR_ID = "123e4567-e89b-12d3-a456-426614174103";
+const workerHeaders = { Authorization: `Bearer ${"a".repeat(32)}` };
 
 describe("Officer Attention persistence", () => {
   beforeAll(async () => {
@@ -397,7 +398,8 @@ describe("Officer Attention persistence", () => {
       });
 
       const scoped = await app.request(
-        `/api/cases/officer-attention?caseId=${CASE_ID}`
+        `/api/cases/officer-attention?caseId=${CASE_ID}`,
+        { headers: workerHeaders }
       );
       expect(scoped.status).toBe(200);
       const scopedBody = await scoped.json();
@@ -410,7 +412,8 @@ describe("Officer Attention persistence", () => {
       // not flake just because unrelated open attentions from a concurrent
       // run outrank these two on `desc(createdAt)`.
       const unfiltered = await app.request(
-        "/api/cases/officer-attention?pageSize=100"
+        "/api/cases/officer-attention?pageSize=100",
+        { headers: workerHeaders }
       );
       expect(unfiltered.status).toBe(200);
       const unfilteredCaseIds = (await unfiltered.json()).attentions.map(
@@ -460,7 +463,8 @@ describe("Officer Attention persistence", () => {
       });
 
       const res = await app.request(
-        `/api/cases/officer-attention?caseId=${CASE_ID}&state=resolved`
+        `/api/cases/officer-attention?caseId=${CASE_ID}&state=resolved`,
+        { headers: workerHeaders }
       );
       expect(res.status).toBe(200);
       const body = await res.json();

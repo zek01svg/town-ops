@@ -37,12 +37,10 @@ export const casePriority = pgEnum("case_priority", [
 export const caseStatus = pgEnum("case_status", [
   "pending",
   "assigned",
-  "dispatched",
   "in_progress",
   "pending_resident_input",
   "completed",
   "cancelled",
-  "escalated",
 ]);
 
 export const officerAttentionKind = pgEnum("officer_attention_kind", [

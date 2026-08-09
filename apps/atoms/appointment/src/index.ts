@@ -1,4 +1,3 @@
-import { Scalar } from "@scalar/hono-api-reference";
 import {
   CancelAppointmentInputSchema,
   ConfirmAppointmentSlotInputSchema,
@@ -24,7 +23,6 @@ import { describeRoute, openAPIRouteHandler, validator } from "hono-openapi";
 import { cors } from "hono/cors";
 import { z } from "zod/v4";
 
-import { appointmentInsertSchema } from "./database/schema";
 import { env } from "./env";
 import * as appointmentService from "./service";
 import { getAppointmentSchema } from "./validation-schemas";
@@ -236,6 +234,7 @@ const appointmentSlotRoutes = new Hono()
   );
 
 app.route("/internal/appointment-slots", appointmentSlotRoutes);
+app.use("/api/appointments/*", workerAuth(env.WORKER_SERVICE_TOKEN));
 
 const appointmentRoutes = app
   .get(
@@ -253,16 +252,6 @@ const appointmentRoutes = app
       return c.json({ appointments: rows }, 200);
     }
   )
-  .post(
-    "/api/appointments",
-    describeRoute({ description: "Create appointment" }),
-    validator("json", appointmentInsertSchema),
-    async (c) => {
-      const body = c.req.valid("json");
-      const result = await appointmentService.createAppointment(body);
-      return c.json({ appointment: result }, 201);
-    }
-  )
   .get(
     "/openapi",
     openAPIRouteHandler(app, {
@@ -277,8 +266,7 @@ const appointmentRoutes = app
         ],
       },
     })
-  )
-  .get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
+  );
 
 export { app };
 export type AppointmentAtomType = typeof appointmentRoutes;

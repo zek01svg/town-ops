@@ -22,14 +22,13 @@ test.describe("Officer Dashboard", () => {
 
   test("shows dashboard with stat cards", async ({ page }) => {
     await expect(page.getByText(/active cases/i)).toBeVisible();
-    await expect(page.getByText(/sla breached/i)).toBeVisible();
+    await expect(page.getByText(/total cases/i)).toBeVisible();
     await expect(page.getByText(/resolved/i)).toBeVisible();
   });
 
   test("Kanban board renders with expected columns", async ({ page }) => {
     await expect(page.getByText(/pending/i).first()).toBeVisible();
-    await expect(page.getByText(/dispatched/i).first()).toBeVisible();
-    await expect(page.getByText(/escalated/i).first()).toBeVisible();
+    await expect(page.getByText(/active/i).first()).toBeVisible();
     await expect(page.getByText(/resolved/i).first()).toBeVisible();
   });
 

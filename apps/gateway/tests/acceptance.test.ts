@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
-import { createApp, fetchResolving, successResult } from "./helpers";
+import {
+  createApp,
+  fetchResolving,
+  successResult,
+  workerServiceToken,
+} from "./helpers";
 
 describe("Gateway Contractor acceptance", () => {
   const contractorId = "c1c1c1c1-1111-4111-8111-111111111111";
@@ -105,8 +110,12 @@ describe("Gateway Contractor acceptance", () => {
     expect(await response.json()).toMatchObject({
       data: { appointment: { status: "SCHEDULED" } },
     });
-    expect(fetchImpl).toHaveBeenCalledWith(
+    const [atomUrl, atomInit] = fetchImpl.mock.calls[0] ?? [];
+    expect(atomUrl).toBe(
       `http://localhost:5004/api/assignments/by-case/${successResult.data.id}`
+    );
+    expect(new Headers(atomInit?.headers).get("Authorization")).toBe(
+      `Bearer ${workerServiceToken}`
     );
     expect(executeUpdateWithStart).toHaveBeenCalledWith(
       "acceptAllocation",

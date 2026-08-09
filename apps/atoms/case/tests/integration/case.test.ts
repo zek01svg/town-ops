@@ -39,53 +39,13 @@ describe("Case Atom Integration Tests", () => {
   // files have no per-file isolation) and keeps one fixed-ID Case alive
   // across its whole suite — that blanket delete intermittently raced it
   // out from under it.
-  const VALID_UUID_2 = "123e4567-e89b-12d3-a456-426614174001";
+  const workerHeaders = { Authorization: `Bearer ${"a".repeat(32)}` };
 
   describe("GET /health", () => {
     it("should return healthy", async () => {
       const res = await app.request("/health");
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ status: "healthy" });
-    });
-  });
-
-  describe("CRUD flows", () => {
-    it("should create a case and retrieve it back from container DB", async () => {
-      const payload = {
-        residentId: VALID_UUID_2,
-        category: "LE",
-        description: "Integration test description",
-        status: "pending" as const,
-      };
-
-      // 1. Create
-      const postRes = await app.request("/api/cases/new-case", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (postRes.status !== 201) {
-        console.error(
-          "POST /api/cases/new-case FAILED:",
-          postRes.status,
-          await postRes.text()
-        );
-      }
-
-      expect(postRes.status).toBe(201);
-      const postData = await postRes.json();
-      expect(postData.cases).toHaveProperty("id");
-      expect(postData.cases.category).toBe(payload.category);
-
-      const caseId = postData.cases.id;
-
-      // 2. Retrieve by ID
-      const getRes = await app.request(`/api/cases/${caseId}`);
-      expect(getRes.status).toBe(200);
-      const getData = await getRes.json();
-      expect(getData.cases).toHaveLength(1);
-      expect(getData.cases[0].id).toBe(caseId);
     });
   });
 
@@ -213,7 +173,8 @@ describe("Case Atom Integration Tests", () => {
         .toSorted((a, b) => a.localeCompare(b));
 
       const firstPage = await app.request(
-        `/api/cases?residentId=${residentId}`
+        `/api/cases?residentId=${residentId}`,
+        { headers: workerHeaders }
       );
       expect(firstPage.status).toBe(200);
       const firstBody = await firstPage.json();
@@ -225,7 +186,8 @@ describe("Case Atom Integration Tests", () => {
       ).toBe(true);
 
       const secondPage = await app.request(
-        `/api/cases?residentId=${residentId}&page=2`
+        `/api/cases?residentId=${residentId}&page=2`,
+        { headers: workerHeaders }
       );
       expect(secondPage.status).toBe(200);
       const secondBody = await secondPage.json();
@@ -249,7 +211,9 @@ describe("Case Atom Integration Tests", () => {
     });
 
     it("rejects a pageSize over 100", async () => {
-      const res = await app.request("/api/cases?pageSize=101");
+      const res = await app.request("/api/cases?pageSize=101", {
+        headers: workerHeaders,
+      });
       expect(res.status).toBe(400);
     });
 
@@ -264,7 +228,9 @@ describe("Case Atom Integration Tests", () => {
         ])
         .returning();
 
-      const res = await app.request(`/api/cases?ids=${caseA.id},${caseB.id}`);
+      const res = await app.request(`/api/cases?ids=${caseA.id},${caseB.id}`, {
+        headers: workerHeaders,
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(
@@ -293,7 +259,9 @@ describe("Case Atom Integration Tests", () => {
       // Default pageSize (25) truncates a 30-id list silently rather than
       // rejecting or returning all 30 — pins service.ts's documented
       // behaviour of `.limit(pageSize)` with the offset skipped.
-      const truncated = await app.request(`/api/cases?ids=${ids.join(",")}`);
+      const truncated = await app.request(`/api/cases?ids=${ids.join(",")}`, {
+        headers: workerHeaders,
+      });
       expect(truncated.status).toBe(200);
       expect((await truncated.json()).cases).toHaveLength(25);
 
@@ -303,7 +271,10 @@ describe("Case Atom Integration Tests", () => {
       // with no secondary tiebreak, and all 30 rows share one insert
       // batch's timestamp, so which 25 of 30 come back is not guaranteed
       // stable across two separate requests.)
-      const page2 = await app.request(`/api/cases?ids=${ids.join(",")}&page=2`);
+      const page2 = await app.request(
+        `/api/cases?ids=${ids.join(",")}&page=2`,
+        { headers: workerHeaders }
+      );
       expect(page2.status).toBe(200);
       const page2Body = await page2.json();
       expect(page2Body.cases).toHaveLength(25);
@@ -315,7 +286,8 @@ describe("Case Atom Integration Tests", () => {
 
       // A pageSize that covers the whole list returns every id.
       const full = await app.request(
-        `/api/cases?ids=${ids.join(",")}&pageSize=30`
+        `/api/cases?ids=${ids.join(",")}&pageSize=30`,
+        { headers: workerHeaders }
       );
       expect(full.status).toBe(200);
       expect(
@@ -327,13 +299,14 @@ describe("Case Atom Integration Tests", () => {
 
     it("rejects a malformed id in the ids list", async () => {
       const res = await app.request(
-        `/api/cases?ids=${crypto.randomUUID()},not-a-uuid`
+        `/api/cases?ids=${crypto.randomUUID()},not-a-uuid`,
+        { headers: workerHeaders }
       );
       expect(res.status).toBe(400);
     });
 
     it("still answers with no query params at all (backwards compatibility)", async () => {
-      const res = await app.request("/api/cases");
+      const res = await app.request("/api/cases", { headers: workerHeaders });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(Array.isArray(body.cases)).toBe(true);
@@ -348,7 +321,9 @@ describe("Case Atom Integration Tests", () => {
     it("routes /api/cases/officer-attention to the literal handler, not :id", async () => {
       // If `/:id` shadowed this, `getCaseSchema` (z.uuid()) would reject
       // "officer-attention" as an invalid UUID and this would 400.
-      const res = await app.request("/api/cases/officer-attention");
+      const res = await app.request("/api/cases/officer-attention", {
+        headers: workerHeaders,
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body).toHaveProperty("attentions");
@@ -361,14 +336,18 @@ describe("Case Atom Integration Tests", () => {
         .values({ residentId: crypto.randomUUID(), category: "LE" })
         .returning();
 
-      const byId = await app.request(`/api/cases/${caseRecord.id}`);
+      const byId = await app.request(`/api/cases/${caseRecord.id}`, {
+        headers: workerHeaders,
+      });
       expect(byId.status).toBe(200);
       const byIdBody = await byId.json();
       expect(byIdBody).toHaveProperty("cases");
       expect(byIdBody.cases).toHaveLength(1);
       expect(byIdBody.cases[0].id).toBe(caseRecord.id);
 
-      const history = await app.request(`/api/cases/${caseRecord.id}/history`);
+      const history = await app.request(`/api/cases/${caseRecord.id}/history`, {
+        headers: workerHeaders,
+      });
       expect(history.status).toBe(200);
       const historyBody = await history.json();
       expect(historyBody).toHaveProperty("history");
@@ -413,7 +392,9 @@ describe("Case Atom Integration Tests", () => {
         reason: "Resident withdrew the request",
       });
 
-      const res = await app.request(`/api/cases/${newCase.id}/history`);
+      const res = await app.request(`/api/cases/${newCase.id}/history`, {
+        headers: workerHeaders,
+      });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(
@@ -445,7 +426,9 @@ describe("Case Atom Integration Tests", () => {
         .values({ residentId: crypto.randomUUID(), category: "LE" })
         .returning();
 
-      const res = await app.request(`/api/cases/${caseRecord.id}/history`);
+      const res = await app.request(`/api/cases/${caseRecord.id}/history`, {
+        headers: workerHeaders,
+      });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ history: [] });
     });

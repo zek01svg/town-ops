@@ -1223,10 +1223,15 @@ export function createGatewayApp({
   alertAtomUrl = "http://localhost:5002",
   workerServiceToken = "",
   authenticate,
-  fetchImpl = fetch,
+  fetchImpl: rawFetchImpl = fetch,
   updateTimeoutMs = 20_000,
 }: GatewayDependencies) {
   const app = new Hono<GatewayEnv>();
+  const fetchImpl: typeof fetch = (input, init) => {
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${workerServiceToken}`);
+    return rawFetchImpl(input, { ...init, headers });
+  };
 
   // A thrown HTTPException (e.g. the `jwk` authenticate middleware on a
   // missing/invalid token) already carries its own correct response —
@@ -1277,7 +1282,7 @@ export function createGatewayApp({
 
     let upstream: Response;
     try {
-      upstream = await fetchImpl(target, { method, headers, body });
+      upstream = await rawFetchImpl(target, { method, headers, body });
     } catch {
       return error(c, 503, {
         code: "AUTH_ATOM_UNAVAILABLE",

@@ -7,6 +7,7 @@ import { createGatewayApp } from "../src/app";
 export const officerId = "4b0a6c4d-3a9b-4d6b-aebe-123456789abc";
 export const residentId = "a3d4d1c2-5555-4e66-8e77-123456789abc";
 export const otherResidentId = "b7c8d1c2-6666-4e66-8e77-123456789abc";
+export const workerServiceToken = "gateway-worker-service-token";
 
 export const officerAuth: MiddlewareHandler = async (c, next) => {
   c.set("jwtPayload", { sub: officerId, role: "officer" });
@@ -85,6 +86,7 @@ export function createApp(
       caseAtomUrl: "http://case-atom:5005",
       residentAtomUrl: "http://resident-atom:5008",
       authAtomUrl: "http://auth-atom:5001",
+      workerServiceToken,
       fetchImpl,
       updateTimeoutMs: 1,
     }),

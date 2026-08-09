@@ -1,4 +1,3 @@
-import { Scalar } from "@scalar/hono-api-reference";
 import {
   logger,
   honoLogger,
@@ -18,13 +17,10 @@ import {
 import { cors } from "hono/cors";
 import { z } from "zod/v4";
 
-import { selectAlertSchema } from "./database/schema";
 import { env } from "./env";
 import { sendEmail } from "./mailer";
 import * as alertService from "./service";
 import {
-  alertsByCaseSchema,
-  alertsByRecipientSchema,
   effectIdSchema,
   failEffectSchema,
   reserveEffectSchema,
@@ -80,90 +76,6 @@ const alertRoutes = app
     async (c: Context) => c.json({ status: "healthy" }, 200)
   )
   .get(
-    "/api/alerts",
-    describeRoute({
-      description: "Retrieve all alerts",
-      responses: {
-        200: {
-          description: "List of alerts",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({ alerts: z.array(selectAlertSchema) })
-              ),
-            },
-          },
-        },
-      },
-    }),
-    async (c: Context) => {
-      const alertRows = await alertService.getAllAlerts();
-      logger.info(
-        { route: "/api/alerts", rowCount: alertRows.length },
-        "Retrieved all alerts"
-      );
-      return c.json({ alerts: alertRows }, 200);
-    }
-  )
-  .get(
-    "/api/alerts/case/:caseId",
-    describeRoute({
-      description: "Get alerts by Case ID",
-      responses: {
-        200: {
-          description: "Alerts found",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({ alerts: z.array(selectAlertSchema) })
-              ),
-            },
-          },
-        },
-        400: { description: "Invalid UUID provided" },
-      },
-    }),
-    validator("param", alertsByCaseSchema),
-    async (c) => {
-      const { caseId } = c.req.valid("param");
-      const alertRows = await alertService.getAlertsByCaseId(caseId);
-      logger.info(
-        { route: "/api/alerts/case/:caseId", caseId },
-        "Alert lookup executed by Case"
-      );
-      return c.json({ alerts: alertRows }, 200);
-    }
-  )
-  .get(
-    "/api/alerts/recipient/:recipientId",
-    describeRoute({
-      description: "Get alerts by Recipient ID",
-      responses: {
-        200: {
-          description: "Alerts found",
-          content: {
-            "application/json": {
-              schema: resolver(
-                z.object({ alerts: z.array(selectAlertSchema) })
-              ),
-            },
-          },
-        },
-        400: { description: "Invalid UUID provided" },
-      },
-    }),
-    validator("param", alertsByRecipientSchema),
-    async (c) => {
-      const { recipientId } = c.req.valid("param");
-      const alertRows = await alertService.getAlertsByRecipientId(recipientId);
-      logger.info(
-        { route: "/api/alerts/recipient/:recipientId", recipientId },
-        "Alert lookup executed by Recipient"
-      );
-      return c.json({ alerts: alertRows }, 200);
-    }
-  )
-  .get(
     "/openapi",
     openAPIRouteHandler(app, {
       documentation: {
@@ -177,8 +89,7 @@ const alertRoutes = app
         ],
       },
     })
-  )
-  .get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
+  );
 
 const internalEffectsRouter = new Hono()
   .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))

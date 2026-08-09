@@ -26,6 +26,8 @@ const { mockDb } = vi.hoisted(() => {
   return { mockDb: dbChains };
 });
 
+const workerToken = "test-worker-service-token-at-least-32-chars";
+
 vi.mock("../../src/database/db", () => ({
   default: mockDb,
 }));
@@ -48,6 +50,19 @@ describe("Appointment Atom", () => {
   });
 
   describe("GET /api/appointments/:case_id", () => {
+    it("requires the Worker service token", async () => {
+      const caseId = "123e4567-e89b-12d3-a456-426614174000";
+      const responses = await Promise.all([
+        app.request(`/api/appointments/${caseId}`),
+        app.request(`/api/appointments/${caseId}`, {
+          headers: { Authorization: `Bearer ${"b".repeat(32)}` },
+        }),
+      ]);
+
+      expect(responses.map((response) => response.status)).toEqual([401, 401]);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
     it("should return the list of appointments for a valid case ID", async () => {
       // Arrange
       const mockCaseId = "123e4567-e89b-12d3-a456-426614174000";
@@ -67,7 +82,9 @@ describe("Appointment Atom", () => {
       mockDb.orderBy.mockResolvedValue(sampleAppointments);
 
       // Act
-      const res = await app.request(`/api/appointments/${mockCaseId}`);
+      const res = await app.request(`/api/appointments/${mockCaseId}`, {
+        headers: { Authorization: `Bearer ${workerToken}` },
+      });
 
       // Assert
       expect(res.status).toBe(200);
@@ -81,7 +98,9 @@ describe("Appointment Atom", () => {
       mockDb.orderBy.mockResolvedValue([]);
 
       // Act
-      const res = await app.request(`/api/appointments/${mockCaseId}`);
+      const res = await app.request(`/api/appointments/${mockCaseId}`, {
+        headers: { Authorization: `Bearer ${workerToken}` },
+      });
 
       // Assert
       expect(res.status).toBe(200);
@@ -90,56 +109,8 @@ describe("Appointment Atom", () => {
 
     it("should return error for invalid UUID case ID", async () => {
       // Act
-      const res = await app.request("/api/appointments/not-a-uuid");
-
-      // Assert
-      expect(res.status).toBe(400);
-    });
-  });
-
-  describe("POST /api/appointments", () => {
-    it("should create appointment on valid fields", async () => {
-      // Arrange
-      const payload = {
-        caseId: "123e4567-e89b-12d3-a456-426614174000",
-        assignmentId: "223e4567-e89b-12d3-a456-426614174002",
-        startTime: "2024-01-01T10:00:00Z",
-        endTime: "2024-01-01T11:00:00Z",
-        status: "scheduled",
-      };
-
-      const createdItem = {
-        id: "mocked-uuid-123",
-        ...payload,
-      };
-
-      mockDb.insert.mockReturnThis();
-      mockDb.values.mockReturnThis();
-      mockDb.returning.mockResolvedValue([createdItem]);
-
-      // Act
-      const res = await app.request("/api/appointments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      // Assert
-      expect(res.status).toBe(201);
-      expect(await res.json()).toEqual({ appointment: createdItem });
-    });
-
-    it("should return error for missing fields setup", async () => {
-      // Arrange
-      const incompletePayload = {
-        status: "scheduled",
-      };
-
-      // Act
-      const res = await app.request("/api/appointments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(incompletePayload),
+      const res = await app.request("/api/appointments/not-a-uuid", {
+        headers: { Authorization: `Bearer ${workerToken}` },
       });
 
       // Assert

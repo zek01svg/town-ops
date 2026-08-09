@@ -12,7 +12,9 @@ import { z } from "zod/v4";
 const residentResponseSchema = z.object({
   residents: z.array(z.object({ id: z.uuid() })),
 });
-const caseResponseSchema = z.object({ case: z.unknown() });
+const caseResponseSchema = z.object({
+  case: z.record(z.string(), z.unknown()),
+});
 
 type OpenCaseActivityDependencies = {
   residentAtomUrl: string;
@@ -41,7 +43,8 @@ export function createOpenCaseActivity({
   ): Promise<CaseDto> {
     const command = CreateCaseActivityInputSchema.parse(input);
     const residentResponse = await fetchImpl(
-      `${residentAtomUrl}/api/residents/${command.input.residentId}`
+      `${residentAtomUrl}/api/residents/${command.input.residentId}`,
+      { headers: { Authorization: `Bearer ${workerServiceToken}` } }
     );
 
     if (!residentResponse.ok) {
@@ -83,7 +86,7 @@ export function createOpenCaseActivity({
       throw new Error("Case atom returned an invalid response");
     }
 
-    const record = parsedCase.data.case as Record<string, unknown>;
+    const record = parsedCase.data.case;
     return CaseDtoSchema.parse({
       ...record,
       category: String(record.category).toUpperCase(),
