@@ -7,16 +7,17 @@ const { tx, db } = vi.hoisted(() => {
   process.env.PORT = "5005";
   process.env.WORKER_SERVICE_TOKEN = "a".repeat(32);
 
-  const tx = {
+  const transaction = {
     insert: vi.fn(),
     select: vi.fn(),
   };
 
   return {
-    tx,
+    tx: transaction,
     db: {
-      transaction: vi.fn((callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+      transaction: vi.fn(
+        (callback: (transaction: typeof transaction) => unknown) =>
+          callback(transaction)
       ),
     },
   };

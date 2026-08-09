@@ -5,7 +5,7 @@ export function getAuthHeader(): { Authorization: string } {
 
 export function clearAuth() {
   localStorage.removeItem("jwt");
-  window.location.href = "/";
+  globalThis.window.location.href = "/";
 }
 
 async function refreshJwt(authUrl: string): Promise<string | null> {

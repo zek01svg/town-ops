@@ -68,8 +68,12 @@ export function LoginForm({
         }
         localStorage.setItem("jwt", token);
         window.location.reload();
-      } catch (err: any) {
-        setError(err?.message ?? "Login failed. Check your credentials.");
+      } catch (err: unknown) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Login failed. Check your credentials."
+        );
       }
     },
   });
@@ -86,7 +90,7 @@ export function LoginForm({
         onSubmit={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          form.handleSubmit();
+          void form.handleSubmit();
         }}
       >
         <FieldGroup>

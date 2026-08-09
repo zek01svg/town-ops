@@ -1,7 +1,32 @@
+import type { CommitAllocationInput } from "@townops/orchestration-contract";
+import type { MiddlewareHandler } from "hono";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+type AllocationService = typeof import("../../src/service");
+type AssignmentDatabase = typeof import("../../src/database/db").default;
+type AssignmentSchema = typeof import("../../src/database/schema");
+type CommitResult = Awaited<
+  ReturnType<AllocationService["commitAllocationAttempt"]>
+>;
+
+function input(
+  overrides: Partial<CommitAllocationInput> = {}
+): CommitAllocationInput {
+  return {
+    operationId: `op/${crypto.randomUUID()}`,
+    caseId: crypto.randomUUID(),
+    contractorId: crypto.randomUUID(),
+    source: "AUTO_ASSIGN",
+    expectedEpoch: 0,
+    acceptanceSlaMs: 60_000,
+    actorId: crypto.randomUUID(),
+    actorRole: "SYSTEM",
+    ...overrides,
+  };
+}
+
 vi.mock("hono/jwk", () => ({
-  jwk: () => async (_c: any, next: any) => await next(),
+  jwk: () => (async (_context, next) => await next()) as MiddlewareHandler,
 }));
 
 /**
@@ -10,10 +35,10 @@ vi.mock("hono/jwk", () => ({
  * transactional, so they are only meaningful against real PostgreSQL.
  */
 describe("Allocation attempt commits", () => {
-  let db: any;
-  let schema: any;
-  let service: any;
-  let eq: any;
+  let db: AssignmentDatabase;
+  let schema: AssignmentSchema;
+  let service: AllocationService;
+  let eq: typeof import("drizzle-orm").eq;
 
   beforeAll(async () => {
     db = (await import("../../src/database/db")).default;
@@ -28,20 +53,6 @@ describe("Allocation attempt commits", () => {
     await db.delete(schema.assignments);
     await db.delete(schema.allocationEpoch);
   });
-
-  function input(overrides: Record<string, unknown> = {}) {
-    return {
-      operationId: `op/${crypto.randomUUID()}`,
-      caseId: crypto.randomUUID(),
-      contractorId: crypto.randomUUID(),
-      source: "AUTO_ASSIGN" as const,
-      expectedEpoch: 0,
-      acceptanceSlaMs: 60_000,
-      actorId: crypto.randomUUID(),
-      actorRole: "SYSTEM",
-      ...overrides,
-    };
-  }
 
   it("commits a first attempt and advances the epoch by exactly one", async () => {
     const before = await service.getAllocationSnapshot();
@@ -90,11 +101,11 @@ describe("Allocation attempt commits", () => {
   it("deduplicates concurrent replays after the allocation epoch advances", async () => {
     const snapshot = await service.getAllocationSnapshot();
     const command = input({ expectedEpoch: snapshot.epoch });
-    let commits: [Promise<any>, Promise<any>] | undefined;
+    let commits: [Promise<CommitResult>, Promise<CommitResult>] | undefined;
 
     // Hold the epoch while both transactions pass their initial operation-ID
     // lookup, reproducing an Activity retry that races with its first attempt.
-    await db.transaction(async (tx: any) => {
+    await db.transaction(async (tx) => {
       await tx
         .select()
         .from(schema.allocationEpoch)
@@ -165,7 +176,7 @@ describe("Allocation attempt commits", () => {
         expectedEpoch: snapshot.epoch,
       }),
       replaceAttemptId: crypto.randomUUID(),
-    } as any);
+    });
 
     expect(result.outcome).toBe("REPLACEMENT_ATTEMPT_NOT_PENDING");
     const assignmentRows = await db
@@ -220,7 +231,7 @@ describe("Allocation attempt commits", () => {
         expectedEpoch: replacementSnapshot.epoch,
       }),
       replaceAttemptId: original.attempt.id,
-    } as any);
+    });
 
     expect(replacement.outcome).toBe("COMMITTED");
     expect(replacement.assignment.id).toBe(original.assignment.id);
@@ -249,7 +260,7 @@ describe("Allocation attempt commits", () => {
     const withActive = await service.getAllocationSnapshot();
     expect(
       withActive.activeAssignmentCounts.find(
-        (row: any) => row.contractorId === contractorId
+        (row) => row.contractorId === contractorId
       )?.activeCount
     ).toBe(1);
 
@@ -261,7 +272,7 @@ describe("Allocation attempt commits", () => {
     const afterBreach = await service.getAllocationSnapshot();
     expect(
       afterBreach.activeAssignmentCounts.find(
-        (row: any) => row.contractorId === contractorId
+        (row) => row.contractorId === contractorId
       )
     ).toBeUndefined();
   });
