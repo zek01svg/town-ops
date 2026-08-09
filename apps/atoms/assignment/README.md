@@ -1,72 +1,19 @@
-# 📁 Assignment Atom
+# Assignment atom
 
-A backend microservice (Atom) dedicated to managing contractor assignments for cases. It acts as a raw data backplane layer constructed using **Hono**, **Bun**, and **Drizzle ORM** with native OpenTelemetry instrumentation.
+The Assignment atom owns stable Assignments and their Allocation Attempts. It owns its persistence and does not orchestrate workflows or call
+other atoms. Private routes require `WORKER_SERVICE_TOKEN` from trusted
+orchestration services.
 
----
+## Local development
 
-## 🚀 **Tech Stack**
+Copy this directory's `.env.example` to a local `.env`; never commit it.
+The service health endpoint is `http://localhost:5004/health`.
 
-- **Runtime**: [Bun](https://bun.sh/)
-- **Framework**: [Hono](https://hono.dev/)
-- **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
-- **Database ORM**: [Drizzle ORM](https://orm.drizzle.team/)
-- **Logging**: Pino via customized `@townops/shared-ts`
-- **Testing**: [Vitest](https://vitest.dev/)
-
----
-
-## 📖 **API Documentation**
-
-The API documentation is fully automated via OpenAPI specifications.
-Once the server is running, visit:
-
-- **Dashboard (Scalar)**: `http://localhost:5004/scalar`
-- **OpenAPI Spec (.json)**: `http://localhost:5004/openapi`
-
----
-
-## 💻 **Development Commands**
-
-| Command                | Description                                                                    |
-| :--------------------- | :----------------------------------------------------------------------------- |
-| `bun run dev`          | Starts server with `--hot` reloading addressing workspace filters.             |
-| `bun run build`        | Bundles exact index payload into a standalone `build/index.js`.                |
-| `bun test`             | Executes isolated endpoints verification suite with coverage.                  |
-| `bun run build:docker` | Chained script that bundles locally, then builds optimized single-liner image. |
-
----
-
-## 🛠️ **Getting Started & Execution**
-
-### 1. Environment Setup
-
-Create a `.env` file in this directory with the following variables:
-
-```env
-DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
-PORT=5004
-JWKS_URI=http://localhost:5001/api/auth/jwks
-WORKER_SERVICE_TOKEN=replace-with-the-shared-worker-secret
-```
-
-### 2. Run Locally
+Run these commands from the monorepo root:
 
 ```bash
-bun install
-bun run dev
-```
-
-The Worker uses the shared token for internal allocation routes. Do not attach
-browser JWT middleware to those routes.
-
-### 3. Run in Docker 🐳
-
-To package and spin up the optimized docker runtime:
-
-```bash
-# 1. Build Single-Stage Image
-bun run build:docker
-
-# 2. Run Container with port mapping
-docker run --env-file .env -p 5004:5004 assignment-atom
+pnpm --filter @townops/assignment-atom db:migrate
+pnpm --filter @townops/assignment-atom dev
+pnpm --filter @townops/assignment-atom test
+pnpm --filter @townops/assignment-atom build
 ```

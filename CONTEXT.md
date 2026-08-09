@@ -52,7 +52,8 @@ is live at a time. Acceptance confirms an Appointment as SCHEDULED. A
 Contractor starting work during that interval advances it to IN_PROGRESS —
 after which the visit can no longer be reported as No Access, and PRS-148
 (cancellation) guards against it too. An unattended SCHEDULED Appointment
-becomes MISSED at its end time and needs Officer attention before recovery.
+becomes MISSED at its end time. It remains MISSED until a Reschedule recovers
+the Case and preserves that outcome.
 _Avoid_: Assignment, booking
 
 **Reschedule**:
@@ -107,6 +108,12 @@ _Avoid_: Cancellation, reassignment
 **Performance Entry**:
 A reasoned increase or decrease to a Contractor's performance score.
 _Avoid_: Metric, score event
+
+**Officer Attention**:
+A durable review item raised for an Officer by a Case exception or a Derived
+Effect delivery problem. The relevant recovery action resolves it; it is not a
+generic notification.
+_Avoid_: Alert, task, escalation when the specific condition is meant
 
 ### Derived effects
 

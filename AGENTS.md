@@ -6,16 +6,17 @@ TownOps is a monorepo for resident-owned estate maintenance Cases. It uses pnpm 
 
 ### Architecture boundaries
 
-- `apps/atoms/` are data owners: each owns its persistence and must not orchestrate workflows or call other TownOps atoms.
-- `apps/composites/` are stateless business orchestrators that coordinate atoms over HTTP and publish or consume AMQP events.
-- `apps/frontend/` contains the Officer, Contractor, and Resident applications.
+- `apps/atoms/` are data owners: each owns its persistence and must not orchestrate workflows or call other TownOps atoms. Their internal routes accept the shared Worker service token.
+- `apps/gateway/` is the browser-facing boundary; it authenticates users and starts or signals Case Workflows.
+- `apps/worker/` runs Temporal Workflows and coordinates atom calls with the shared Worker service token.
+- `apps/frontend/` contains the Officer, Contractor, and Resident applications; browser code talks to the Gateway, never directly to an atom.
 - `packages/` contains shared TypeScript utilities and UI. Reuse `@townops/shared-ts` and `@townops/ui` before adding app-local duplicates.
-- Do not apply user JWT middleware to internal routes invoked by AMQP consumers.
+- Do not apply user JWT middleware to Worker-authenticated internal routes.
 
 ### Sources of truth
 
-- Use the exact domain vocabulary in `CONTEXT.md`.
-- Read only the task-relevant architecture, service-map, event-flow, lifecycle, deployment, and ADR documentation under `docs/`.
+- Read `CONTEXT.md` and task-relevant ADRs under `docs/adr/` before work; use the exact domain vocabulary.
+- Read only the task-relevant architecture, service-map, event-flow, lifecycle, and deployment documentation under `docs/`.
 - For versions, ports, scripts, and current behavior, source code, manifests, and service configuration override prose documentation.
 - Never commit or expose `.env` files or secrets; use `.env.example` for variable names.
 
@@ -28,7 +29,7 @@ TownOps is a monorepo for resident-owned estate maintenance Cases. It uses pnpm 
 - Workspace tests: `pnpm test`
 - Build: `pnpm build`
 - Scoped work: `pnpm --filter <workspace-package> <script>`
-- Integration tests: `pnpm test:integration` (requires Docker for Testcontainers)
+- Integration tests: `pnpm --filter @townops/appointment-atom test:integration` (requires Docker for Testcontainers); Assignment supports the same command.
 - End-to-end tests: `pnpm test:e2e` (requires the stack running and root `.env`; scenarios run sequentially because they share state)
 
 ## Agent skills
@@ -43,7 +44,7 @@ Uses the default five triage labels. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context: root `CONTEXT.md` and relevant entries in `docs/adr/` when that directory exists. See `docs/agents/domain.md`.
+Single-context: root `CONTEXT.md` and task-relevant entries in `docs/adr/`. See `docs/agents/domain.md`.
 
 ## Workflow Orchestration
 

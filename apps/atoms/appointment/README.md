@@ -1,78 +1,19 @@
-# 📁 Appointment Atom
+# Appointment atom
 
-A backend microservice (Atom) dedicated to managing citizen appointments and scheduling. It acts as a raw data backplane layer constructed using **Hono**, **Bun**, and **Drizzle ORM** with native OpenTelemetry instrumentation.
+The Appointment atom owns Appointments and Contractor slot claims. It owns its persistence and does not orchestrate workflows or call
+other atoms. Private routes require `WORKER_SERVICE_TOKEN` from trusted
+orchestration services.
 
----
+## Local development
 
-## 🚀 **Tech Stack**
+Copy this directory's `.env.example` to a local `.env`; never commit it.
+The service health endpoint is `http://localhost:5003/health`.
 
-- **Runtime**: [Bun](https://bun.sh/)
-- **Framework**: [Hono](https://hono.dev/)
-- **OpenAPI & Docs**: [hono-openapi](https://hono.dev/examples/hono-openapi) & [Scalar](https://hono.dev/examples/scalar)
-- **Database ORM**: [Drizzle ORM](https://orm.drizzle.team/)
-- **Logging**: Pino via customized `@townops/shared-ts`
-- **Testing**: [Vitest](https://vitest.dev/)
-
----
-
-## 📖 **API Documentation**
-
-The API documentation is fully automated via OpenAPI specifications.
-Once the server is running, visit:
-
-- **Dashboard (Scalar)**: `http://localhost:5003/scalar`
-- **OpenAPI Spec (.json)**: `http://localhost:5003/openapi`
-
----
-
-## 💻 **Development Commands**
-
-| Command                | Description                                                                    |
-| :--------------------- | :----------------------------------------------------------------------------- |
-| `bun run dev`          | Starts server with `--hot` reloading addressing workspace filters.             |
-| `bun run build`        | Bundles exact index payload into a standalone `build/index.js`.                |
-| `bun test`             | Executes isolated endpoints verification suite with coverage.                  |
-| `bun run build:docker` | Chained script that bundles locally, then builds optimized single-liner image. |
-
----
-
-## 🛠️ **Getting Started & Execution**
-
-### 1. Environment Setup
-
-Create a `.env` file in this directory with the following variables:
-
-```env
-DATABASE_URL=postgresql://townops:townops@localhost:5432/townops
-PORT=5003
-WORKER_SERVICE_TOKEN=replace-with-the-shared-worker-secret
-```
-
-### 2. Run Locally
+Run these commands from the monorepo root:
 
 ```bash
-bun install
-bun run dev
-```
-
-Apply the schema and Appointment slot-claim exclusion constraint before using
-the service locally:
-
-```bash
-pnpm --filter @townops/appointment-atom db:apply
-```
-
-The Worker uses the shared token on `/internal/appointment-slots`; do not
-attach browser JWT middleware to that internal route.
-
-### 3. Run in Docker 🐳
-
-To package and spin up the optimized docker runtime:
-
-```bash
-# 1. Build Single-Stage Image
-bun run build:docker
-
-# 2. Run Container with absolute reference port mapping
-docker run --env-file .env -p 5003:5003 appointment-atom
+pnpm --filter @townops/appointment-atom db:migrate
+pnpm --filter @townops/appointment-atom dev
+pnpm --filter @townops/appointment-atom test
+pnpm --filter @townops/appointment-atom build
 ```

@@ -1,54 +1,40 @@
 # System architecture
 
-TownOps keeps domain data in atoms and runs the current Case orchestration in
+TownOps keeps domain data in atoms and orchestrates every Case lifecycle in
 Temporal. `docker-compose.yml` is authoritative for deployed services and
-ports.
+ports; [ADR 0001](./adr/0001-temporal-orchestration.md) records the boundary.
 
 ## Boundaries
 
-- **Atoms** own their persistence and expose domain HTTP APIs. They do not
-  orchestrate workflows or call other atoms.
-- **Gateway** is the browser-facing HTTP boundary. It validates user identity,
-  starts or signals Temporal Workflows, and returns typed workflow results.
-- **Worker** runs the Workflows and Activities. It coordinates atoms over HTTP
-  using its service token on internal routes.
-- **Composites** remain stateless HTTP/AMQP orchestrators for existing flows.
-  They do not own persistence.
-- **Frontends** are role-specific React applications. New Case-orchestration
-  mutations use the Gateway instead of directly orchestrating atoms.
+- **Atoms** own persistence and domain state. They never orchestrate a Case or
+  call another atom.
+- **Gateway** is the only browser-facing API. It proxies public `/api/auth/*`,
+  validates Case-route JWTs, and starts or signals Workflows.
+- **Worker** runs Temporal Workflows and Activities. It coordinates private
+  atom routes with `WORKER_SERVICE_TOKEN`.
+- **Frontends** are role-specific React applications configured with the
+  Gateway URL; they do not call atom URLs.
 
-## Current Case path
+## Case path
 
 ```mermaid
 flowchart LR
-    UI[Officer or Contractor frontend] --> Gateway[Gateway :6010]
+    UI[Officer, Contractor, or Resident frontend] --> Gateway[Gateway]
     Gateway --> Temporal[Temporal]
     Temporal --> Worker[Worker]
-    Worker --> Case[Case atom]
-    Worker --> Assignment[Assignment atom]
-    Worker --> Appointment[Appointment atom]
-    Worker --> Resident[Resident atom]
-    Worker --> Contractor[Contractor atom]
-    Worker --> Metrics[Metrics atom]
+    Worker --> Atoms[Private atom routes]
+    Atoms --> Case[Case and Officer Attention]
+    Atoms --> Appointment[Appointment]
+    Atoms --> Assignment[Assignment]
+    Atoms --> Other[Resident, Contractor, Proof, Alert, Performance Entry]
 ```
 
-The implemented Workflow Updates are `openCase`, `allocateContractor`,
-`acceptAllocation`, and `startWork`. Acceptance reserves an internal
-Appointment slot, accepts the current Allocation Attempt, then confirms the
-public Appointment. A permanent acceptance failure compensates by releasing
-the held slot. `startWork` advances a SCHEDULED Appointment, its Assignment,
-and the Case to IN_PROGRESS once the Contractor starts work inside the
-Appointment window; it is forward-only, with no compensation.
-
-RabbitMQ remains available to the existing composite and notification flows;
-it is not the authority for the Temporal Case path above.
+The Worker performs forward recovery. Acceptance temporarily holds an
+Appointment slot; a permanent acceptance failure releases only that hold.
+Other committed Case transitions are preserved and surfaced for recovery.
 
 ## Authentication and internal calls
 
-The Auth atom is on port 5001. Browser-facing Gateway routes validate the JWT
-through its JWKS endpoint. Internal routes invoked by the Worker use
-`WORKER_SERVICE_TOKEN`; do not attach user-JWT middleware to those routes.
-
-Contractor accounts resolve to a Contractor identity before a Contractor can
-accept an Allocation Attempt. The Gateway passes that identity to the
-Workflow, which verifies that it owns the current pending Attempt.
+The Gateway exposes the Auth atom only through public `/api/auth/*`. It
+validates JWTs for Case routes using the Auth JWKS endpoint. Atom internal
+routes require `WORKER_SERVICE_TOKEN`, never a browser JWT.

@@ -1,42 +1,23 @@
-# TownOps Officer Frontend
+# TownOps Officer frontend
 
-The operational dashboard for town council officers. Officers can open new cases, monitor the Kanban board, view case details and audit trails, and manually escalate SLA breaches.
+The Officer dashboard opens and supervises Cases, resolves Officer Attention, and uses Gateway for all browser operations.
 
-Runs at `http://localhost:3001` (docker-compose) or `http://localhost:5173` (dev server).
+## Local development
 
-## 🛠️ Tech Stack
-
-- **Routing:** `@tanstack/react-router` — type-safe file-based routing
-- **Data Fetching:** `@tanstack/react-query`
-- **Forms:** `@tanstack/react-form` + `@tanstack/zod-form-adapter`
-- **Validation:** `zod`
-- **Styling:** Tailwind v4 + shadcn/ui
-- **Testing:** `vitest` + `jsdom`
-
-## 🚀 Development
+Run these commands from the monorepo root:
 
 ```bash
-# From monorepo root
-pnpm run dev --filter "@townops/officer-frontend"
-
-# Or from this directory
-pnpm run dev
+pnpm --filter @townops/officer-frontend dev
+pnpm --filter @townops/officer-frontend test
+pnpm --filter @townops/officer-frontend build
 ```
 
-## 🌍 Environment Variables
+The Compose application is available at `http://localhost:3001`; Vite uses
+its normal local development server.
 
-Create a `.env` file in this directory:
+## Configuration
 
-```env
-VITE_APP_URL=http://localhost:3001
-VITE_AUTH_URL=http://localhost:5008
-VITE_GATEWAY_URL=http://localhost:6010
-VITE_OPEN_CASE_URL=http://localhost:6001
-VITE_HANDLE_BREACH_URL=http://localhost:6005
-VITE_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
-```
+Browser API calls, including authentication, use `VITE_GATEWAY_URL` (locally
+`http://localhost:6010`). Do not configure direct Auth or atom URLs.
 
-All Case reads (list, detail, timeline, Officer Attention) go through the
-Gateway. PRS-151-E removed the per-atom URLs — the browser no longer talks to
-any atom directly. `VITE_OPEN_CASE_URL` and `VITE_HANDLE_BREACH_URL` remain
-only for the legacy composite writes that PRS-153 retires.
+Map pages also require `VITE_GOOGLE_MAPS_API_KEY`.
