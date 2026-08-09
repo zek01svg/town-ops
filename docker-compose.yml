@@ -315,6 +315,37 @@ services:
     ports:
       - "5009:5009"
 
+  e2e-seed:
+    image: postgres:16-alpine
+    depends_on:
+      auth-atom:
+        condition: service_started
+      contractor-atom:
+        condition: service_started
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: townops
+      PGPASSWORD: townops
+    volumes:
+      - ./apps/atoms/auth/scripts/seed.sql:/scripts/auth-seed.sql:ro
+      - ./apps/atoms/contractor/scripts/seed.sql:/scripts/contractor-seed.sql:ro
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until psql -d townops_auth -tAc "SELECT to_regclass('public.user') IS NOT NULL" | grep -qx t; do
+          echo waiting for auth migration
+          sleep 1
+        done
+        until psql -d townops_contractor -tAc "SELECT to_regclass('public.contractors') IS NOT NULL" | grep -qx t; do
+          echo waiting for contractor migration
+          sleep 1
+        done
+        psql -d townops_auth -v ON_ERROR_STOP=1 -f /scripts/auth-seed.sql
+        psql -d townops_contractor -v ON_ERROR_STOP=1 -f /scripts/contractor-seed.sql
+    command: []
+
   # ─── Orchestration ────────────────────────────────────────────────────────────
 
   gateway:
@@ -333,6 +364,8 @@ services:
         condition: service_started
       proof-atom:
         condition: service_started
+      e2e-seed:
+        condition: service_completed_successfully
       temporal-namespace:
         condition: service_completed_successfully
     environment:
@@ -372,6 +405,8 @@ services:
         condition: service_started
       proof-atom:
         condition: service_started
+      e2e-seed:
+        condition: service_completed_successfully
       temporal-namespace:
         condition: service_completed_successfully
     environment:
@@ -395,6 +430,9 @@ services:
   officer-frontend:
     build: apps/frontend/officer
     restart: unless-stopped
+    depends_on:
+      e2e-seed:
+        condition: service_completed_successfully
     environment:
       PORT: 3000
       VITE_GATEWAY_URL: http://localhost:6010
@@ -406,6 +444,9 @@ services:
   contractor-frontend:
     build: apps/frontend/contractor
     restart: unless-stopped
+    depends_on:
+      e2e-seed:
+        condition: service_completed_successfully
     environment:
       PORT: 3000
       VITE_GATEWAY_URL: http://localhost:6010
@@ -417,6 +458,9 @@ services:
   resident-frontend:
     build: apps/frontend/resident
     restart: unless-stopped
+    depends_on:
+      e2e-seed:
+        condition: service_completed_successfully
     environment:
       PORT: 3000
       VITE_GATEWAY_URL: http://localhost:6010

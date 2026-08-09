@@ -17,10 +17,22 @@ setup("officer login", async ({ page }) => {
   await page
     .getByLabel(/password/i)
     .fill(process.env.OFFICER_PASSWORD ?? "Officer@123");
-  await page.getByRole("button", { name: /sign in|log in/i }).click();
+  await page.getByRole("button", { name: /login/i }).click();
 
   // Wait for the dashboard to load after successful login
   await expect(page).toHaveURL(/dashboard/, { timeout: 15_000 });
+
+  const token = await page.evaluate(() => localStorage.getItem("jwt"));
+  if (!token) throw new Error("Officer login did not issue a JWT.");
+  const payload: unknown = JSON.parse(
+    Buffer.from(token.split(".")[1] ?? "", "base64url").toString()
+  );
+  expect(payload).toMatchObject({
+    name: "E2E Officer",
+    email: "amk@townops.dev",
+    role: "OFFICER",
+    contractorId: null,
+  });
 
   await page.context().storageState({ path: AUTH_FILE });
 });

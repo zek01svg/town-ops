@@ -29,13 +29,9 @@ test.describe("Contractor Dashboard", () => {
   test("dashboard only shows cases assigned to logged-in contractor", async ({
     page,
   }) => {
-    // Cases section should be visible (even if empty — contractor may have no cases)
-    await expect(
-      page
-        .locator(".kanban, [data-testid='kanban'], [class*='kanban']")
-        .first()
-        .or(page.getByText(/no cases/i).first())
-    ).toBeVisible({ timeout: 10_000 });
+    const board = page.getByRole("tabpanel", { name: "Kanban Board" });
+    await expect(board).toBeVisible({ timeout: 10_000 });
+    await expect(board.getByText("Empty").first()).toBeVisible();
   });
 
   test("clicking a case card opens audit trail", async ({ page }) => {

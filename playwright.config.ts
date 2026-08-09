@@ -38,6 +38,11 @@ export default defineConfig({
       use: { baseURL: CONTRACTOR_URL },
     },
     {
+      name: "resident-setup",
+      testMatch: /.*resident\.setup\.ts/,
+      use: { baseURL: RESIDENT_URL },
+    },
+    {
       name: "officer",
       testMatch: /.*officer.*\.spec\.ts/,
       use: {
@@ -45,7 +50,7 @@ export default defineConfig({
         baseURL: OFFICER_URL,
         storageState: "playwright/.auth/officer.json",
       },
-      dependencies: ["officer-setup"],
+      dependencies: ["officer-setup", "contractor-setup"],
     },
     {
       name: "contractor",
@@ -63,7 +68,9 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         baseURL: RESIDENT_URL,
+        storageState: "playwright/.auth/resident.json",
       },
+      dependencies: ["resident-setup"],
     },
   ],
 });

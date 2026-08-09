@@ -13,6 +13,7 @@
     "load-env": "dotenv -e .env",
     "db:pull": "bun run load-env -- bun drizzle-kit pull",
     "db:backfill-roles": "bun run load-env -- psql $DATABASE_URL -f scripts/backfill-roles.sql",
+    "db:seed": "bun run load-env -- psql -v ON_ERROR_STOP=1 $DATABASE_URL -f scripts/seed.sql",
     "db:push": "bun run load-env -- bun drizzle-kit push",
     "db:generate": "bun run load-env -- bun drizzle-kit generate",
     "db:migrate": "bun run load-env -- bun drizzle-kit migrate",

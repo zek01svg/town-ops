@@ -17,7 +17,19 @@ const socialProviders =
     : undefined;
 
 export const auth = betterAuth({
-  plugins: [jwt(), openAPI()],
+  plugins: [
+    jwt({
+      jwt: {
+        definePayload: ({ user }) => ({
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          contractorId: user.contractorId ?? null,
+        }),
+      },
+    }),
+    openAPI(),
+  ],
   database: drizzleAdapter(db, { provider: "pg", schema }),
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
