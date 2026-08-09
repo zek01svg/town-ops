@@ -1266,7 +1266,7 @@ export function createGatewayApp({
     const target = `${authAtomUrl}${url.pathname}${url.search}`;
 
     const headers = new Headers();
-    for (const name of ["content-type", "authorization", "cookie"]) {
+    for (const name of ["content-type", "authorization", "cookie", "origin"]) {
       const value = c.req.header(name);
       if (value) headers.set(name, value);
     }

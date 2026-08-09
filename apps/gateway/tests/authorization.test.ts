@@ -192,6 +192,31 @@ describe("GET /api/me", () => {
 });
 
 describe("Auth proxy", () => {
+  it("forwards the browser Origin header to Better Auth", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(Response.json({}));
+    const { app } = createApp(undefined, fetchImpl, {
+      authenticate: rejectingAuth,
+    });
+
+    const response = await app.request("/api/auth/sign-in/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://localhost:3001",
+      },
+      body: JSON.stringify({
+        email: "officer@townops.dev",
+        password: "hunter22",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const proxiedRequest = fetchImpl.mock.calls[0]?.[1];
+    expect(new Headers(proxiedRequest?.headers).get("origin")).toBe(
+      "http://localhost:3001"
+    );
+  });
+
   it("is reachable without Gateway authentication and passes the proxied response through unchanged", async () => {
     const upstreamBody = JSON.stringify({
       user: {

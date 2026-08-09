@@ -4,7 +4,6 @@ import { z } from "zod/v4";
 export const env = createEnv({
   client: {
     VITE_APP_URL: z.url(),
-    VITE_AUTH_URL: z.url(),
     VITE_GATEWAY_URL: z.url(),
   },
   server: {
@@ -14,7 +13,6 @@ export const env = createEnv({
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
     VITE_APP_URL: process.env.VITE_APP_URL ?? `http://localhost:4000`,
-    VITE_AUTH_URL: process.env.VITE_AUTH_URL ?? `http://localhost:5008`,
     VITE_GATEWAY_URL: process.env.VITE_GATEWAY_URL ?? `http://localhost:6010`,
   },
   skipValidation:

@@ -20,7 +20,7 @@ export function useOpenCaseMutation() {
           },
           body: JSON.stringify(input),
         },
-        env.VITE_AUTH_URL
+        env.VITE_GATEWAY_URL
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: caseKeys.all });
@@ -61,7 +61,7 @@ export function useReplaceAppointmentMutation() {
             reason: input.reason,
           }),
         },
-        env.VITE_AUTH_URL
+        env.VITE_GATEWAY_URL
       ),
     onSuccess: (_, vars) => {
       void qc.invalidateQueries({ queryKey: caseKeys.all });
@@ -92,7 +92,7 @@ export function useCancelCaseMutation() {
           },
           body: JSON.stringify({ reason: input.reason }),
         },
-        env.VITE_AUTH_URL
+        env.VITE_GATEWAY_URL
       ),
     onSuccess: (_, vars) => {
       void qc.invalidateQueries({ queryKey: caseKeys.all });
@@ -127,7 +127,7 @@ export function useRepairEffectMutation() {
               : { acknowledgeDuplicateRisk: input.acknowledgeDuplicateRisk }
           ),
         },
-        env.VITE_AUTH_URL
+        env.VITE_GATEWAY_URL
       ),
     onSuccess: (_, input) => {
       void qc.invalidateQueries({ queryKey: caseKeys.effects(input.caseId) });

@@ -69,8 +69,10 @@ test("opens a Case through the Gateway with a camelCase body and a UUID Idempote
   const call = gatewayFetch.mock.calls[0];
   const url = call?.[0];
   const init = call?.[1];
+  const refreshBase = call?.[2];
 
   expect(url).toBe("http://localhost:6010/api/cases");
+  expect(refreshBase).toBe("http://localhost:6010");
   expect(init?.method).toBe("POST");
 
   const headers = new Headers(init?.headers);

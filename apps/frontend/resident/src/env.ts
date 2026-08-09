@@ -10,10 +10,6 @@ export const env: Env = {
     (typeof window !== "undefined"
       ? window.location.origin
       : "http://localhost:5173"),
-  VITE_AUTH_URL:
-    runtimeEnv?.VITE_AUTH_URL ??
-    import.meta.env.VITE_AUTH_URL ??
-    "http://localhost:5008",
   VITE_GATEWAY_URL:
     runtimeEnv?.VITE_GATEWAY_URL ??
     import.meta.env.VITE_GATEWAY_URL ??

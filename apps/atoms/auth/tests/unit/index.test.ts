@@ -1,5 +1,7 @@
+import type { Context, Next } from "hono";
 import { describe, it, expect, vi } from "vitest";
 
+import { auth } from "../../src/auth";
 import { app } from "../../src/index";
 
 // Setup necessary environment variables via hoisted mocks before imports evaluate
@@ -34,8 +36,9 @@ const { dbMock, insertMockChain } = vi.hoisted(() => {
     select: vi.fn().mockReturnValue(selectChain),
     insert: vi.fn().mockReturnValue(insertChain),
     update: vi.fn().mockReturnThis(),
-    transaction: vi.fn().mockImplementation((cb) => cb(mock as any)),
+    transaction: vi.fn(),
   };
+  mock.transaction.mockImplementation((cb) => cb(mock));
 
   return {
     dbMock: mock,
@@ -50,7 +53,7 @@ vi.mock("../../src/database/db", () => ({
 
 vi.mock("@townops/shared-ts", () => ({
   logger: { info: vi.fn(), error: vi.fn() },
-  honoLogger: () => (c: any, next: any) => next(),
+  honoLogger: () => (_c: Context, next: Next) => next(),
   corsOrigins: () => ["http://localhost:5173"],
   initSentry: vi.fn(),
   captureHonoException: vi.fn(),
@@ -73,6 +76,18 @@ describe("Auth Atom API Endpoints", () => {
   });
 
   describe("API Calls to /api/auth", () => {
+    it("explicitly trusts all Compose frontend origins", () => {
+      const composeOrigins = [
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://localhost:3003",
+      ];
+
+      expect(auth.options.trustedOrigins).toEqual(
+        expect.arrayContaining(composeOrigins)
+      );
+    });
+
     it("should simulate sign-up/email with mock db responses", async () => {
       const payload = {
         name: "Test User",

@@ -76,7 +76,7 @@ export const caseQueries = {
         const body = await gatewayFetch(
           `${env.VITE_GATEWAY_URL}/api/cases?pageSize=100`,
           {},
-          env.VITE_AUTH_URL
+          env.VITE_GATEWAY_URL
         );
         const parsed = casesResponseSchema.safeParse(body);
         if (!parsed.success) throw new Error("Invalid cases response");
@@ -100,7 +100,7 @@ export const caseQueries = {
         const body = await gatewayFetch(
           `${env.VITE_GATEWAY_URL}/api/cases/${caseId}/timeline`,
           {},
-          env.VITE_AUTH_URL
+          env.VITE_GATEWAY_URL
         );
         const parsed = timelineResponseSchema.safeParse(body);
         if (!parsed.success) throw new Error("Invalid timeline response");
@@ -131,7 +131,7 @@ export const caseQueries = {
         const body = await gatewayFetch(
           `${env.VITE_GATEWAY_URL}/api/cases/${caseId}`,
           {},
-          env.VITE_AUTH_URL
+          env.VITE_GATEWAY_URL
         );
         const parsed = gatewayCaseSchema.safeParse(body);
         if (!parsed.success) throw new Error("Invalid case response");
@@ -148,7 +148,7 @@ export const caseQueries = {
         const body = await gatewayFetch(
           `${env.VITE_GATEWAY_URL}/api/cases/${caseId}/effects`,
           {},
-          env.VITE_AUTH_URL
+          env.VITE_GATEWAY_URL
         );
         const parsed = effectsSchema.safeParse(body);
         if (!parsed.success) throw new Error("Invalid effects response");

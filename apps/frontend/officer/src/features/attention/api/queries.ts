@@ -25,7 +25,7 @@ export const attentionQueries = {
         const body = await gatewayFetch(
           `${env.VITE_GATEWAY_URL}/api/officer-attention?state=${state}&pageSize=100`,
           {},
-          env.VITE_AUTH_URL
+          env.VITE_GATEWAY_URL
         );
         const parsed = attentionResponseSchema.safeParse(body);
         if (!parsed.success) {

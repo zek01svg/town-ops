@@ -25,7 +25,7 @@ export async function uploadProofFile(
       headers: { "Idempotency-Key": idempotencyKey },
       body: form,
     },
-    env.VITE_AUTH_URL
+    env.VITE_GATEWAY_URL
   );
   return z
     .object({
@@ -42,7 +42,7 @@ export async function getReadyProofItems(caseId: string) {
   const body = await gatewayFetch(
     `${env.VITE_GATEWAY_URL}/api/cases/${caseId}/proof-items`,
     {},
-    env.VITE_AUTH_URL
+    env.VITE_GATEWAY_URL
   );
   return z
     .object({
@@ -82,7 +82,7 @@ export function useAcceptJobMutation() {
             endTime: input.endTime,
           }),
         },
-        env.VITE_AUTH_URL
+        env.VITE_GATEWAY_URL
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
   });
@@ -106,7 +106,7 @@ export function useStartWorkMutation() {
             "Idempotency-Key": input.idempotencyKey,
           },
         },
-        env.VITE_AUTH_URL
+        env.VITE_GATEWAY_URL
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
   });
@@ -136,7 +136,7 @@ export function useCompleteCaseMutation() {
             proofItemIds: input.proofItemIds,
           }),
         },
-        env.VITE_AUTH_URL
+        env.VITE_GATEWAY_URL
       ),
     onSuccess: (_, input) => {
       void qc.invalidateQueries({ queryKey: caseKeys.all });
@@ -168,7 +168,7 @@ export function useNoAccessMutation() {
             "Idempotency-Key": input.idempotencyKey,
           },
         },
-        env.VITE_AUTH_URL
+        env.VITE_GATEWAY_URL
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
   });

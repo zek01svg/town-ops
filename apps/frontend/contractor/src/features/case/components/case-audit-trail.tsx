@@ -101,7 +101,7 @@ function useGatewayAssignment(caseId: string) {
         const body = await gatewayFetch(
           `${env.VITE_GATEWAY_URL}/api/cases/${caseId}`,
           {},
-          env.VITE_AUTH_URL
+          env.VITE_GATEWAY_URL
         );
         const parsed = gatewayCaseSchema.safeParse(body);
         if (!parsed.success) throw new Error("Invalid case response");

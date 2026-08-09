@@ -6,7 +6,7 @@ const DEV_ORIGINS = [
 
 /**
  * Returns allowed CORS origins in development, null in production.
- * Production CORS is handled by Kong — services should skip the middleware
+ * Production CORS is handled by the Gateway — services should skip the middleware
  * entirely when this returns null.
  */
 export function corsOrigins(): string[] | null {

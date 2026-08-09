@@ -82,7 +82,7 @@ async function request<T>(
         ...headers,
       },
     },
-    env.VITE_AUTH_URL
+    env.VITE_GATEWAY_URL
   );
   const envelope = z
     .object({ data: dataSchema, operation: OperationSchema.optional() })
