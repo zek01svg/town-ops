@@ -6,33 +6,11 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
-  changes:
-    name: Check for Changes
-    runs-on: ubuntu-latest
-    outputs:
-      ts: ${{ steps.filter.outputs.ts }}
-      py: ${{ steps.filter.outputs.py }}
-      shared: ${{ steps.filter.outputs.shared }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            ts:
-              - 'apps/**/*.ts'
-              - 'apps/**/*.tsx'
-              - 'apps/**/package.json'
-              - 'packages/**/*.ts'
-              - 'packages/**/*.tsx'
-              - 'frontend/**'
-              - 'pnpm-lock.yaml'
-              - 'tsconfig.json'
-            shared:
-              - '.github/workflows/ci.yml'
-
   scan-for-secrets:
     name: Scan for secrets
     runs-on: ubuntu-latest
@@ -48,9 +26,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   verify-and-test:
-    name: Lint
-    needs: [changes]
-    if: ${{ needs.changes.outputs.ts == 'true' || needs.changes.outputs.shared == 'true' }}
+    name: Verify and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +58,17 @@ jobs:
             ${{ runner.os }}-turbo-
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
-      - name:
+      - name: Run format, lint, and build checks
         run: bun run format:check && bun run lint:check && bun run build
       - name: Run tests
-        run: bun run test
+        run: bun run test -- --concurrency=1
+      - name: Software Composition Analysis (SCA)
+        run: pnpm audit --audit-level=high
+      - name: Initialize CodeQL (SAST)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, typescript
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript,typescript"
