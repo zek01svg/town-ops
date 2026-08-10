@@ -32,6 +32,8 @@ vi.mock("@townops/shared-ts", () => ({
   honoLogger: () => (_c: any, next: any) => next(),
   rabbitmqClient: mockRabbitMQ,
   corsOrigins: () => ["http://localhost:5173"],
+  initSentry: vi.fn(),
+  captureHonoException: vi.fn(),
 }));
 
 // Bypass JWK auth — integration focus is downstream orchestration
@@ -69,59 +71,40 @@ function makeFetch(
     caseVerifyOk?: boolean;
     proofStoreOk?: boolean;
     caseUpdateOk?: boolean;
-  } = {}
+  } = {},
 ) {
-  const {
-    caseExists = true,
-    caseVerifyOk = true,
-    proofStoreOk = true,
-    caseUpdateOk = true,
-  } = opts;
+  const { caseExists = true, caseVerifyOk = true, proofStoreOk = true, caseUpdateOk = true } = opts;
 
-  return vi
-    .fn()
-    .mockImplementation(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = input instanceof Request ? input.url : input.toString();
+  return vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : input.toString();
 
-        // 1. Verify case exists check
-        if (url.includes(`/api/cases/${CASE_ID}`) && init?.method === "GET") {
-          if (!caseVerifyOk)
-            return new Response("Downstream error", { status: 500 });
-          if (!caseExists) return new Response("Not found", { status: 404 });
-          return new Response(
-            JSON.stringify({ cases: [{ id: CASE_ID, status: "IN_PROGRESS" }] }),
-            { status: 200 }
-          );
-        }
+    // 1. Verify case exists check
+    if (url.includes(`/api/cases/${CASE_ID}`) && init?.method === "GET") {
+      if (!caseVerifyOk) return new Response("Downstream error", { status: 500 });
+      if (!caseExists) return new Response("Not found", { status: 404 });
+      return new Response(JSON.stringify({ cases: [{ id: CASE_ID, status: "IN_PROGRESS" }] }), {
+        status: 200,
+      });
+    }
 
-        // 2. Store proof items
-        if (url.includes("/api/proof") && init?.method === "POST") {
-          if (!proofStoreOk)
-            return new Response("Store failed", { status: 500 });
-          return new Response(JSON.stringify({ proof: [{ id: "proof-id" }] }), {
-            status: 200,
-          });
-        }
+    // 2. Store proof items
+    if (url.includes("/api/proof") && init?.method === "POST") {
+      if (!proofStoreOk) return new Response("Store failed", { status: 500 });
+      return new Response(JSON.stringify({ proof: [{ id: "proof-id" }] }), {
+        status: 200,
+      });
+    }
 
-        // 3. Update case status
-        if (
-          url.includes("/api/cases/update-case-status") &&
-          init?.method === "PUT"
-        ) {
-          if (!caseUpdateOk)
-            return new Response("Update failed", { status: 500 });
-          return new Response(
-            JSON.stringify({ cases: { id: CASE_ID, status: "completed" } }),
-            {
-              status: 200,
-            }
-          );
-        }
+    // 3. Update case status
+    if (url.includes("/api/cases/update-case-status") && init?.method === "PUT") {
+      if (!caseUpdateOk) return new Response("Update failed", { status: 500 });
+      return new Response(JSON.stringify({ cases: { id: CASE_ID, status: "completed" } }), {
+        status: 200,
+      });
+    }
 
-        return new Response("Not found", { status: 404 });
-      }
-    );
+    return new Response("Not found", { status: 404 });
+  });
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -150,7 +133,7 @@ describe("Close Case Composite - Integration Tests", () => {
     expect(mockRabbitMQ.publish).toHaveBeenCalledWith(
       "townops.events",
       "job.done",
-      expect.objectContaining({ caseId: CASE_ID })
+      expect.objectContaining({ caseId: CASE_ID }),
     );
   });
 

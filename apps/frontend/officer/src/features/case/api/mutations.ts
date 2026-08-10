@@ -12,9 +12,9 @@ export function useOpenCaseMutation() {
     mutationFn: async (input: OpenCaseInput) => {
       const res = await openCaseClient.api.cases["open-case"].$post(
         { json: input },
-        { headers: getAuthHeader() }
+        { headers: getAuthHeader() },
       );
-      if (res.status === 401) clearAuth();
+      if ((res.status as number) === 401) clearAuth();
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as any).message ?? `Error ${res.status}`);
@@ -39,10 +39,11 @@ export function useHandleBreachMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: HandleBreachInput) => {
-      const res = await handleBreachClient.api.assignments[
-        "handle-breach"
-      ].$put({ json: input }, { headers: getAuthHeader() });
-      if (res.status === 401) clearAuth();
+      const res = await handleBreachClient.api.assignments["handle-breach"].$put(
+        { json: input },
+        { headers: getAuthHeader() },
+      );
+      if ((res.status as number) === 401) clearAuth();
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as any).message ?? `Error ${res.status}`);

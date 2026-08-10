@@ -45,6 +45,8 @@ vi.mock("@townops/shared-ts", () => {
       await next();
     },
     corsOrigins: () => ["http://localhost:5173"],
+    initSentry: vi.fn(),
+    captureHonoException: vi.fn(),
   };
 });
 

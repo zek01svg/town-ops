@@ -1,12 +1,14 @@
 import path from "path";
+
 import { defineConfig, devices } from "@playwright/test";
+
 import dotenv from "../../node_modules/dotenv/lib/main.js";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env"), quiet: true });
 
-const OFFICER_URL    = process.env.OFFICER_URL    ?? "http://localhost:4001";
+const OFFICER_URL = process.env.OFFICER_URL ?? "http://localhost:4001";
 const CONTRACTOR_URL = process.env.CONTRACTOR_URL ?? "http://localhost:4000";
-const RESIDENT_URL   = process.env.RESIDENT_URL   ?? "http://localhost:4002";
+const RESIDENT_URL = process.env.RESIDENT_URL ?? "http://localhost:4002";
 
 export default defineConfig({
   testDir: "../../tests/e2e",

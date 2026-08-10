@@ -6,6 +6,7 @@ vi.hoisted(() => {
   process.env.CASE_ATOM_URL = "http://case-atom";
   process.env.ASSIGNMENT_ATOM_URL = "http://assignment-atom";
   process.env.METRICS_ATOM_URL = "http://metrics-atom";
+  process.env.CONTRACTOR_ATOM_URL = "http://contractor-atom";
   process.env.CONTRACTOR_API_URL = "http://contractor-api";
   process.env.PORT = "6005";
   process.env.RABBITMQ_URL = "amqp://guest:guest@localhost:5672";
@@ -28,6 +29,7 @@ vi.mock("@townops/shared-ts", () => ({
   corsOrigins: () => ["http://localhost:5173"],
   initSentry: vi.fn(),
   captureHonoException: vi.fn(),
+  captureException: vi.fn(),
 }));
 
 // Mock jwk middleware to bypass auth
@@ -59,12 +61,9 @@ const validBody = {
 const mockCaseUpdate = vi.fn();
 const mockAssignmentUpdate = vi.fn();
 const mockMetricsCreate = vi.fn();
+const mockContractorSearch = vi.fn();
 
-function buildMockClients(
-  caseOk: boolean,
-  assignmentOk: boolean,
-  metricsOk: boolean
-) {
+function buildMockClients(caseOk: boolean, assignmentOk: boolean, metricsOk: boolean) {
   const caseClient = {
     api: {
       cases: {
@@ -122,6 +121,15 @@ function buildMockClients(
 describe("Handle Breach Composite - Unit Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockContractorSearch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        contractors: [{ id: "backup-worker-01" }],
+      }),
+    });
+    (hc as any).mockReturnValue({
+      api: { contractors: { search: { $get: mockContractorSearch } } },
+    });
   });
 
   describe("GET /health", () => {
@@ -217,42 +225,42 @@ describe("Handle Breach Composite - Unit Tests", () => {
         assignment_id: "aaa-111",
         case_id: "bbb-222",
         contractor_id: "contractor-old",
+        postal_code: "560201",
+        category_code: "PL",
       };
 
-      globalThis.fetch = vi
-        .fn()
-        .mockImplementation(async (url: string, options?: RequestInit) => {
-          if (
-            url.includes(`/api/assignments/${event.case_id}`) &&
-            (!options?.method || options.method === "GET")
-          ) {
-            return {
-              ok: true,
-              json: async () => ({
-                assignments: {
-                  id: event.assignment_id,
-                  status: "PENDING_ACCEPTANCE",
-                },
-              }),
-            };
-          }
-          if (url.includes("/contractors/backup")) {
-            return {
-              ok: true,
-              json: async () => ({ worker_id: "backup-worker-01" }),
-            };
-          }
-          if (url.includes("/api/assignments/") && options?.method === "PUT") {
-            return { ok: true, json: async () => ({}) };
-          }
-          if (url.includes("/api/cases/update-case-status")) {
-            return { ok: true, json: async () => ({}) };
-          }
-          if (url.includes("/api/metrics")) {
-            return { ok: true, json: async () => ({}) };
-          }
-          return { ok: false };
-        }) as unknown as typeof fetch;
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string, options?: RequestInit) => {
+        if (
+          url.includes(`/api/assignments/${event.case_id}`) &&
+          (!options?.method || options.method === "GET")
+        ) {
+          return {
+            ok: true,
+            json: async () => ({
+              assignments: {
+                id: event.assignment_id,
+                status: "PENDING_ACCEPTANCE",
+              },
+            }),
+          };
+        }
+        if (url.includes("/contractors/backup")) {
+          return {
+            ok: true,
+            json: async () => ({ worker_id: "backup-worker-01" }),
+          };
+        }
+        if (url.includes("/api/assignments/") && options?.method === "PUT") {
+          return { ok: true, json: async () => ({}) };
+        }
+        if (url.includes("/api/cases/update-case-status")) {
+          return { ok: true, json: async () => ({}) };
+        }
+        if (url.includes("/api/metrics")) {
+          return { ok: true, json: async () => ({}) };
+        }
+        return { ok: false };
+      }) as unknown as typeof fetch;
 
       await handleSlaBreach(JSON.stringify(event));
 
@@ -263,15 +271,13 @@ describe("Handle Breach Composite - Unit Tests", () => {
         expect.objectContaining({
           caseId: event.case_id,
           assignmentId: event.assignment_id,
-        })
+        }),
       );
     });
 
     it("should log error and return without throwing for bad payload", async () => {
       // Missing assignment_id and case_id — invalid payload
-      await expect(
-        handleSlaBreach(JSON.stringify({ some: "garbage" }))
-      ).resolves.toBeUndefined();
+      await expect(handleSlaBreach(JSON.stringify({ some: "garbage" }))).resolves.toBeUndefined();
     });
 
     it("should ignore breach if assignment already accepted", async () => {
@@ -279,38 +285,34 @@ describe("Handle Breach Composite - Unit Tests", () => {
         assignment_id: "aaa-accepted",
         case_id: "bbb-accepted",
         contractor_id: "contractor-old",
+        postal_code: "560201",
+        category_code: "PL",
       };
 
-      globalThis.fetch = vi
-        .fn()
-        .mockImplementation(async (url: string, options?: RequestInit) => {
-          if (
-            url.includes(`/api/assignments/${event.case_id}`) &&
-            (!options?.method || options.method === "GET")
-          ) {
-            return {
-              ok: true,
-              json: async () => ({
-                assignments: {
-                  id: event.assignment_id,
-                  status: "ACCEPTED",
-                },
-              }),
-            };
-          }
-          return { ok: false };
-        }) as unknown as typeof fetch;
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string, options?: RequestInit) => {
+        if (
+          url.includes(`/api/assignments/${event.case_id}`) &&
+          (!options?.method || options.method === "GET")
+        ) {
+          return {
+            ok: true,
+            json: async () => ({
+              assignments: {
+                id: event.assignment_id,
+                status: "ACCEPTED",
+              },
+            }),
+          };
+        }
+        return { ok: false };
+      }) as unknown as typeof fetch;
 
-      await expect(
-        handleSlaBreach(JSON.stringify(event))
-      ).resolves.toBeUndefined();
+      await expect(handleSlaBreach(JSON.stringify(event))).resolves.toBeUndefined();
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(rabbitmqClient.publish).not.toHaveBeenCalled();
       const calls = (globalThis.fetch as any).mock.calls as Array<[string]>;
-      const calledBackup = calls.some((call) =>
-        call[0].includes("/contractors/backup")
-      );
+      const calledBackup = calls.some((call) => call[0].includes("/contractors/backup"));
       expect(calledBackup).toBe(false);
     });
 
@@ -319,151 +321,160 @@ describe("Handle Breach Composite - Unit Tests", () => {
         assignment_id: "aaa-333",
         case_id: "bbb-444",
         contractor_id: "contractor-old",
+        postal_code: "560201",
+        category_code: "PL",
       };
 
-      globalThis.fetch = vi
-        .fn()
-        .mockImplementation(async (url: string, options?: RequestInit) => {
-          if (
-            url.includes(`/api/assignments/${event.case_id}`) &&
-            (!options?.method || options.method === "GET")
-          ) {
-            return {
-              ok: true,
-              json: async () => ({
-                assignments: {
-                  id: event.assignment_id,
-                  status: "PENDING_ACCEPTANCE",
-                },
-              }),
-            };
-          }
-          if (url.includes("/contractors/backup")) {
-            return { ok: false, status: 503 };
-          }
-          return { ok: false };
-        }) as unknown as typeof fetch;
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string, options?: RequestInit) => {
+        if (
+          url.includes(`/api/assignments/${event.case_id}`) &&
+          (!options?.method || options.method === "GET")
+        ) {
+          return {
+            ok: true,
+            json: async () => ({
+              assignments: {
+                id: event.assignment_id,
+                status: "PENDING_ACCEPTANCE",
+              },
+            }),
+          };
+        }
+        if (url.includes("/contractors/backup")) {
+          return { ok: false, status: 503 };
+        }
+        return { ok: false };
+      }) as unknown as typeof fetch;
+
+      mockContractorSearch.mockResolvedValue({ ok: false, status: 503 });
 
       await expect(handleSlaBreach(JSON.stringify(event))).rejects.toThrow(
-        "Backup contractor query failed"
+        "Contractor search failed: HTTP 503",
       );
     });
 
     it("should throw when assignment update fails (step 2)", async () => {
-      const event = { assignment_id: "aaa-step2", case_id: "bbb-step2" };
+      const event = {
+        assignment_id: "aaa-step2",
+        case_id: "bbb-step2",
+        postal_code: "560201",
+        category_code: "PL",
+      };
 
-      globalThis.fetch = vi
-        .fn()
-        .mockImplementation(async (url: string, options?: RequestInit) => {
-          if (
-            url.includes(`/api/assignments/${event.case_id}`) &&
-            (!options?.method || options.method === "GET")
-          ) {
-            return {
-              ok: true,
-              json: async () => ({
-                assignments: {
-                  id: event.assignment_id,
-                  status: "PENDING_ACCEPTANCE",
-                },
-              }),
-            };
-          }
-          if (url.includes("/contractors/backup")) {
-            return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
-          }
-          if (url.includes("/api/assignments/") && options?.method === "PUT") {
-            return { ok: false, status: 500 };
-          }
-          return { ok: false };
-        }) as unknown as typeof fetch;
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string, options?: RequestInit) => {
+        if (
+          url.includes(`/api/assignments/${event.case_id}`) &&
+          (!options?.method || options.method === "GET")
+        ) {
+          return {
+            ok: true,
+            json: async () => ({
+              assignments: {
+                id: event.assignment_id,
+                status: "PENDING_ACCEPTANCE",
+              },
+            }),
+          };
+        }
+        if (url.includes("/contractors/backup")) {
+          return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
+        }
+        if (url.includes("/api/assignments/") && options?.method === "PUT") {
+          return { ok: false, status: 500 };
+        }
+        return { ok: false };
+      }) as unknown as typeof fetch;
 
       await expect(handleSlaBreach(JSON.stringify(event))).rejects.toThrow(
-        "Assignment reassignment failed"
+        "Assignment reassignment failed",
       );
     });
 
     it("should throw when case escalation fails (step 3)", async () => {
-      const event = { assignment_id: "aaa-step3", case_id: "bbb-step3" };
+      const event = {
+        assignment_id: "aaa-step3",
+        case_id: "bbb-step3",
+        postal_code: "560201",
+        category_code: "PL",
+      };
 
-      globalThis.fetch = vi
-        .fn()
-        .mockImplementation(async (url: string, options?: RequestInit) => {
-          if (
-            url.includes(`/api/assignments/${event.case_id}`) &&
-            (!options?.method || options.method === "GET")
-          ) {
-            return {
-              ok: true,
-              json: async () => ({
-                assignments: {
-                  id: event.assignment_id,
-                  status: "PENDING_ACCEPTANCE",
-                },
-              }),
-            };
-          }
-          if (url.includes("/contractors/backup")) {
-            return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
-          }
-          if (url.includes("/api/assignments/") && options?.method === "PUT") {
-            return { ok: true, json: async () => ({}) };
-          }
-          if (url.includes("/api/cases/update-case-status")) {
-            return { ok: false, status: 500 };
-          }
-          return { ok: false };
-        }) as unknown as typeof fetch;
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string, options?: RequestInit) => {
+        if (
+          url.includes(`/api/assignments/${event.case_id}`) &&
+          (!options?.method || options.method === "GET")
+        ) {
+          return {
+            ok: true,
+            json: async () => ({
+              assignments: {
+                id: event.assignment_id,
+                status: "PENDING_ACCEPTANCE",
+              },
+            }),
+          };
+        }
+        if (url.includes("/contractors/backup")) {
+          return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
+        }
+        if (url.includes("/api/assignments/") && options?.method === "PUT") {
+          return { ok: true, json: async () => ({}) };
+        }
+        if (url.includes("/api/cases/update-case-status")) {
+          return { ok: false, status: 500 };
+        }
+        return { ok: false };
+      }) as unknown as typeof fetch;
 
       await expect(handleSlaBreach(JSON.stringify(event))).rejects.toThrow(
-        "Case escalation failed"
+        "Case escalation failed",
       );
     });
 
     it("should throw when penalty recording fails (step 4)", async () => {
-      const event = { assignment_id: "aaa-step4", case_id: "bbb-step4" };
+      const event = {
+        assignment_id: "aaa-step4",
+        case_id: "bbb-step4",
+        postal_code: "560201",
+        category_code: "PL",
+      };
 
-      globalThis.fetch = vi
-        .fn()
-        .mockImplementation(async (url: string, options?: RequestInit) => {
-          if (
-            url.includes(`/api/assignments/${event.case_id}`) &&
-            (!options?.method || options.method === "GET")
-          ) {
-            return {
-              ok: true,
-              json: async () => ({
-                assignments: {
-                  id: event.assignment_id,
-                  status: "PENDING_ACCEPTANCE",
-                },
-              }),
-            };
-          }
-          if (url.includes("/contractors/backup")) {
-            return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
-          }
-          if (url.includes("/api/assignments/") && options?.method === "PUT") {
-            return { ok: true, json: async () => ({}) };
-          }
-          if (url.includes("/api/cases/update-case-status")) {
-            return { ok: true, json: async () => ({}) };
-          }
-          if (url.includes("/api/metrics")) {
-            return { ok: false, status: 500 };
-          }
-          return { ok: false };
-        }) as unknown as typeof fetch;
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string, options?: RequestInit) => {
+        if (
+          url.includes(`/api/assignments/${event.case_id}`) &&
+          (!options?.method || options.method === "GET")
+        ) {
+          return {
+            ok: true,
+            json: async () => ({
+              assignments: {
+                id: event.assignment_id,
+                status: "PENDING_ACCEPTANCE",
+              },
+            }),
+          };
+        }
+        if (url.includes("/contractors/backup")) {
+          return { ok: true, json: async () => ({ worker_id: "backup-01" }) };
+        }
+        if (url.includes("/api/assignments/") && options?.method === "PUT") {
+          return { ok: true, json: async () => ({}) };
+        }
+        if (url.includes("/api/cases/update-case-status")) {
+          return { ok: true, json: async () => ({}) };
+        }
+        if (url.includes("/api/metrics")) {
+          return { ok: false, status: 500 };
+        }
+        return { ok: false };
+      }) as unknown as typeof fetch;
 
       await expect(handleSlaBreach(JSON.stringify(event))).rejects.toThrow(
-        "Penalty recording failed"
+        "Penalty recording failed",
       );
     });
 
     it("should return without throwing on unparseable JSON", async () => {
-      await expect(
-        handleSlaBreach("{not-valid-json}")
-      ).resolves.toBeUndefined();
+      await expect(handleSlaBreach("{not-valid-json}")).resolves.toBeUndefined();
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(rabbitmqClient.publish).not.toHaveBeenCalled();
     });

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export const openCaseSchema = z.object({
   resident_id: z.string().uuid("Must be a valid UUID"),

@@ -1,22 +1,26 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { env } from "@/env";
-import {
-  acceptJobClient,
-  closeCaseClient,
-  handleNoAccessClient,
-  rescheduleJobClient,
-} from "@/libr/api";
+import { acceptJobClient, closeCaseClient, rescheduleJobClient } from "@/libr/api";
 import { clearAuth, getAuthHeader } from "@/libr/auth-token";
 
 import { caseKeys } from "./query-keys";
+
+async function throwIfRequestFailed(res: Response) {
+  if (res.ok) return;
+  if (res.status === 401) clearAuth();
+  const error = (await res.json().catch(() => ({}))) as {
+    message?: string;
+  };
+  throw new Error(error.message ?? `Error ${res.status}`);
+}
 
 export async function uploadProofFile(
   file: File,
   caseId: string,
   uploaderId: string,
   type: "before" | "after",
-  remarks?: string
+  remarks?: string,
 ): Promise<string> {
   const form = new FormData();
   form.append("file", file);
@@ -49,13 +53,9 @@ export function useAcceptJobMutation() {
     mutationFn: async (input: AcceptJobInput) => {
       const res = await acceptJobClient.api.jobs["accept-job"].$put(
         { json: input },
-        { headers: getAuthHeader() }
+        { headers: getAuthHeader() },
       );
-      if (res.status === 401) clearAuth();
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).message ?? `Error ${res.status}`);
-      }
+      await throwIfRequestFailed(res);
       return res.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
@@ -79,13 +79,9 @@ export function useCloseCaseMutation() {
     mutationFn: async (input: CloseCaseInput) => {
       const res = await closeCaseClient.api.cases["close-case"].$post(
         { json: input },
-        { headers: getAuthHeader() }
+        { headers: getAuthHeader() },
       );
-      if (res.status === 401) clearAuth();
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).message ?? `Error ${res.status}`);
-      }
+      await throwIfRequestFailed(res);
       return res.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
@@ -107,13 +103,9 @@ export function useRescheduleJobMutation() {
     mutationFn: async (input: RescheduleJobInput) => {
       const res = await rescheduleJobClient.api.cases["reschedule-job"].$post(
         { json: input },
-        { headers: getAuthHeader() }
+        { headers: getAuthHeader() },
       );
-      if (res.status === 401) clearAuth();
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).message ?? `Error ${res.status}`);
-      }
+      await throwIfRequestFailed(res);
       return res.json();
     },
     onSuccess: (_, vars) => {
@@ -124,9 +116,9 @@ export function useRescheduleJobMutation() {
 }
 
 export type NoAccessInput = {
-  case_id: string;
-  assignment_id: string;
-  contractor_id: string;
+  caseId: string;
+  assignmentId: string;
+  contractorId: string;
   reason?: string;
 };
 
@@ -134,15 +126,12 @@ export function useNoAccessMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: NoAccessInput) => {
-      const res = await handleNoAccessClient.api.cases["no-access"].$put(
-        { json: input },
-        { headers: getAuthHeader() }
-      );
-      if (res.status === 401) clearAuth();
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).message ?? `Error ${res.status}`);
-      }
+      const res = await fetch(`${env.VITE_HANDLE_NO_ACCESS_URL}/api/cases/no-access`, {
+        method: "PUT",
+        headers: { ...getAuthHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      await throwIfRequestFailed(res);
       return res.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),

@@ -25,9 +25,7 @@ const { dbMock } = vi.hoisted(() => {
     values: vi.fn().mockReturnThis(),
     returning: vi
       .fn()
-      .mockResolvedValue([
-        { id: "123", email: "test@example.com", name: "Test User" },
-      ]),
+      .mockResolvedValue([{ id: "123", email: "test@example.com", name: "Test User" }]),
   };
 
   const mock = {
@@ -46,6 +44,14 @@ const { dbMock } = vi.hoisted(() => {
 
 vi.mock("../../src/database/db", () => ({
   default: dbMock,
+}));
+
+vi.mock("@townops/shared-ts", () => ({
+  logger: { info: vi.fn(), error: vi.fn() },
+  honoLogger: () => (c: any, next: any) => next(),
+  corsOrigins: () => ["http://localhost:5173"],
+  initSentry: vi.fn(),
+  captureHonoException: vi.fn(),
 }));
 
 describe("Auth Atom API Endpoints", () => {

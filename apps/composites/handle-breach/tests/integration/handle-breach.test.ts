@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 // 1. Set up environment via vi.hoisted
 vi.hoisted(() => {
   process.env.PORT = "6005";
-  process.env.CONTRACTOR_API_URL = "http://contractor-api";
+  process.env.CONTRACTOR_ATOM_URL = "http://contractor-api";
   process.env.CASE_ATOM_URL = "http://case-atom";
   process.env.ASSIGNMENT_ATOM_URL = "http://assignment-atom";
   process.env.METRICS_ATOM_URL = "http://metrics-atom";
@@ -56,37 +56,50 @@ describe("Handle Breach Composite - RabbitMQ Integration", () => {
     const ASSIGNMENT_ID = "assign-integration-001";
 
     // Mock all downstream HTTP calls
-    globalThis.fetch = vi
-      .fn()
-      .mockImplementation(async (url: string, options?: RequestInit) => {
-        if (url.includes(`/api/assignments/${CASE_ID}`) && !options?.method) {
-          return {
-            ok: true,
-            json: async () => ({
-              assignments: {
-                id: ASSIGNMENT_ID,
-                status: "PENDING_ACCEPTANCE",
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string, options?: RequestInit) => {
+      if (url.includes(`/api/assignments/${CASE_ID}`) && !options?.method) {
+        return {
+          ok: true,
+          json: async () => ({
+            assignments: {
+              id: ASSIGNMENT_ID,
+              status: "PENDING_ACCEPTANCE",
+            },
+          }),
+        };
+      }
+      if (url.includes("/contractors/search")) {
+        return {
+          ok: true,
+          json: async () => ({
+            contractors: [
+              {
+                id: "contractor-old-01",
+                name: "Current Contractor",
+                email: "current@example.com",
+                contactNum: null,
               },
-            }),
-          };
-        }
-        if (url.includes("/contractors/backup")) {
-          return {
-            ok: true,
-            json: async () => ({ worker_id: "backup-worker-int-01" }),
-          };
-        }
-        if (url.includes("/api/assignments/") && options?.method === "PUT") {
-          return { ok: true, json: async () => ({ assignments: {} }) };
-        }
-        if (url.includes("/api/cases/update-case-status")) {
-          return { ok: true, json: async () => ({ cases: {} }) };
-        }
-        if (url.includes("/api/metrics")) {
-          return { ok: true, json: async () => ({ metric: {} }) };
-        }
-        return { ok: false };
-      }) as unknown as typeof fetch;
+              {
+                id: "backup-worker-int-01",
+                name: "Backup Contractor",
+                email: "backup@example.com",
+                contactNum: null,
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/api/assignments/") && options?.method === "PUT") {
+        return { ok: true, json: async () => ({ assignments: {} }) };
+      }
+      if (url.includes("/api/cases/update-case-status")) {
+        return { ok: true, json: async () => ({ cases: {} }) };
+      }
+      if (url.includes("/api/metrics")) {
+        return { ok: true, json: async () => ({ metric: {} }) };
+      }
+      return { ok: false };
+    }) as unknown as typeof fetch;
 
     // Listen for published event
     let receivedPayload: any = null;
@@ -100,7 +113,9 @@ describe("Handle Breach Composite - RabbitMQ Integration", () => {
         assignment_id: ASSIGNMENT_ID,
         case_id: CASE_ID,
         contractor_id: "contractor-old-01",
-      })
+        postal_code: "560201",
+        category_code: "PL",
+      }),
     );
 
     // Wait for async AMQP delivery

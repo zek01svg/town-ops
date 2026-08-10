@@ -23,6 +23,8 @@ vi.mock("@townops/shared-ts", () => ({
     publish: vi.fn().mockResolvedValue(true),
   },
   corsOrigins: () => ["http://localhost:5173"],
+  initSentry: vi.fn(),
+  captureHonoException: vi.fn(),
 }));
 
 // Mock jwk middleware to bypass auth
@@ -53,11 +55,7 @@ const mockAssignmentUpdate = vi.fn();
 const mockCaseUpdate = vi.fn();
 const mockAppointmentCreate = vi.fn();
 
-function buildMockClients(
-  assignmentOk: boolean,
-  caseOk: boolean,
-  appointmentOk: boolean
-) {
+function buildMockClients(assignmentOk: boolean, caseOk: boolean, appointmentOk: boolean) {
   const assignmentClient = {
     api: {
       assignments: {
@@ -199,7 +197,7 @@ describe("Accept Job Composite - Unit Tests", () => {
         expect.objectContaining({
           json: expect.objectContaining({ status: "PENDING_ACCEPTANCE" }),
         }),
-        expect.anything()
+        expect.anything(),
       );
       expect(mockAppointmentCreate).not.toHaveBeenCalled();
     });
@@ -225,7 +223,7 @@ describe("Accept Job Composite - Unit Tests", () => {
         expect.objectContaining({
           json: expect.objectContaining({ status: "dispatched" }),
         }),
-        expect.anything()
+        expect.anything(),
       );
     });
   });

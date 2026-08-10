@@ -17,7 +17,7 @@ import type { CaseCategory } from "../validation-schemas";
 
 async function geocodePostal(postal: string): Promise<string | null> {
   const res = await fetch(
-    `https://www.onemap.gov.sg/api/common/elastic/search?searchVal=${postal}&returnGeom=N&getAddrDetails=Y&pageNum=1`
+    `https://www.onemap.gov.sg/api/common/elastic/search?searchVal=${postal}&returnGeom=N&getAddrDetails=Y&pageNum=1`,
   );
   if (!res.ok) return null;
   const data = await res.json();
@@ -51,7 +51,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
       },
     },
     onSubmit: async ({ value }) => {
-      await openCase.mutateAsync(value);
+      const parsed = openCaseSchema.safeParse(value);
+      if (!parsed.success) return;
+      await openCase.mutateAsync(parsed.data);
       setOpen(false);
     },
   });
@@ -79,9 +81,7 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               className="rounded-none border-border bg-surface-container"
             />
             {field.state.meta.errors ? (
-              <em className="text-xs text-destructive">
-                {field.state.meta.errors.join(", ")}
-              </em>
+              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
             ) : null}
           </div>
         )}
@@ -112,9 +112,7 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               </SelectContent>
             </Select>
             {field.state.meta.errors.length > 0 ? (
-              <em className="text-xs text-destructive">
-                {field.state.meta.errors.join(", ")}
-              </em>
+              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
             ) : null}
           </div>
         )}
@@ -150,8 +148,7 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               onChange={(e) => {
                 const val = e.target.value.replace(/\D/g, "");
                 field.handleChange(val);
-                if (geocodeTimeout.current)
-                  clearTimeout(geocodeTimeout.current);
+                if (geocodeTimeout.current) clearTimeout(geocodeTimeout.current);
                 if (val.length === 6) {
                   geocodeTimeout.current = setTimeout(async () => {
                     setGeocoding(true);
@@ -215,9 +212,7 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               ))}
             </div>
             {field.state.meta.errors ? (
-              <em className="text-xs text-destructive">
-                {field.state.meta.errors.join(", ")}
-              </em>
+              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
             ) : null}
           </div>
         )}

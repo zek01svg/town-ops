@@ -30,6 +30,8 @@ vi.mock("@townops/shared-ts", () => ({
   honoLogger: () => (_c: any, next: any) => next(),
   rabbitmqClient: mockRabbitMQ,
   corsOrigins: () => ["http://localhost:5173"],
+  initSentry: vi.fn(),
+  captureHonoException: vi.fn(),
 }));
 
 // Bypass JWK auth — integration focus is downstream orchestration
@@ -66,7 +68,7 @@ function makeFetch(
     rollbackAssignmentOk?: boolean;
     rollbackCaseOk?: boolean;
     delay?: number;
-  } = {}
+  } = {},
 ) {
   const {
     assignmentOk = true,
@@ -104,7 +106,7 @@ function makeFetch(
         JSON.stringify({
           assignments: { id: ASSIGNMENT_ID, status: "ACCEPTED" },
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -120,10 +122,10 @@ function makeFetch(
           status: 500,
         });
       }
-      return new Response(
-        JSON.stringify({ cases: { id: CASE_ID, status: "in_progress" } }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ cases: { id: CASE_ID, status: "in_progress" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     if (url.includes("/api/appointments")) {
@@ -132,10 +134,10 @@ function makeFetch(
           status: 500,
         });
       }
-      return new Response(
-        JSON.stringify({ appointment: { id: APPT_ID, caseId: CASE_ID } }),
-        { status: 201, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ appointment: { id: APPT_ID, caseId: CASE_ID } }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     return new Response(JSON.stringify({ error: "unexpected url" }), {
@@ -244,7 +246,7 @@ describe("Accept Job Composite - Integration Tests", () => {
 
       const calls = (globalThis.fetch as any).mock.calls;
       const assignmentCall = calls.find((call: any[]) =>
-        call[0].toString().includes(`/api/assignments/${ASSIGNMENT_ID}/status`)
+        call[0].toString().includes(`/api/assignments/${ASSIGNMENT_ID}/status`),
       );
       expect(assignmentCall).toBeDefined();
       const init = assignmentCall?.[1];
@@ -265,7 +267,7 @@ describe("Accept Job Composite - Integration Tests", () => {
 
       const calls = (globalThis.fetch as any).mock.calls;
       const caseCall = calls.find((call: any[]) =>
-        call[0].toString().includes("/api/cases/update-case-status")
+        call[0].toString().includes("/api/cases/update-case-status"),
       );
       expect(caseCall).toBeDefined();
       const init = caseCall?.[1];
@@ -286,7 +288,7 @@ describe("Accept Job Composite - Integration Tests", () => {
 
       const calls = (globalThis.fetch as any).mock.calls;
       const apptCall = calls.find((call: any[]) =>
-        call[0].toString().includes("/api/appointments")
+        call[0].toString().includes("/api/appointments"),
       );
       expect(apptCall).toBeDefined();
       const init = apptCall?.[1];
@@ -404,7 +406,7 @@ describe("Accept Job Composite - Integration Tests", () => {
 
       const calls = (globalThis.fetch as any).mock.calls;
       const assignmentCalls = calls.filter((call: any[]) =>
-        call[0].toString().includes(`/api/assignments/${ASSIGNMENT_ID}/status`)
+        call[0].toString().includes(`/api/assignments/${ASSIGNMENT_ID}/status`),
       );
       expect(assignmentCalls).toHaveLength(2);
 
@@ -416,9 +418,7 @@ describe("Accept Job Composite - Integration Tests", () => {
       // Second call: rollback (status=pending)
       const secondCallBody = assignmentCalls[1]?.[1]?.body;
       expect(secondCallBody).toBeDefined();
-      expect(JSON.parse(secondCallBody as string).status).toBe(
-        "PENDING_ACCEPTANCE"
-      );
+      expect(JSON.parse(secondCallBody as string).status).toBe("PENDING_ACCEPTANCE");
     });
 
     it("handles failure during rollback gracefully (logs error but returns original error)", async () => {
@@ -466,14 +466,12 @@ describe("Accept Job Composite - Integration Tests", () => {
 
       const calls = (globalThis.fetch as any).mock.calls;
       const assignmentCalls = calls.filter((call: any[]) =>
-        call[0].toString().includes(`/api/assignments/${ASSIGNMENT_ID}/status`)
+        call[0].toString().includes(`/api/assignments/${ASSIGNMENT_ID}/status`),
       );
       expect(assignmentCalls).toHaveLength(2);
       const rollbackBody = assignmentCalls[1]?.[1]?.body;
       expect(rollbackBody).toBeDefined();
-      expect(JSON.parse(rollbackBody as string).status).toBe(
-        "PENDING_ACCEPTANCE"
-      );
+      expect(JSON.parse(rollbackBody as string).status).toBe("PENDING_ACCEPTANCE");
     });
 
     it("calls case atom twice — step 2 then rollback to dispatched", async () => {
@@ -487,7 +485,7 @@ describe("Accept Job Composite - Integration Tests", () => {
 
       const calls = (globalThis.fetch as any).mock.calls;
       const caseCalls = calls.filter((call: any[]) =>
-        call[0].toString().includes("/api/cases/update-case-status")
+        call[0].toString().includes("/api/cases/update-case-status"),
       );
       expect(caseCalls).toHaveLength(2);
       const rollbackBody = caseCalls[1]?.[1]?.body;
@@ -524,9 +522,7 @@ describe("Accept Job Composite - Integration Tests", () => {
       const calls = (globalThis.fetch as any).mock.calls;
       const assignmentRollbackCall = calls.find(
         (call: any[], idx: number) =>
-          call[0]
-            .toString()
-            .includes(`/api/assignments/${ASSIGNMENT_ID}/status`) && idx > 0
+          call[0].toString().includes(`/api/assignments/${ASSIGNMENT_ID}/status`) && idx > 0,
       );
       expect(assignmentRollbackCall).toBeDefined();
     });

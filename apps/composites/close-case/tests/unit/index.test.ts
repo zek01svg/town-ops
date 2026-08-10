@@ -22,6 +22,8 @@ vi.mock("@townops/shared-ts", () => ({
     publish: vi.fn().mockResolvedValue(true),
   },
   corsOrigins: () => ["http://localhost:5173"],
+  initSentry: vi.fn(),
+  captureHonoException: vi.fn(),
 }));
 
 // Mock jwk middleware to bypass auth
@@ -63,7 +65,7 @@ function buildMockClients(
   caseGetOk: boolean,
   caseGetStatus: number,
   proofOk: boolean,
-  caseUpdateOk: boolean
+  caseUpdateOk: boolean,
 ) {
   const caseClient = {
     api: {
@@ -148,7 +150,7 @@ describe("Close Case Composite - Unit Tests", () => {
       expect(rabbitmqClient.publish).toHaveBeenCalledWith(
         "townops.events",
         "job.done",
-        expect.objectContaining({ caseId: validBody.case_id })
+        expect.objectContaining({ caseId: validBody.case_id }),
       );
     });
 
@@ -239,9 +241,7 @@ describe("Close Case Composite - Unit Tests", () => {
       const body = {
         case_id: validBody.case_id,
         uploader_id: validBody.uploader_id,
-        proof_items: [
-          { media_url: "https://example.com/only.jpg", type: "after" },
-        ],
+        proof_items: [{ media_url: "https://example.com/only.jpg", type: "after" }],
       };
 
       const res = await app.request("/api/cases/close-case", {
@@ -258,9 +258,7 @@ describe("Close Case Composite - Unit Tests", () => {
 
     it("should return 200 even when RabbitMQ publish throws (non-fatal)", async () => {
       buildMockClients(true, 200, true, true);
-      (rabbitmqClient.publish as any).mockRejectedValueOnce(
-        new Error("AMQP connection lost")
-      );
+      (rabbitmqClient.publish as any).mockRejectedValueOnce(new Error("AMQP connection lost"));
 
       const res = await app.request("/api/cases/close-case", {
         method: "POST",

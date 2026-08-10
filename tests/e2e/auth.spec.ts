@@ -31,7 +31,9 @@ test.describe("Authentication", () => {
     ).toBeVisible({ timeout: 8_000 });
   });
 
-  test("redirects unauthenticated /dashboard visit to login", async ({ page }) => {
+  test("redirects unauthenticated /dashboard visit to login", async ({
+    page,
+  }) => {
     await page.goto("/dashboard");
     // Should land back at root or /login
     await expect(page).toHaveURL(/\/$|\/login/, { timeout: 8_000 });
@@ -39,8 +41,12 @@ test.describe("Authentication", () => {
 
   test("successful officer login redirects to dashboard", async ({ page }) => {
     await page.goto("/");
-    await page.getByLabel(/email/i).fill(process.env.OFFICER_EMAIL ?? "amk@townops.dev");
-    await page.getByLabel(/password/i).fill(process.env.OFFICER_PASSWORD ?? "Officer@123");
+    await page
+      .getByLabel(/email/i)
+      .fill(process.env.OFFICER_EMAIL ?? "amk@townops.dev");
+    await page
+      .getByLabel(/password/i)
+      .fill(process.env.OFFICER_PASSWORD ?? "Officer@123");
     await page.getByRole("button", { name: /sign in|log in/i }).click();
 
     await expect(page).toHaveURL(/dashboard/, { timeout: 15_000 });

@@ -8,6 +8,7 @@ import { assignments, assignmentStatusHistory } from "./database/schema";
  */
 export async function createAssignment(values: any) {
   const [assignment] = await db.insert(assignments).values(values).returning();
+  if (!assignment) throw new Error("Assignment insert did not return a row");
   return assignment;
 }
 
@@ -46,7 +47,7 @@ export async function updateAssignmentStatus(
   id: string,
   status: any,
   changedBy: string,
-  reason?: string
+  reason?: string,
 ) {
   return db.transaction(async (tx) => {
     // 1. Get current status for history
@@ -65,9 +66,7 @@ export async function updateAssignmentStatus(
       .set({
         status,
         updatedAt: new Date().toISOString(),
-        ...(status === "ACCEPTED"
-          ? { acceptedAt: new Date().toISOString() }
-          : {}),
+        ...(status === "ACCEPTED" ? { acceptedAt: new Date().toISOString() } : {}),
       })
       .where(eq(assignments.id, id))
       .returning();
@@ -93,7 +92,7 @@ export async function reassignAssignment(
   contractorId: string,
   responseDueAt: string,
   changedBy: string,
-  reason?: string
+  reason?: string,
 ) {
   return db.transaction(async (tx) => {
     const current = await tx.query.assignments.findFirst({

@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
-import { z } from "zod";
+import { useMutation } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { z } from "zod/v4";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,7 +46,9 @@ export function ResidentDashboard() {
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).error ?? (err as any).message ?? `Error ${res.status}`);
+        throw new Error(
+          (err as any).error ?? (err as any).message ?? `Error ${res.status}`
+        );
       }
       return res.json() as Promise<RescheduleResponse>;
     },
@@ -111,7 +113,8 @@ export function ResidentDashboard() {
           Resident Service Desk
         </h1>
         <p className="text-muted-foreground text-sm mt-2">
-          If your contractor reported no access, choose a new slot below to reschedule the visit.
+          If your contractor reported no access, choose a new slot below to
+          reschedule the visit.
         </p>
       </div>
 
@@ -121,7 +124,9 @@ export function ResidentDashboard() {
             Reschedule Appointment
           </CardTitle>
           <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase text-muted-foreground">
-            <Badge variant="outline" className="rounded-none border-border">JWT Required</Badge>
+            <Badge variant="outline" className="rounded-none border-border">
+              JWT Required
+            </Badge>
             <span>Provide your case and assignment IDs.</span>
           </div>
         </CardHeader>
@@ -138,7 +143,9 @@ export function ResidentDashboard() {
               name="caseId"
               children={(field) => (
                 <div className="space-y-2">
-                  <label className="text-xs uppercase font-label tracking-widest text-primary">Case ID</label>
+                  <label className="text-xs uppercase font-label tracking-widest text-primary">
+                    Case ID
+                  </label>
                   <Input
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -146,7 +153,9 @@ export function ResidentDashboard() {
                     className="rounded-none border-border bg-surface-container"
                   />
                   {field.state.meta.errors ? (
-                    <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+                    <em className="text-xs text-destructive">
+                      {field.state.meta.errors.join(", ")}
+                    </em>
                   ) : null}
                 </div>
               )}
@@ -156,7 +165,9 @@ export function ResidentDashboard() {
               name="assignmentId"
               children={(field) => (
                 <div className="space-y-2">
-                  <label className="text-xs uppercase font-label tracking-widest text-primary">Assignment ID</label>
+                  <label className="text-xs uppercase font-label tracking-widest text-primary">
+                    Assignment ID
+                  </label>
                   <Input
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -164,7 +175,9 @@ export function ResidentDashboard() {
                     className="rounded-none border-border bg-surface-container"
                   />
                   {field.state.meta.errors ? (
-                    <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+                    <em className="text-xs text-destructive">
+                      {field.state.meta.errors.join(", ")}
+                    </em>
                   ) : null}
                 </div>
               )}
@@ -174,7 +187,9 @@ export function ResidentDashboard() {
               name="residentId"
               children={(field) => (
                 <div className="space-y-2">
-                  <label className="text-xs uppercase font-label tracking-widest text-primary">Resident ID</label>
+                  <label className="text-xs uppercase font-label tracking-widest text-primary">
+                    Resident ID
+                  </label>
                   <Input
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -182,7 +197,9 @@ export function ResidentDashboard() {
                     className="rounded-none border-border bg-surface-container"
                   />
                   {field.state.meta.errors ? (
-                    <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+                    <em className="text-xs text-destructive">
+                      {field.state.meta.errors.join(", ")}
+                    </em>
                   ) : null}
                 </div>
               )}
@@ -193,7 +210,9 @@ export function ResidentDashboard() {
                 name="newStartTime"
                 children={(field) => (
                   <div className="space-y-2">
-                    <label className="text-xs uppercase font-label tracking-widest text-primary">New Start Time</label>
+                    <label className="text-xs uppercase font-label tracking-widest text-primary">
+                      New Start Time
+                    </label>
                     <Input
                       type="datetime-local"
                       value={field.state.value}
@@ -201,7 +220,9 @@ export function ResidentDashboard() {
                       className="rounded-none border-border bg-surface-container"
                     />
                     {field.state.meta.errors ? (
-                      <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+                      <em className="text-xs text-destructive">
+                        {field.state.meta.errors.join(", ")}
+                      </em>
                     ) : null}
                   </div>
                 )}
@@ -211,7 +232,9 @@ export function ResidentDashboard() {
                 name="newEndTime"
                 children={(field) => (
                   <div className="space-y-2">
-                    <label className="text-xs uppercase font-label tracking-widest text-primary">New End Time</label>
+                    <label className="text-xs uppercase font-label tracking-widest text-primary">
+                      New End Time
+                    </label>
                     <Input
                       type="datetime-local"
                       value={field.state.value}
@@ -219,7 +242,9 @@ export function ResidentDashboard() {
                       className="rounded-none border-border bg-surface-container"
                     />
                     {field.state.meta.errors ? (
-                      <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+                      <em className="text-xs text-destructive">
+                        {field.state.meta.errors.join(", ")}
+                      </em>
                     ) : null}
                   </div>
                 )}
@@ -227,15 +252,20 @@ export function ResidentDashboard() {
             </div>
 
             {submitError && (
-              <p className="text-xs text-destructive uppercase tracking-widest">{submitError}</p>
+              <p className="text-xs text-destructive uppercase tracking-widest">
+                {submitError}
+              </p>
             )}
 
             {submitResult && (
               <div className="border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-label uppercase tracking-widest text-emerald-400">{submitResult.message}</p>
+                  <p className="text-xs font-label uppercase tracking-widest text-emerald-400">
+                    {submitResult.message}
+                  </p>
                   <p className="text-[10px] text-muted-foreground font-mono mt-1">
-                    New start time: {new Date(submitResult.newStartTime).toLocaleString()}
+                    New start time:{" "}
+                    {new Date(submitResult.newStartTime).toLocaleString()}
                   </p>
                 </div>
                 {statusBadge}
@@ -250,7 +280,9 @@ export function ResidentDashboard() {
                   disabled={!canSubmit || mutation.isPending}
                   className="w-full rounded-none tracking-widest font-bold uppercase font-label"
                 >
-                  {isSubmitting || mutation.isPending ? "Submitting..." : "Confirm Reschedule"}
+                  {isSubmitting || mutation.isPending
+                    ? "Submitting..."
+                    : "Confirm Reschedule"}
                 </Button>
               )}
             />

@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@townops/shared-types": ["../../../packages/shared-types/index.ts"],
+      "@townops/shared-ts": ["../../../packages/shared-ts/src/index.ts"],
+      "drizzle-orm": ["./node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"]
+    }
+  },
+  "include": ["src", "index.ts"],
+  "exclude": ["node_modules"]
+}

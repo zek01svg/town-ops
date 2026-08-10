@@ -1,4 +1,9 @@
-import { logger, honoLogger, initSentry, captureHonoException } from "@townops/shared-ts";
+import {
+  logger,
+  honoLogger,
+  initSentry,
+  captureHonoException,
+} from "@townops/shared-ts";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 

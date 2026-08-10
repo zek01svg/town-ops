@@ -33,6 +33,7 @@ let capturedHandler: (msg: any) => Promise<void>;
 vi.mock("@townops/shared-ts", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   honoLogger: () => (_c: any, next: any) => next(),
+  captureException: vi.fn(),
   rabbitmqClient: {
     connect: vi.fn().mockResolvedValue(undefined),
     consume: vi.fn().mockImplementation((_queue: string, handler: any) => {
@@ -77,13 +78,13 @@ const validPayload = {
   email: "test@example.com",
 };
 
-function makeMsg(
-  routingKey: string,
-  data: Record<string, unknown> = validPayload
-) {
+function makeMsg(routingKey: string, data: Record<string, unknown> = validPayload) {
+  const body = JSON.stringify(data);
+
   return {
     routingKey,
-    body: Buffer.from(JSON.stringify(data)),
+    body: Buffer.from(body),
+    bodyString: () => body,
     ack: vi.fn().mockResolvedValue(undefined),
     nack: vi.fn().mockResolvedValue(undefined),
   };
@@ -105,11 +106,10 @@ describe("Alert Worker", () => {
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mocked.consume).toHaveBeenCalledOnce();
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(mocked.consume).toHaveBeenCalledWith(
-        "alert-queue",
-        expect.any(Function),
-        { exchangeName: "townops.events", routingKey: "#" }
-      );
+      expect(mocked.consume).toHaveBeenCalledWith("alert-queue", expect.any(Function), {
+        exchangeName: "townops.events",
+        routingKey: "#",
+      });
     });
   });
 
@@ -120,7 +120,7 @@ describe("Alert Worker", () => {
         makeMsg("case.opened", {
           caseId: VALID_UUID_1,
           email: "test@example.com",
-        })
+        }),
       );
       expect(mockInsert).not.toHaveBeenCalled();
       expect(mockSendEmail).not.toHaveBeenCalled();
@@ -176,7 +176,7 @@ describe("Alert Worker", () => {
     it("should send email when payload contains an email field", async () => {
       await capturedHandler(makeMsg("case.opened"));
       expect(mockSendEmail).toHaveBeenCalledWith(
-        expect.objectContaining({ to: "test@example.com" })
+        expect.objectContaining({ to: "test@example.com" }),
       );
     });
 
@@ -184,6 +184,7 @@ describe("Alert Worker", () => {
       const badMsg = {
         routingKey: "case.opened",
         body: Buffer.from("{ invalid json }"),
+        bodyString: () => "{ invalid json }",
         ack: vi.fn(),
         nack: vi.fn(),
       };

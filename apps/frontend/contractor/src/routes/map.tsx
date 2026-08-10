@@ -1,12 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import {
-  APIProvider,
-  Map,
-  AdvancedMarker,
-  Pin,
-  InfoWindow,
-} from "@vis.gl/react-google-maps";
+import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from "@vis.gl/react-google-maps";
 import { Clock } from "lucide-react";
 import { useState } from "react";
 
@@ -57,16 +51,16 @@ function MapPage() {
 
   const { theme } = useTheme();
   const { data: cases = [], isLoading } = useQuery(caseQueries.all());
-  const active = cases.filter(
-    (c) => !["completed", "cancelled"].includes(c.status)
-  );
+  const active = cases.filter((c) => !["completed", "cancelled"].includes(c.status));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedCase = active.find((c) => c.id === selectedId);
+  const selectedIndex = active.findIndex((c) => c.id === selectedId);
+  const selectedOffset =
+    selectedIndex >= 0 ? DUMMY_OFFSETS[selectedIndex % DUMMY_OFFSETS.length] : undefined;
 
   const isDark =
     theme === "dark" ||
-    (theme === "system" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
+    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   return (
     <div className="flex flex-col gap-6">
@@ -81,10 +75,7 @@ function MapPage() {
 
       <div className="flex gap-6">
         {/* Map */}
-        <div
-          className="flex-1 border border-border overflow-hidden"
-          style={{ minHeight: "520px" }}
-        >
+        <div className="flex-1 border border-border overflow-hidden" style={{ minHeight: "520px" }}>
           <APIProvider apiKey={env.VITE_GOOGLE_MAPS_API_KEY}>
             <Map
               style={{ width: "100%", height: "520px" }}
@@ -98,6 +89,7 @@ function MapPage() {
               {!isLoading &&
                 active.map((c, i) => {
                   const offset = DUMMY_OFFSETS[i % DUMMY_OFFSETS.length];
+                  if (!offset) return null;
                   const position = {
                     lat: AMK_CENTER.lat + offset.lat,
                     lng: AMK_CENTER.lng + offset.lng,
@@ -107,9 +99,7 @@ function MapPage() {
                     <AdvancedMarker
                       key={c.id}
                       position={position}
-                      onClick={() =>
-                        setSelectedId(selectedId === c.id ? null : c.id)
-                      }
+                      onClick={() => setSelectedId(selectedId === c.id ? null : c.id)}
                     >
                       <Pin
                         background={colors.bg}
@@ -120,21 +110,11 @@ function MapPage() {
                   );
                 })}
 
-              {selectedCase && (
+              {selectedCase && selectedOffset && (
                 <InfoWindow
                   position={{
-                    lat:
-                      AMK_CENTER.lat +
-                      DUMMY_OFFSETS[
-                        active.findIndex((c) => c.id === selectedId) %
-                          DUMMY_OFFSETS.length
-                      ].lat,
-                    lng:
-                      AMK_CENTER.lng +
-                      DUMMY_OFFSETS[
-                        active.findIndex((c) => c.id === selectedId) %
-                          DUMMY_OFFSETS.length
-                      ].lng,
+                    lat: AMK_CENTER.lat + selectedOffset.lat,
+                    lng: AMK_CENTER.lng + selectedOffset.lng,
                   }}
                   onCloseClick={() => setSelectedId(null)}
                 >
@@ -175,20 +155,14 @@ function MapPage() {
             <span className="font-label text-[10px] uppercase tracking-widest text-muted-foreground">
               Active Pins
             </span>
-            <span className="text-3xl font-bold text-primary">
-              {active.length}
-            </span>
+            <span className="text-3xl font-bold text-primary">{active.length}</span>
           </div>
           <div className="border border-border bg-surface-container p-4 flex flex-col gap-1">
             <span className="font-label text-[10px] uppercase tracking-widest text-muted-foreground">
               High Priority
             </span>
             <span className="text-3xl font-bold text-destructive">
-              {
-                active.filter(
-                  (c) => c.priority === "high" || c.priority === "emergency"
-                ).length
-              }
+              {active.filter((c) => c.priority === "high" || c.priority === "emergency").length}
             </span>
           </div>
 
@@ -198,10 +172,7 @@ function MapPage() {
                 Active Cases
               </span>
             </div>
-            <div
-              className="flex flex-col overflow-y-auto"
-              style={{ maxHeight: "340px" }}
-            >
+            <div className="flex flex-col overflow-y-auto" style={{ maxHeight: "340px" }}>
               {active.length === 0 ? (
                 <div className="p-4 text-[10px] text-muted-foreground font-label uppercase tracking-widest text-center">
                   No active cases
@@ -212,9 +183,7 @@ function MapPage() {
                     key={c.id}
                     type="button"
                     className="p-3 border-b border-border/50 flex flex-col gap-1 hover:bg-muted/50 transition-colors text-left w-full"
-                    onClick={() =>
-                      setSelectedId(selectedId === c.id ? null : c.id)
-                    }
+                    onClick={() => setSelectedId(selectedId === c.id ? null : c.id)}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-mono text-primary">

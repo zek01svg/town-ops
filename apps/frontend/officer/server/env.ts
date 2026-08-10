@@ -10,6 +10,7 @@ export const env = createEnv({
     VITE_APPOINTMENT_ATOM_URL: z.url(),
     VITE_ALERT_ATOM_URL: z.url(),
     VITE_PROOF_ATOM_URL: z.url(),
+    VITE_CONTRACTOR_ATOM_URL: z.url(),
     VITE_OPEN_CASE_URL: z.url(),
     VITE_HANDLE_BREACH_URL: z.url(),
     VITE_GOOGLE_MAPS_API_KEY: z.string().min(1),
@@ -32,6 +33,8 @@ export const env = createEnv({
       process.env.VITE_PROOF_ATOM_URL ?? `http://localhost:5005`,
     VITE_ALERT_ATOM_URL:
       process.env.VITE_ALERT_ATOM_URL ?? `http://localhost:5006`,
+    VITE_CONTRACTOR_ATOM_URL:
+      process.env.VITE_CONTRACTOR_ATOM_URL ?? `http://localhost:5009`,
     VITE_OPEN_CASE_URL:
       process.env.VITE_OPEN_CASE_URL ?? `http://localhost:6001`,
     VITE_HANDLE_BREACH_URL:

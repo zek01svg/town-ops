@@ -14,6 +14,10 @@
 import { AMQPClient } from "@cloudamqp/amqp-client";
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
+import { handleCaseOpened } from "../../apps/composites/assign-job/src/consumer";
+import { assignContractor } from "../../apps/composites/assign-job/src/services";
+import { hc as mockHc } from "./__stubs__/hono-client";
+
 // ── Environment (must be first) ───────────────────────────────────────────────
 vi.hoisted(() => {
   process.env.PORT = "0";
@@ -22,13 +26,6 @@ vi.hoisted(() => {
   process.env.ACCEPT_JOB_PORT = "6003";
   process.env.CLOSE_CASE_PORT = "6004";
 });
-
-import { handleCaseOpened } from "../../apps/composites/assign-job/src/consumer";
-import { assignContractor } from "../../apps/composites/assign-job/src/services";
-// ── Imports (after env) ───────────────────────────────────────────────────────
-/* eslint-disable import/first */
-import { hc as mockHc } from "./__stubs__/hono-client";
-/* eslint-enable import/first */
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CASE_ID = "aaaaaaaa-0001-4000-8000-000000000001";
@@ -134,7 +131,7 @@ describe("Scenario 1 — Ideal Case Flow", () => {
         category: "PL",
         priority: "medium",
         postalCode: "510001",
-      })
+      }),
     );
 
     // Wait for AMQP delivery
@@ -209,9 +206,7 @@ describe("Scenario 1 — Ideal Case Flow", () => {
     }) as unknown as typeof fetch;
 
     // Should resolve without error — only the c0ffee01 contractor is selected
-    await expect(
-      assignContractor(CASE_ID, "51", "PL")
-    ).resolves.toBeUndefined();
+    await expect(assignContractor(CASE_ID, "51", "PL")).resolves.toBeUndefined();
 
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
     const metricsCallUrls = fetchMock.mock.calls
@@ -219,12 +214,8 @@ describe("Scenario 1 — Ideal Case Flow", () => {
       .filter((u: string) => u.includes("/api/metrics/"));
 
     // Should only have fetched metrics for the valid UUID, not the stale one
-    expect(
-      metricsCallUrls.every((u: string) => u.includes(CONTRACTOR_ID))
-    ).toBe(true);
-    expect(metricsCallUrls.some((u: string) => u.includes("550e8400"))).toBe(
-      false
-    );
+    expect(metricsCallUrls.every((u: string) => u.includes(CONTRACTOR_ID))).toBe(true);
+    expect(metricsCallUrls.some((u: string) => u.includes("550e8400"))).toBe(false);
   });
 
   it("assign-job throws when no eligible contractors found", async () => {
@@ -236,7 +227,7 @@ describe("Scenario 1 — Ideal Case Flow", () => {
     }) as unknown as typeof fetch;
 
     await expect(assignContractor(CASE_ID, "51", "PL")).rejects.toThrow(
-      "No eligible contractors found"
+      "No eligible contractors found",
     );
   });
 });

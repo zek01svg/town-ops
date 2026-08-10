@@ -4,7 +4,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 vi.hoisted(() => {
   process.env.PORT = "6002";
   process.env.RABBITMQ_URL = "amqp://guest:guest@localhost:5672";
-  process.env.CONTRACTOR_API_URL = "http://contractor-api";
+  process.env.CONTRACTOR_ATOM_URL = "http://contractor-api";
   process.env.ASSIGNMENT_ATOM_URL = "http://assignment-atom";
   process.env.METRICS_ATOM_URL = "http://metrics-atom";
 });
@@ -23,6 +23,8 @@ vi.mock("@townops/shared-ts", () => ({
     publish: vi.fn().mockResolvedValue(true),
     publishToQueue: vi.fn().mockResolvedValue(true),
   },
+  initSentry: vi.fn(),
+  captureHonoException: vi.fn(),
 }));
 
 /* eslint-disable import/first */
@@ -76,21 +78,28 @@ describe("Assign Job Composite - Unit Tests", () => {
         if (url.includes("/contractors/search")) {
           return {
             ok: true,
-            json: async () => [
-              { ContractorUuid: "c0ffee01-contractor-1", name: "Fix It Ltd" },
-            ],
+            json: async () => ({
+              contractors: [
+                {
+                  id: "c0ffee01-contractor-1",
+                  name: "Fix It Ltd",
+                  email: "contractor-1@townops.dev",
+                  contactNum: "8123 4567",
+                },
+              ],
+            }),
           };
         }
-        if (url.includes("/contractors/by-uuid/")) {
+        if (url.includes("/contractors/")) {
           return {
             ok: true,
             json: async () => ({
-              Id: 1,
-              Name: "Fix It Ltd",
-              ContactNum: "8123 4567",
-              Email: "contractor-1@townops.dev",
-              IsActive: true,
-              ContractorUuid: "c0ffee01-contractor-1",
+              contractor: {
+                id: "c0ffee01-contractor-1",
+                name: "Fix It Ltd",
+                contactNum: "8123 4567",
+                email: "contractor-1@townops.dev",
+              },
             }),
           };
         }
@@ -98,7 +107,7 @@ describe("Assign Job Composite - Unit Tests", () => {
           return {
             ok: true,
             json: async () => ({
-              metrics: [{ score_delta: 10 }, { score_delta: 5 }],
+              metrics: [{ scoreDelta: 10 }, { scoreDelta: 5 }],
             }),
           };
         }
@@ -127,7 +136,7 @@ describe("Assign Job Composite - Unit Tests", () => {
           case_id: caseId,
           contractor_id: "c0ffee01-contractor-1",
         }),
-        { expirationMs: 15000 }
+        { expirationMs: 60_000 },
       );
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -138,21 +147,21 @@ describe("Assign Job Composite - Unit Tests", () => {
           caseId,
           contractorId: "c0ffee01-contractor-1",
           status: "PENDING_ACCEPTANCE",
-        })
+        }),
       );
     });
 
     it("should throw when no contractors are found", async () => {
       globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
         if (url.includes("/contractors/search")) {
-          return { ok: true, json: async () => [] };
+          return { ok: true, json: async () => ({ contractors: [] }) };
         }
         return { ok: false };
       }) as unknown as typeof fetch;
 
-      await expect(
-        assignContractor(caseId, "510000", "PLUMBING")
-      ).rejects.toThrow("No eligible contractors found");
+      await expect(assignContractor(caseId, "510000", "PLUMBING")).rejects.toThrow(
+        "No eligible contractors found",
+      );
     });
 
     it("should throw when metrics fetch fails", async () => {
@@ -160,7 +169,16 @@ describe("Assign Job Composite - Unit Tests", () => {
         if (url.includes("/contractors/search")) {
           return {
             ok: true,
-            json: async () => [{ ContractorUuid: "c0ffee01-contractor-1" }],
+            json: async () => ({
+              contractors: [
+                {
+                  id: "c0ffee01-contractor-1",
+                  name: "Fix It Ltd",
+                  email: "contractor-1@townops.dev",
+                  contactNum: "8123 4567",
+                },
+              ],
+            }),
           };
         }
         if (url.includes("/contractors/by-uuid/")) {
@@ -182,9 +200,9 @@ describe("Assign Job Composite - Unit Tests", () => {
         return { ok: false };
       }) as unknown as typeof fetch;
 
-      await expect(
-        assignContractor(caseId, "510000", "PLUMBING")
-      ).rejects.toThrow("Metrics fetch failed");
+      await expect(assignContractor(caseId, "510000", "PLUMBING")).rejects.toThrow(
+        "Metrics fetch failed",
+      );
     });
 
     it("should throw when assignment creation fails", async () => {
@@ -192,19 +210,28 @@ describe("Assign Job Composite - Unit Tests", () => {
         if (url.includes("/contractors/search")) {
           return {
             ok: true,
-            json: async () => [{ ContractorUuid: "c0ffee01-contractor-1" }],
+            json: async () => ({
+              contractors: [
+                {
+                  id: "c0ffee01-contractor-1",
+                  name: "Fix It Ltd",
+                  email: "contractor-1@townops.dev",
+                  contactNum: "8123 4567",
+                },
+              ],
+            }),
           };
         }
-        if (url.includes("/contractors/by-uuid/")) {
+        if (url.includes("/contractors/")) {
           return {
             ok: true,
             json: async () => ({
-              Id: 1,
-              Name: "Fix It Ltd",
-              ContactNum: "8123 4567",
-              Email: "contractor-1@townops.dev",
-              IsActive: true,
-              ContractorUuid: "c0ffee01-contractor-1",
+              contractor: {
+                id: "c0ffee01-contractor-1",
+                name: "Fix It Ltd",
+                contactNum: "8123 4567",
+                email: "contractor-1@townops.dev",
+              },
             }),
           };
         }
@@ -220,9 +247,9 @@ describe("Assign Job Composite - Unit Tests", () => {
         return { ok: false };
       }) as unknown as typeof fetch;
 
-      await expect(
-        assignContractor(caseId, "510000", "PLUMBING")
-      ).rejects.toThrow("Assignment creation failed");
+      await expect(assignContractor(caseId, "510000", "PLUMBING")).rejects.toThrow(
+        "Assignment creation failed",
+      );
     });
   });
 
@@ -232,28 +259,35 @@ describe("Assign Job Composite - Unit Tests", () => {
         if (url.includes("/contractors/search")) {
           return {
             ok: true,
-            json: async () => [
-              { ContractorUuid: "c0ffee01-c-1", name: "Test Contractor" },
-            ],
+            json: async () => ({
+              contractors: [
+                {
+                  id: "c0ffee01-c-1",
+                  name: "Test Contractor",
+                  email: "contractor@test.dev",
+                  contactNum: "9000 0000",
+                },
+              ],
+            }),
           };
         }
-        if (url.includes("/contractors/by-uuid/")) {
+        if (url.includes("/contractors/")) {
           return {
             ok: true,
             json: async () => ({
-              Id: 1,
-              Name: "Test Contractor",
-              ContactNum: "9000 0000",
-              Email: "contractor@test.dev",
-              IsActive: true,
-              ContractorUuid: "c0ffee01-c-1",
+              contractor: {
+                id: "c0ffee01-c-1",
+                name: "Test Contractor",
+                contactNum: "9000 0000",
+                email: "contractor@test.dev",
+              },
             }),
           };
         }
         if (url.includes("/api/metrics/")) {
           return {
             ok: true,
-            json: async () => ({ metrics: [{ score_delta: 10 }] }),
+            json: async () => ({ metrics: [{ scoreDelta: 10 }] }),
           };
         }
         if (url.includes("/api/assignments")) {
@@ -283,15 +317,13 @@ describe("Assign Job Composite - Unit Tests", () => {
         postalCode: "510000",
       };
 
-      await expect(
-        handleCaseOpened(JSON.stringify(event))
-      ).resolves.toBeUndefined();
+      await expect(handleCaseOpened(JSON.stringify(event))).resolves.toBeUndefined();
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(rabbitmqClient.publish).toHaveBeenCalledWith(
         "townops.events",
         "job.assigned",
-        expect.objectContaining({ caseId: event.caseId })
+        expect.objectContaining({ caseId: event.caseId }),
       );
     });
 
@@ -305,9 +337,7 @@ describe("Assign Job Composite - Unit Tests", () => {
         addressDetails: "730000 Main St",
       };
 
-      await expect(
-        handleCaseOpened(JSON.stringify(event))
-      ).resolves.toBeUndefined();
+      await expect(handleCaseOpened(JSON.stringify(event))).resolves.toBeUndefined();
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(rabbitmqClient.publish).toHaveBeenCalledOnce();
     });
@@ -321,9 +351,7 @@ describe("Assign Job Composite - Unit Tests", () => {
         priority: "LOW",
       };
 
-      await expect(
-        handleCaseOpened(JSON.stringify(event))
-      ).resolves.toBeUndefined();
+      await expect(handleCaseOpened(JSON.stringify(event))).resolves.toBeUndefined();
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(rabbitmqClient.publish).toHaveBeenCalledOnce();
     });
@@ -341,9 +369,7 @@ describe("Assign Job Composite - Unit Tests", () => {
         priority: "LOW",
       };
 
-      await expect(
-        handleCaseOpened(JSON.stringify(event))
-      ).resolves.toBeUndefined();
+      await expect(handleCaseOpened(JSON.stringify(event))).resolves.toBeUndefined();
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(rabbitmqClient.publish).not.toHaveBeenCalled();
     });

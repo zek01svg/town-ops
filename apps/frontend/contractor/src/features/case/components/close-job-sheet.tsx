@@ -38,7 +38,9 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
 
   function removePhoto(idx: number) {
     setPhotos((prev) => {
-      URL.revokeObjectURL(prev[idx].preview);
+      const photo = prev[idx];
+      if (!photo) return prev;
+      URL.revokeObjectURL(photo.preview);
       return prev.filter((_, i) => i !== idx);
     });
   }
@@ -60,20 +62,18 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
       const uploaderId = session?.data?.user?.id ?? "unknown";
 
       const proofItems = await Promise.all(
-        photos.map((p) =>
-          uploadProofFile(p.file, caseId, uploaderId, p.type, report)
-        )
+        photos.map(async ({ file, type }) => ({
+          media_url: await uploadProofFile(file, caseId, uploaderId, type, report),
+          type,
+          remarks: report,
+        })),
       );
 
       closeCase.mutate(
         {
           case_id: caseId,
           uploader_id: uploaderId,
-          proof_items: proofItems.map((url, i) => ({
-            media_url: url,
-            type: photos[i].type,
-            remarks: report,
-          })),
+          proof_items: proofItems,
           final_status: "completed",
         },
         {
@@ -83,7 +83,7 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
             onOpenChange(false);
           },
           onError: (e) => setError(e.message),
-        }
+        },
       );
     } catch (e: any) {
       setError(e.message);
@@ -130,10 +130,7 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
             />
             <div className="flex flex-wrap gap-2">
               {beforePhotos.map((p, i) => (
-                <div
-                  key={i}
-                  className="relative w-20 h-20 border border-border"
-                >
+                <div key={i} className="relative w-20 h-20 border border-border">
                   <img
                     src={p.preview}
                     alt="uploaded proof"
@@ -179,10 +176,7 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
             />
             <div className="flex flex-wrap gap-2">
               {afterPhotos.map((p, i) => (
-                <div
-                  key={i}
-                  className="relative w-20 h-20 border border-border"
-                >
+                <div key={i} className="relative w-20 h-20 border border-border">
                   <img
                     src={p.preview}
                     alt="uploaded proof"
@@ -219,11 +213,7 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
             />
           </div>
 
-          {error && (
-            <p className="text-[10px] text-destructive uppercase tracking-wide">
-              {error}
-            </p>
-          )}
+          {error && <p className="text-[10px] text-destructive uppercase tracking-wide">{error}</p>}
 
           <Button
             onClick={handleSubmit}
@@ -231,9 +221,7 @@ export function CloseJobSheet({ open, onOpenChange, caseId }: Props) {
             className="rounded-none uppercase text-[10px] font-label tracking-widest w-full bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <CheckCircle2 className="h-3.5 w-3.5 mr-2" />
-            {uploading || closeCase.isPending
-              ? "Submitting..."
-              : "Submit & Close Job"}
+            {uploading || closeCase.isPending ? "Submitting..." : "Submit & Close Job"}
           </Button>
         </div>
       </SheetContent>

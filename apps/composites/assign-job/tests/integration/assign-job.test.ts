@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 // 1. Set up environment via vi.hoisted
 vi.hoisted(() => {
   process.env.PORT = "6002";
-  process.env.CONTRACTOR_API_URL = "http://contractor-api";
+  process.env.CONTRACTOR_ATOM_URL = "http://contractor-api";
   process.env.ASSIGNMENT_ATOM_URL = "http://assignment-atom";
   process.env.METRICS_ATOM_URL = "http://metrics-atom";
 
@@ -53,13 +53,22 @@ describe("Assign Job Composite - RabbitMQ Integration", () => {
       if (url.includes("/contractors/search")) {
         return {
           ok: true,
-          json: async () => [{ ContractorUuid: "contractor-integration-01" }],
+          json: async () => ({
+            contractors: [
+              {
+                id: "contractor-integration-01",
+                name: "Integration Contractor",
+                email: "contractor@example.com",
+                contactNum: null,
+              },
+            ],
+          }),
         };
       }
       if (url.includes("/api/metrics/")) {
         return {
           ok: true,
-          json: async () => ({ metrics: [{ score_delta: 20 }] }),
+          json: async () => ({ metrics: [{ scoreDelta: 20 }] }),
         };
       }
       if (url.includes("/api/assignments")) {
@@ -70,6 +79,19 @@ describe("Assign Job Composite - RabbitMQ Integration", () => {
               id: "int-assign-uuid",
               caseId: CASE_ID,
               contractorId: "contractor-integration-01",
+            },
+          }),
+        };
+      }
+      if (url.includes("/contractors/")) {
+        return {
+          ok: true,
+          json: async () => ({
+            contractor: {
+              id: "contractor-integration-01",
+              name: "Integration Contractor",
+              email: "contractor@example.com",
+              contactNum: null,
             },
           }),
         };
@@ -92,10 +114,7 @@ describe("Assign Job Composite - RabbitMQ Integration", () => {
     // Assert message received
     expect(receivedPayload).not.toBeNull();
     expect(receivedPayload).toHaveProperty("caseId", CASE_ID);
-    expect(receivedPayload).toHaveProperty(
-      "contractorId",
-      "contractor-integration-01"
-    );
+    expect(receivedPayload).toHaveProperty("contractorId", "contractor-integration-01");
     expect(receivedPayload).toHaveProperty("status", "PENDING_ACCEPTANCE");
 
     await ch.queueDelete(q.name);

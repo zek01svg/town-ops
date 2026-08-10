@@ -1,5 +1,6 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+
 import { ResidentDashboard } from "@/features/dashboard/resident/resident-dashboard";
 
 export const Route = createFileRoute("/dashboard")({

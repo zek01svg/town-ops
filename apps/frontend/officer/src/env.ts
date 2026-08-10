@@ -31,6 +31,10 @@ export const env: Env = {
     window.__env?.VITE_ALERT_ATOM_URL ??
     import.meta.env.VITE_ALERT_ATOM_URL ??
     "http://localhost:5006",
+  VITE_CONTRACTOR_ATOM_URL:
+    window.__env?.VITE_CONTRACTOR_ATOM_URL ??
+    import.meta.env.VITE_CONTRACTOR_ATOM_URL ??
+    "http://localhost:5009",
   VITE_OPEN_CASE_URL:
     window.__env?.VITE_OPEN_CASE_URL ??
     import.meta.env.VITE_OPEN_CASE_URL ??

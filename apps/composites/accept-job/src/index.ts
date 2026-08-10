@@ -11,12 +11,7 @@ import {
 } from "@townops/shared-ts";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import {
-  describeRoute,
-  openAPIRouteHandler,
-  resolver,
-  validator,
-} from "hono-openapi";
+import { describeRoute, openAPIRouteHandler, resolver, validator } from "hono-openapi";
 import { hc } from "hono/client";
 import { cors } from "hono/cors";
 import { z } from "zod/v4";
@@ -39,7 +34,7 @@ if (devOrigins) {
       exposeHeaders: ["Content-Length"],
       maxAge: 600,
       credentials: true,
-    })
+    }),
   );
 }
 
@@ -47,7 +42,7 @@ app.onError((err, c) => {
   captureHonoException(err, c);
   logger.error(
     { error: err.message, stack: err.stack, route: c.req.path },
-    "[accept-job composite] internal server error"
+    "[accept-job composite] internal server error",
   );
   return c.json({ error: err.message }, 500);
 });
@@ -73,7 +68,7 @@ const AcceptJobComposite = app
     async (c: Context) => {
       logger.info({ route: "/health" }, "Health check verified");
       return c.json({ status: "healthy" }, 200);
-    }
+    },
   )
   .put(
     "/api/jobs/accept-job",
@@ -91,7 +86,7 @@ const AcceptJobComposite = app
                   assignment: z.record(z.string(), z.unknown()),
                   case: z.record(z.string(), z.unknown()),
                   appointment: z.record(z.string(), z.unknown()),
-                })
+                }),
               ),
             },
           },
@@ -104,13 +99,11 @@ const AcceptJobComposite = app
       if (!result.success) {
         logger.warn(
           { error: result.error, route: "/api/jobs/accept-job" },
-          "Validation failed for accept-job request"
+          "Validation failed for accept-job request",
         );
-        return c.json(
-          { error: "Validation failed", details: result.error },
-          400
-        );
+        return c.json({ error: "Validation failed", details: result.error }, 400);
       }
+      return undefined;
     }),
     async (c) => {
       const body = c.req.valid("json");
@@ -123,31 +116,27 @@ const AcceptJobComposite = app
           assignmentId: body.assignment_id,
           contractorId: body.contractor_id,
         },
-        "Processing accept-job request"
+        "Processing accept-job request",
       );
 
       const assignmentClient = hc<AssignmentAtomType>(env.ASSIGNMENT_ATOM_URL);
       const caseClient = hc<CaseAtomType>(env.CASE_ATOM_URL);
-      const appointmentClient = hc<AppointmentAtomType>(
-        env.APPOINTMENT_ATOM_URL
-      );
+      const appointmentClient = hc<AppointmentAtomType>(env.APPOINTMENT_ATOM_URL);
 
       // ── Step 1: Update Assignment status → accepted
-      const assignmentRes = await assignmentClient.api.assignments[
-        ":id"
-      ].status.$put(
+      const assignmentRes = await assignmentClient.api.assignments[":id"].status.$put(
         {
           param: { id: body.assignment_id },
           json: { status: "ACCEPTED", changedBy: body.contractor_id },
         },
-        { headers: { Authorization: authHeader } }
+        { headers: { Authorization: authHeader } },
       );
 
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!assignmentRes.ok) {
         logger.error(
           { assignmentId: body.assignment_id },
-          "Step 1 failed: assignment status update"
+          "Step 1 failed: assignment status update",
         );
         return c.json({ error: "Failed to update assignment" }, 503);
       }
@@ -159,14 +148,14 @@ const AcceptJobComposite = app
         {
           json: { id: body.case_id, status: "in_progress" },
         },
-        { headers: { Authorization: authHeader } }
+        { headers: { Authorization: authHeader } },
       );
 
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!caseRes.ok) {
         logger.error(
           { caseId: body.case_id },
-          "Step 2 failed: case status update — initiating rollback"
+          "Step 2 failed: case status update — initiating rollback",
         );
         // Compensate: revert assignment to pending
         await assignmentClient.api.assignments[":id"].status.$put(
@@ -177,7 +166,7 @@ const AcceptJobComposite = app
               changedBy: body.contractor_id,
             },
           },
-          { headers: { Authorization: authHeader } }
+          { headers: { Authorization: authHeader } },
         );
         return c.json({ error: "Failed to update case status" }, 503);
       }
@@ -195,21 +184,21 @@ const AcceptJobComposite = app
             status: "scheduled",
           },
         },
-        { headers: { Authorization: authHeader } }
+        { headers: { Authorization: authHeader } },
       );
 
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!appointmentRes.ok) {
         logger.error(
           { caseId: body.case_id },
-          "Step 3 failed: appointment creation — initiating full rollback"
+          "Step 3 failed: appointment creation — initiating full rollback",
         );
         // Compensate: revert case to dispatched
         await caseClient.api.cases["update-case-status"].$put(
           {
             json: { id: body.case_id, status: "dispatched" },
           },
-          { headers: { Authorization: authHeader } }
+          { headers: { Authorization: authHeader } },
         );
         // Compensate: revert assignment to pending
         await assignmentClient.api.assignments[":id"].status.$put(
@@ -220,17 +209,14 @@ const AcceptJobComposite = app
               changedBy: body.contractor_id,
             },
           },
-          { headers: { Authorization: authHeader } }
+          { headers: { Authorization: authHeader } },
         );
         return c.json({ error: "Failed to create appointment" }, 503);
       }
 
       const appointmentData = await appointmentRes.json();
 
-      logger.info(
-        { caseId: body.case_id },
-        "accept-job: success — appointment created"
-      );
+      logger.info({ caseId: body.case_id }, "accept-job: success — appointment created");
 
       return c.json(
         {
@@ -239,9 +225,9 @@ const AcceptJobComposite = app
           case: caseData.cases,
           appointment: appointmentData.appointment,
         },
-        200
+        200,
       );
-    }
+    },
   )
   .get(
     "/openapi",
@@ -253,18 +239,16 @@ const AcceptJobComposite = app
           description:
             "Composite service that accepts a contractor job: updates assignment, transitions case to in_progress, and creates an appointment block.",
         },
-        servers: [
-          { url: `http://localhost:${env.PORT}`, description: "Local Server" },
-        ],
+        servers: [{ url: `http://localhost:${env.PORT}`, description: "Local Server" }],
       },
-    })
+    }),
   )
   .get(
     "/scalar",
     Scalar({
       url: "/openapi",
       theme: "deepSpace",
-    })
+    }),
   );
 
 export { app };

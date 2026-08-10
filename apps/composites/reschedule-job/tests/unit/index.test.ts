@@ -23,6 +23,8 @@ vi.mock("@townops/shared-ts", () => ({
     publish: vi.fn().mockResolvedValue(true),
   },
   corsOrigins: () => ["http://localhost:5173"],
+  initSentry: vi.fn(),
+  captureHonoException: vi.fn(),
 }));
 
 // Mock jwk middleware to bypass auth
@@ -57,7 +59,7 @@ const mockCaseUpdate = vi.fn();
 function buildMockClients(
   residentPayload: { ok: boolean; data?: any },
   appointmentOk: boolean,
-  caseOk: boolean
+  caseOk: boolean,
 ) {
   const residentClient = {
     api: {
@@ -177,7 +179,7 @@ describe("Reschedule Job Composite - Unit Tests", () => {
           data: { residents: { id: validBody.residentId, is_active: false } },
         },
         true,
-        true
+        true,
       );
 
       const res = await app.request("/api/cases/reschedule-job", {
@@ -228,7 +230,7 @@ describe("Reschedule Job Composite - Unit Tests", () => {
           data: { residents: [{ id: validBody.residentId, is_active: true }] },
         },
         true,
-        true
+        true,
       );
 
       const res = await app.request("/api/cases/reschedule-job", {
@@ -249,7 +251,7 @@ describe("Reschedule Job Composite - Unit Tests", () => {
           data: { residents: [{ id: validBody.residentId, is_active: false }] },
         },
         true,
-        true
+        true,
       );
 
       const res = await app.request("/api/cases/reschedule-job", {

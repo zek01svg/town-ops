@@ -12,6 +12,10 @@
 import { AMQPClient } from "@cloudamqp/amqp-client";
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
+import { app as noAccessApp } from "../../apps/composites/handle-no-access/src/index";
+import { app as rescheduleApp } from "../../apps/composites/reschedule-job/src/index";
+import { hc as mockHc } from "./__stubs__/hono-client";
+
 vi.hoisted(() => {
   process.env.PORT = "0";
   process.env.CASE_ATOM_URL = "http://case-atom";
@@ -36,12 +40,6 @@ vi.mock("@townops/shared-ts", () => ({
   initSentry: vi.fn(),
   captureHonoException: vi.fn(),
 }));
-
-import { app as noAccessApp } from "../../apps/composites/handle-no-access/src/index";
-import { app as rescheduleApp } from "../../apps/composites/reschedule-job/src/index";
-/* eslint-disable import/first */
-import { hc as mockHc } from "./__stubs__/hono-client";
-/* eslint-enable import/first */
 
 const CASE_ID = "cccccccc-0001-4000-8000-000000000001";
 const ASSIGNMENT_ID = "cccccccc-0002-4000-8000-000000000002";
@@ -90,9 +88,7 @@ describe("Scenario 3 — No Access / Reschedule", () => {
                   }),
                 },
                 "update-case-status": {
-                  $put: vi
-                    .fn()
-                    .mockResolvedValue({ ok: true, json: async () => ({}) }),
+                  $put: vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }),
                 },
               },
             },
@@ -143,7 +139,7 @@ describe("Scenario 3 — No Access / Reschedule", () => {
           caseId: CASE_ID,
           residentId: RESIDENT_ID,
           message: "Gate was locked",
-        })
+        }),
       );
 
       await ch.queueDelete(q.name);
@@ -160,12 +156,8 @@ describe("Scenario 3 — No Access / Reschedule", () => {
   });
 
   describe("Reschedule Job", () => {
-    const startTime = new Date(Date.now() + 86_400_000)
-      .toISOString()
-      .replace("Z", "+08:00");
-    const endTime = new Date(Date.now() + 90_000_000)
-      .toISOString()
-      .replace("Z", "+08:00");
+    const startTime = new Date(Date.now() + 86_400_000).toISOString().replace("Z", "+08:00");
+    const endTime = new Date(Date.now() + 90_000_000).toISOString().replace("Z", "+08:00");
 
     it("creates new appointment and restores case to dispatched", async () => {
       vi.mocked(mockHc).mockImplementation((url: string) => {

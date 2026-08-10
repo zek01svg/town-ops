@@ -15,7 +15,9 @@ test.describe("Officer Dashboard", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/dashboard");
     // Wait for the board to finish loading
-    await expect(page.getByText(/loading/i)).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByText(/loading/i)).toHaveCount(0, {
+      timeout: 10_000,
+    });
   });
 
   test("shows dashboard with stat cards", async ({ page }) => {
@@ -37,12 +39,16 @@ test.describe("Officer Dashboard", () => {
     await expect(page.getByText(/open a case/i)).toBeVisible();
   });
 
-  test("New Case form shows validation errors on empty submit", async ({ page }) => {
+  test("New Case form shows validation errors on empty submit", async ({
+    page,
+  }) => {
     await page.getByRole("button", { name: /new case/i }).click();
     await page.getByRole("button", { name: /submit|open case/i }).click();
 
     // At least one validation message should appear
-    const errors = page.locator("[data-field-error], .text-destructive, [role='alert']");
+    const errors = page.locator(
+      "[data-field-error], .text-destructive, [role='alert']"
+    );
     await expect(errors.first()).toBeVisible({ timeout: 5_000 });
   });
 
@@ -53,9 +59,13 @@ test.describe("Officer Dashboard", () => {
     await expect(dialog).toBeVisible();
 
     // Fill in required fields — adjust selectors to match actual form labels
-    await dialog.getByLabel(/resident id/i).fill("aaaaaaaa-0001-4000-8000-000000000001");
+    await dialog
+      .getByLabel(/resident id/i)
+      .fill("aaaaaaaa-0001-4000-8000-000000000001");
     await dialog.getByLabel(/category/i).selectOption({ index: 1 });
-    await dialog.getByLabel(/description/i).fill("Test case created by Playwright E2E");
+    await dialog
+      .getByLabel(/description/i)
+      .fill("Test case created by Playwright E2E");
     await dialog.getByLabel(/address/i).fill("Blk 123 Aljunied Ave 1");
     await dialog.getByLabel(/postal/i).fill("380123");
 

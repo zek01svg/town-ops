@@ -1,4 +1,4 @@
-import { CaseItem } from "../types";
+import type { CaseItem } from "../types";
 
 export const mockCases: CaseItem[] = [
   {

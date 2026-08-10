@@ -1,4 +1,6 @@
+import type { ContractorAtomType } from "@townops/contractor-atom";
 import { logger, rabbitmqClient, captureException } from "@townops/shared-ts";
+import { hc } from "hono/client";
 
 import { env } from "./env";
 
@@ -99,7 +101,7 @@ export async function handleSlaBreach(message: any): Promise<void> {
     "handle-breach: processing sla.breached event"
   );
 
-  // Step 1: Search OutSystems for a backup contractor (same sector/category, exclude current)
+  // Step 1: Search for a backup contractor via the Contractor atom (same sector/category, exclude current)
   const sectorCode = (event.postal_code ?? "").slice(0, 2);
   const category = event.category_code ?? "";
   if (!sectorCode || !category) {
@@ -107,23 +109,19 @@ export async function handleSlaBreach(message: any): Promise<void> {
       "SLA breach payload missing postal_code or category_code — cannot search for backup contractor"
     );
   }
-  const searchUrl = new URL(`${env.CONTRACTOR_API_URL}/contractors/search`);
-  searchUrl.searchParams.set("SectorCode", sectorCode);
-  searchUrl.searchParams.set("CategoryCode", category);
-  const searchRes = await fetch(searchUrl.toString());
+  const contractorClient = hc<ContractorAtomType>(env.CONTRACTOR_ATOM_URL);
+  const searchRes = await contractorClient.api.contractors.search.$get({
+    query: { sectorCode, categoryCode: category },
+  });
   if (!searchRes.ok) {
     throw new Error(`Contractor search failed: HTTP ${searchRes.status}`);
   }
-  const candidates: Array<{ ContractorUuid: string }> = await searchRes.json();
-  const backup = candidates.find(
-    (c) =>
-      c.ContractorUuid.startsWith("c0ffee01") &&
-      c.ContractorUuid !== event.contractor_id
-  );
+  const { contractors: candidates } = await searchRes.json();
+  const backup = candidates.find((c) => c.id !== event.contractor_id);
   if (!backup) {
     throw new Error("No backup contractor available for sector/category");
   }
-  const newWorkerId = backup.ContractorUuid;
+  const newWorkerId = backup.id;
 
   logger.info(
     { newWorkerId, oldWorkerId: event.contractor_id },
@@ -138,7 +136,7 @@ export async function handleSlaBreach(message: any): Promise<void> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contractorId: newWorkerId,
-        responseDueAt: new Date(Date.now() + 15 * 1000).toISOString(),
+        responseDueAt: new Date(Date.now() + 60 * 1000).toISOString(),
         changedBy: newWorkerId,
         reason: "SLA_BREACH",
       }),

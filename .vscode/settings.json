@@ -2,13 +2,12 @@
   // --- Editor Appearance & Behavior ---
   "editor.tabSize": 2,
   "editor.formatOnSave": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "prettier.configPath": "tooling/prettier/prettier.config.js",
-  "eslint.options": {
-    "overrideConfigFile": "tooling/eslint/eslint.config.mjs"
+  "files.watcherExclude": {
+    "**/routeTree.gen.ts": true
   },
-  "eslint.useFlatConfig": true,
-
+  "files.readonlyInclude": {
+    "**/routeTree.gen.ts": true
+  },
   // --- Search & File Explorer ---
   "files.exclude": {
     "**/.git": true,
@@ -28,23 +27,9 @@
     "**/.next": true,
     "**/.turbo": true,
     "**/pgdata": true,
-    "**/rabbitmq_data": true
+    "**/rabbitmq_data": true,
+    "**/routeTree.gen.ts": true
   },
-
-  // --- Python Configuration (FastAPI) ---
-  "python.defaultInterpreterPath": ".venv/bin/python",
-  "python.analysis.typeCheckingMode": "basic",
-  "python.analysis.autoImportCompletions": true,
-  "python.testing.pytestEnabled": true,
-  "python.testing.unittestEnabled": false,
-  "[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.formatOnSave": true
-  },
-  "files.associations": {
-    "*.toml": "toml"
-  },
-  "evenBetterToml.schema.enabled": true,
 
   // --- JavaScript / TypeScript Configuration (React/Node) ---
   "javascript.updateImportsOnFileMove.enabled": "always",
