@@ -7,15 +7,31 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useTheme } from "next-themes";
+import type { CSSProperties } from "react";
 import { Toaster as Sonner } from "sonner";
 import type { ToasterProps } from "sonner";
 
+const toasterStyle: CSSProperties &
+  Record<
+    "--normal-bg" | "--normal-text" | "--normal-border" | "--border-radius",
+    string
+  > = {
+  "--normal-bg": "var(--popover)",
+  "--normal-text": "var(--popover-foreground)",
+  "--normal-border": "var(--border)",
+  "--border-radius": "var(--radius)",
+};
+
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme();
+  const sonnerTheme =
+    theme === "dark" || theme === "light" || theme === "system"
+      ? theme
+      : "system";
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={sonnerTheme}
       className="toaster group"
       icons={{
         success: (
@@ -54,14 +70,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           />
         ),
       }}
-      style={
-        {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
-        } as React.CSSProperties
-      }
+      style={toasterStyle}
       toastOptions={{
         classNames: {
           toast: "cn-toast",

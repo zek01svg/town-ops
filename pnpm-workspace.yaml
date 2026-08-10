@@ -1,6 +1,22 @@
 packages:
   - "apps/**"
   - "packages/**"
+# `packages/ui` declares @tanstack/react-query as a peer (`>=5`), which pnpm
+# auto-installs — resolving it to a newer patch than the catalog pin the apps
+# use. That put two copies of @tanstack/query-core in the tree, so the
+# `QueryClient` from `@townops/ui`'s `getQueryClient()` was a structurally
+# different type from the one each app's `QueryClientProvider` expects, and
+# `tsc` (which runs inside every frontend `build`, and so inside CI) failed.
+# Same class of hazard as the React dedupe every Vite config already carries.
+overrides:
+  "@tanstack/react-query": 5.101.2
+  "@tanstack/react-query-devtools": 5.101.2
+  "@tanstack/react-router": 1.170.18
+  lodash: 4.18.1
+  minimatch: 3.1.4
+  "@opentelemetry/propagator-jaeger": 2.9.0
+  protobufjs: 8.4.1
+
 allowBuilds:
   "@swc/core": false
   cpu-features: false
@@ -10,7 +26,6 @@ allowBuilds:
   ssh2: false
 
 catalog:
-  "@cloudamqp/amqp-client": 4.0.0
   "@fontsource-variable/inter": 5.3.0
   "@fontsource/space-grotesk": 5.3.0
   "@hono/standard-validator": ^0.3.0
@@ -32,7 +47,6 @@ catalog:
   "@scalar/hono-api-reference": ^0.11.11
   "@sentry/bun": 10.66.0
   "@sentry/react": 10.66.0
-  "@supabase/supabase-js": ^2.110.7
   "@t3-oss/env-core": 0.13.11
   "@tailwindcss/vite": 4.3.3
   "@tanstack/devtools": 0.12.5
@@ -47,8 +61,8 @@ catalog:
   "@tanstack/router-devtools": 1.167.0
   "@tanstack/router-plugin": 1.168.23
   "@tanstack/zod-form-adapter": ^0.42.1
+  "@temporalio/client": 1.20.3
   "@testcontainers/postgresql": ^12.0.4
-  "@testcontainers/rabbitmq": ^12.0.4
   "@testing-library/react": ^16.3.2
   "@types/pg": ^8.20.0
   "@vis.gl/react-google-maps": 1.9.0
@@ -58,7 +72,6 @@ catalog:
   better-auth: 1.6.23
   class-variance-authority: ^0.7.1
   clsx: 2.1.1
-  dotenv: 17.4.2
   dotenv-cli: ^11.0.0
   drizzle-kit: ^0.31.10
   drizzle-orm: ^0.45.2

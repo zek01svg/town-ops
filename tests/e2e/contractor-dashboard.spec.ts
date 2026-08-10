@@ -6,7 +6,7 @@
  * - Case audit trail shows assignment status and countdown
  * - Acknowledge Job button is visible for PENDING_ACCEPTANCE assignments
  * - Close Job sheet opens and validates required fields
- * - No Access button is visible on dispatched cases
+ * - No Access button is visible on scheduled cases
  */
 
 import { test, expect } from "@playwright/test";
@@ -23,19 +23,15 @@ test.describe("Contractor Dashboard", () => {
     page,
   }) => {
     await expect(page.getByText(/backlog/i).first()).toBeVisible();
-    await expect(page.getByText(/dispatched/i).first()).toBeVisible();
+    await expect(page.getByText(/assigned/i).first()).toBeVisible();
   });
 
   test("dashboard only shows cases assigned to logged-in contractor", async ({
     page,
   }) => {
-    // Cases section should be visible (even if empty — contractor may have no cases)
-    await expect(
-      page
-        .locator(".kanban, [data-testid='kanban'], [class*='kanban']")
-        .first()
-        .or(page.getByText(/no cases/i).first())
-    ).toBeVisible({ timeout: 10_000 });
+    const board = page.getByRole("tabpanel", { name: "Kanban Board" });
+    await expect(board).toBeVisible({ timeout: 10_000 });
+    await expect(board.getByText("Empty").first()).toBeVisible();
   });
 
   test("clicking a case card opens audit trail", async ({ page }) => {
@@ -82,10 +78,10 @@ test.describe("Contractor Dashboard", () => {
     ).toBeVisible();
   });
 
-  test("No Access button visible on dispatched case", async ({ page }) => {
+  test("No Access button visible on scheduled case", async ({ page }) => {
     const noAccessBtn = page.getByRole("button", { name: /no access/i });
     const count = await noAccessBtn.count();
-    test.skip(count === 0, "No dispatched cases — skipping no access test");
+    test.skip(count === 0, "No scheduled cases — skipping no access test");
 
     await expect(noAccessBtn.first()).toBeVisible();
   });

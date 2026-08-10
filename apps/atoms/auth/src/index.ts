@@ -1,4 +1,3 @@
-import { Scalar } from "@scalar/hono-api-reference";
 import {
   logger,
   honoLogger,
@@ -69,15 +68,6 @@ app.get(
     logger.info({ route: "/health" }, "Health check verified");
     return c.json({ status: "healthy" }, 200);
   }
-);
-
-// Scalar API Reference route
-app.get(
-  "/scalar",
-  Scalar({
-    url: "/api/auth/open-api/generate-schema",
-    theme: "deepSpace",
-  })
 );
 
 export { app };

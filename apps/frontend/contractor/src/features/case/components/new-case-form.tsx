@@ -5,12 +5,15 @@ import { Input } from "@/components/ui/input";
 
 import { openCaseSchema } from "../validation-schemas";
 
+const priorities = ["low", "medium", "high", "emergency"] as const;
+type CasePriority = (typeof priorities)[number];
+
 export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
   const form = useForm({
     defaultValues: {
       resident_id: "",
       category: "",
-      priority: "medium" as "low" | "medium" | "high" | "emergency",
+      priority: "medium" as CasePriority,
       description: "",
       address_details: "",
       postal_code: "",
@@ -34,7 +37,7 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
       onSubmit={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        form.handleSubmit();
+        void form.handleSubmit();
       }}
       className="space-y-6 mt-6 p-1"
     >
@@ -140,12 +143,12 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               Priority
             </label>
             <div className="flex gap-2">
-              {["low", "medium", "high", "emergency"].map((p) => (
+              {priorities.map((p) => (
                 <Button
                   key={p}
                   type="button"
                   variant={field.state.value === p ? "default" : "outline"}
-                  onClick={() => field.handleChange(p as any)}
+                  onClick={() => field.handleChange(p)}
                   className="rounded-none capitalize flex-1 border-border"
                 >
                   {p}

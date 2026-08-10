@@ -12,7 +12,9 @@
     "./providers/theme-provider": "./src/providers/theme-provider.tsx",
     "./providers/react-query": "./src/providers/react-query.tsx",
     "./providers/get-query-client": "./src/providers/get-query-client.ts",
-    "./auth-token": "./src/libr/auth-token.ts"
+    "./auth-token": "./src/libr/auth-token.ts",
+    "./libr/timeline": "./src/libr/timeline.ts",
+    "./libr/gateway": "./src/libr/gateway.ts"
   },
   "scripts": {
     "clean": "rimraf dist node_modules"

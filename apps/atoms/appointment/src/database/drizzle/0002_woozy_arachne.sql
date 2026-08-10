@@ -1,0 +1,1 @@
+ALTER TABLE "appointments" ALTER COLUMN "operation_id" SET NOT NULL;

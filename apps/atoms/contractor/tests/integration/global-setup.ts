@@ -1,7 +1,6 @@
 import { execSync } from "child_process";
 
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
-import { Pool } from "pg";
 
 export async function setup() {
   console.log(
@@ -12,22 +11,13 @@ export async function setup() {
 
   process.env.DATABASE_URL = dbUrl;
   process.env.PORT = "5009";
+  process.env.WORKER_SERVICE_TOKEN = "a".repeat(32);
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
 
-  const pool = new Pool({ connectionString: dbUrl });
-  try {
-    await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
-    console.log("[Integration Setup] Installed 'uuid-ossp' extension.");
-  } catch (err) {
-    console.warn("[Integration Setup] Failed to install extension:", err);
-  } finally {
-    await pool.end();
-  }
-
   try {
     console.log("[Integration Setup] Pushing schema with drizzle-kit...");
-    execSync("bun drizzle-kit push --force", {
+    execSync("bun drizzle-kit migrate", {
       env: { ...process.env, DATABASE_URL: dbUrl },
       stdio: "pipe",
     });

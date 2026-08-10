@@ -11,6 +11,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { Route as rootRouteImport } from "./routes/__root";
+import { Route as AttentionRouteImport } from "./routes/attention";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
 import { Route as IndexRouteImport } from "./routes/index";
 import { Route as MapRouteImport } from "./routes/map";
@@ -27,6 +28,11 @@ const R404LazyRoute = R404LazyRouteImport.update({
   path: "/404",
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import("./routes/404.lazy").then((d) => d.Route));
+const AttentionRoute = AttentionRouteImport.update({
+  id: "/attention",
+  path: "/attention",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const DashboardRoute = DashboardRouteImport.update({
   id: "/dashboard",
   path: "/dashboard",
@@ -40,12 +46,14 @@ const MapRoute = MapRouteImport.update({
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
+  "/attention": typeof AttentionRoute;
   "/dashboard": typeof DashboardRoute;
   "/map": typeof MapRoute;
   "/404": typeof R404LazyRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
+  "/attention": typeof AttentionRoute;
   "/dashboard": typeof DashboardRoute;
   "/map": typeof MapRoute;
   "/404": typeof R404LazyRoute;
@@ -53,20 +61,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
+  "/attention": typeof AttentionRoute;
   "/dashboard": typeof DashboardRoute;
   "/map": typeof MapRoute;
   "/404": typeof R404LazyRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/" | "/dashboard" | "/map" | "/404";
+  fullPaths: "/" | "/attention" | "/dashboard" | "/map" | "/404";
   fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/dashboard" | "/map" | "/404";
-  id: "__root__" | "/" | "/dashboard" | "/map" | "/404";
+  to: "/" | "/attention" | "/dashboard" | "/map" | "/404";
+  id: "__root__" | "/" | "/attention" | "/dashboard" | "/map" | "/404";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
+  AttentionRoute: typeof AttentionRoute;
   DashboardRoute: typeof DashboardRoute;
   MapRoute: typeof MapRoute;
   R404LazyRoute: typeof R404LazyRoute;
@@ -88,6 +98,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof R404LazyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/attention": {
+      id: "/attention";
+      path: "/attention";
+      fullPath: "/attention";
+      preLoaderRoute: typeof AttentionRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/dashboard": {
       id: "/dashboard";
       path: "/dashboard";
@@ -107,6 +124,7 @@ declare module "@tanstack/react-router" {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AttentionRoute: AttentionRoute,
   DashboardRoute: DashboardRoute,
   MapRoute: MapRoute,
   R404LazyRoute: R404LazyRoute,

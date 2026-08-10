@@ -1,0 +1,3866 @@
+{
+  "events": [
+    {
+      "links": [],
+      "eventId": 1,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 203000000
+      },
+      "eventType": 1,
+      "workflowExecutionStartedEventAttributes": {
+        "completionCallbacks": [],
+        "workflowType": {
+          "name": "CaseWorkflow"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXNlSWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUifQ=="
+            }
+          ]
+        },
+        "workflowExecutionTimeout": {
+          "seconds": 315360000
+        },
+        "workflowRunTimeout": {
+          "seconds": 315360000
+        },
+        "workflowTaskTimeout": {
+          "seconds": 10
+        },
+        "originalExecutionRunId": "8528c706-353f-46b9-ad28-fc5cfdde63d2",
+        "identity": "3180@Charles",
+        "firstExecutionRunId": "8528c706-353f-46b9-ad28-fc5cfdde63d2",
+        "attempt": 1,
+        "firstWorkflowTaskBackoff": {},
+        "header": {
+          "fields": {}
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 2,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 203000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 3,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 203000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 2,
+        "identity": "3180@Charles",
+        "historySizeBytes": 388
+      }
+    },
+    {
+      "links": [],
+      "eventId": 4,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 284000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 2,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [2, 3, 1],
+          "langUsedFlags": [],
+          "sdkName": "temporal-typescript",
+          "sdkVersion": "1.20.3"
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 5,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 284000000
+      },
+      "eventType": 41,
+      "workflowExecutionUpdateAcceptedEventAttributes": {
+        "protocolInstanceId": "b9a7d6af-2990-4116-9078-997ca0bd12a6",
+        "acceptedRequestMessageId": "b9a7d6af-2990-4116-9078-997ca0bd12a6/request",
+        "acceptedRequestSequencingEventId": 2,
+        "acceptedRequest": {
+          "completionCallbacks": [],
+          "links": [],
+          "meta": {
+            "updateId": "b9a7d6af-2990-4116-9078-997ca0bd12a6",
+            "identity": "3180@Charles"
+          },
+          "input": {
+            "header": {
+              "fields": {}
+            },
+            "name": "openCase",
+            "args": {
+              "payloads": [
+                {
+                  "metadata": {
+                    "encoding": "anNvbi9wbGFpbg=="
+                  },
+                  "externalPayloads": [],
+                  "data": "eyJpZGVtcG90ZW5jeUtleSI6IjdmZjU0MTFkLTdlOGYtNGZhZC1hMGQyLTkyOGU5NWU4ZTM4YyIsInBheWxvYWRIYXNoIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSIsIm9wZXJhdGlvbklkIjoiN2ZmNTQxMWQtN2U4Zi00ZmFkLWEwZDItOTI4ZTk1ZThlMzhjLmFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJhY3RvcklkIjoiZTY1ZGRhMzEtODEzNS00ZmM2LWIzNzktNTAyZDYxZDE0OGMxIiwiYWN0b3JSb2xlIjoiT0ZGSUNFUiIsImlucHV0Ijp7InJlc2lkZW50SWQiOiIzZjI4MjkwNS03NGE0LTRkNzUtYTk0ZS1kMjczNzVhNjhhNDkiLCJjYXRlZ29yeSI6IkxFIiwicHJpb3JpdHkiOiJISUdIIiwiZGVzY3JpcHRpb24iOiJCcm9rZW4gc3RyZWV0IGxpZ2h0IiwicG9zdGFsQ29kZSI6IjEyMzQ1NiJ9fQ=="
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 6,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 284000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "1",
+        "activityType": {
+          "name": "openCase"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXNlSWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUiLCJvcGVyYXRpb25JZCI6IjdmZjU0MTFkLTdlOGYtNGZhZC1hMGQyLTkyOGU5NWU4ZTM4Yy5hYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiYWN0b3JJZCI6ImU2NWRkYTMxLTgxMzUtNGZjNi1iMzc5LTUwMmQ2MWQxNDhjMSIsImFjdG9yUm9sZSI6Ik9GRklDRVIiLCJpbnB1dCI6eyJyZXNpZGVudElkIjoiM2YyODI5MDUtNzRhNC00ZDc1LWE5NGUtZDI3Mzc1YTY4YTQ5IiwiY2F0ZWdvcnkiOiJMRSIsInByaW9yaXR5IjoiSElHSCIsImRlc2NyaXB0aW9uIjoiQnJva2VuIHN0cmVldCBsaWdodCIsInBvc3RhbENvZGUiOiIxMjM0NTYifX0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 3,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 7,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 284000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 6,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 8,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 284000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsInJlc2lkZW50SWQiOiJkNWM0YTI2My1jNTM1LTQ0ZGMtYmU5OC00MjI2M2RhMzcxMzUiLCJjYXRlZ29yeSI6IkxFIiwicHJpb3JpdHkiOiJISUdIIiwic3RhdHVzIjoiUEVORElORyIsImRlc2NyaXB0aW9uIjoiQnJva2VuIHN0cmVldCBsaWdodCIsImFkZHJlc3NEZXRhaWxzIjpudWxsLCJwb3N0YWxDb2RlIjoiMTIzNDU2IiwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIiwidXBkYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIn0="
+            }
+          ]
+        },
+        "scheduledEventId": 6,
+        "startedEventId": 7,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 9,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 284000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 10,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 284000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 9,
+        "identity": "3180@Charles",
+        "historySizeBytes": 2367
+      }
+    },
+    {
+      "links": [],
+      "eventId": 11,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 297000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 9,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 12,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 297000000
+      },
+      "eventType": 43,
+      "workflowExecutionUpdateCompletedEventAttributes": {
+        "meta": {
+          "updateId": "b9a7d6af-2990-4116-9078-997ca0bd12a6",
+          "identity": "3180@Charles"
+        },
+        "outcome": {
+          "success": {
+            "payloads": [
+              {
+                "metadata": {
+                  "encoding": "anNvbi9wbGFpbg=="
+                },
+                "externalPayloads": [],
+                "data": "eyJraW5kIjoiU1VDQ0VTUyIsImRhdGEiOnsiaWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUiLCJyZXNpZGVudElkIjoiZDVjNGEyNjMtYzUzNS00NGRjLWJlOTgtNDIyNjNkYTM3MTM1IiwiY2F0ZWdvcnkiOiJMRSIsInByaW9yaXR5IjoiSElHSCIsInN0YXR1cyI6IlBFTkRJTkciLCJkZXNjcmlwdGlvbiI6IkJyb2tlbiBzdHJlZXQgbGlnaHQiLCJhZGRyZXNzRGV0YWlscyI6bnVsbCwicG9zdGFsQ29kZSI6IjEyMzQ1NiIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMDA6MDA6MDAuMDAwWiIsInVwZGF0ZWRBdCI6IjIwMjYtMDgtMDdUMDA6MDA6MDAuMDAwWiJ9fQ=="
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 13,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 297000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "2",
+        "activityType": {
+          "name": "isCaseTerminal"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXNlSWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUifQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 10,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 14,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 297000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 13,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 15,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 297000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "ZmFsc2U="
+            }
+          ]
+        },
+        "scheduledEventId": 13,
+        "startedEventId": 14,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 16,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 297000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 17,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 297000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 16,
+        "identity": "3180@Charles",
+        "historySizeBytes": 3417
+      }
+    },
+    {
+      "links": [],
+      "eventId": 18,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 303000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 16,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 19,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 303000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "3",
+        "activityType": {
+          "name": "fetchAllocationSnapshot"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXRlZ29yeSI6IkxFIiwicG9zdGFsU2VjdG9yIjoiMTIifQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 17,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 20,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 303000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 19,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 21,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 303000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJlcG9jaCI6MCwiY2FuZGlkYXRlcyI6W3siY29udHJhY3RvcklkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiYWN0aXZlQXNzaWdubWVudHMiOjAsInRvdGFsU2NvcmUiOjB9XX0="
+            }
+          ]
+        },
+        "scheduledEventId": 19,
+        "startedEventId": 20,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 22,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 303000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 23,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 303000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 22,
+        "identity": "3180@Charles",
+        "historySizeBytes": 4135
+      }
+    },
+    {
+      "links": [],
+      "eventId": 24,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 22,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 25,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "4",
+        "activityType": {
+          "name": "commitAllocationAttempt"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvcGVyYXRpb25JZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NS9hbGxvY2F0ZS8xMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEvMCIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSIsInNvdXJjZSI6IkFVVE9fQVNTSUdOIiwiZXhwZWN0ZWRFcG9jaCI6MCwiYWNjZXB0YW5jZVNsYU1zIjo2MDAwMCwiYWN0b3JJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsImFjdG9yUm9sZSI6IlNZU1RFTSJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 23,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 26,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 25,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 27,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvdXRjb21lIjoiQ09NTUlUVEVEIiwiYXR0ZW1wdCI6eyJpZCI6ImE3ZWVmNzk2LTVlNjMtNDQyZC05M2MxLTA3OTYxZjIwOTBkMSIsImFzc2lnbm1lbnRJZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOSIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSIsInNvdXJjZSI6IkFVVE9fQVNTSUdOIiwic3RhdHVzIjoiUEVORElOR19BQ0NFUFRBTkNFIiwiYWNjZXB0YW5jZVNsYU1zIjo2MDAwMCwiZGVhZGxpbmVBdCI6IjIwMjYtMDgtMDdUMTI6Mjg6MDUuMzExWiIsImFjdG9ySWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJhY3RvclJvbGUiOiJTWVNURU0iLCJyZWFzb24iOm51bGwsIm9wZXJhdGlvbklkIjoiZTYzMzcyZTUtYzAyZi00ZWJlLTljY2YtY2I1OTA0MzVlMzg1L2FsbG9jYXRlLzExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMS8wIiwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wN1QxMjoyNzowNS4zMDVaIn0sImFzc2lnbm1lbnQiOnsiaWQiOiJmYWIzOGFiNi0zZjU1LTQ5NjYtOGRhMC05ZjU0OTVkZmJhMjkiLCJjYXNlSWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUiLCJjcmVhdGVkQXQiOiIyMDI2LTA4LTA3VDEyOjI3OjA1LjMwNVoiLCJ1cGRhdGVkQXQiOiIyMDI2LTA4LTA3VDEyOjI3OjA1LjMwNVoifSwiZXBvY2giOjF9"
+            }
+          ]
+        },
+        "scheduledEventId": 25,
+        "startedEventId": 26,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 28,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 29,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 28,
+        "identity": "3180@Charles",
+        "historySizeBytes": 5763
+      }
+    },
+    {
+      "links": [],
+      "eventId": 30,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 28,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 31,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "5",
+        "activityType": {
+          "name": "markCaseAssigned"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXNlSWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUiLCJvcGVyYXRpb25JZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NS9hbGxvY2F0ZS8xMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEvMCIsImFjdG9ySWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJhY3RvclJvbGUiOiJTWVNURU0ifQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 29,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 32,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 31,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 33,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "IkFTU0lHTkVEIg=="
+            }
+          ]
+        },
+        "scheduledEventId": 31,
+        "startedEventId": 32,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 34,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 35,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 312000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 34,
+        "identity": "3180@Charles",
+        "historySizeBytes": 6548
+      }
+    },
+    {
+      "links": [],
+      "eventId": 36,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 329000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 34,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 37,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 329000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "6",
+        "activityType": {
+          "name": "reserveEffect"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImE3ZWVmNzk2LTVlNjMtNDQyZC05M2MxLTA3OTYxZjIwOTBkMS9hc3NpZ25tZW50LW5vdGlmaWNhdGlvbiIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsInR5cGUiOiJFTUFJTCIsInB1cnBvc2UiOiJBVFRFTVBUX0FTU0lHTk1FTlRfTk9USUZJQ0FUSU9OIiwicmVjaXBpZW50Ijp7InR5cGUiOiJDT05UUkFDVE9SIiwiaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEifX0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 35,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          },
+          "maximumAttempts": 1
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 38,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 329000000
+      },
+      "eventType": 17,
+      "timerStartedEventAttributes": {
+        "timerId": "1",
+        "startToFireTimeout": {
+          "seconds": 59,
+          "nanos": 999000000
+        },
+        "workflowTaskCompletedEventId": 35
+      }
+    },
+    {
+      "links": [],
+      "eventId": 39,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 329000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 37,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 40,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 329000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImE3ZWVmNzk2LTVlNjMtNDQyZC05M2MxLTA3OTYxZjIwOTBkMS9hc3NpZ25tZW50LW5vdGlmaWNhdGlvbiIsImNhc2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsInR5cGUiOiJFTUFJTCIsInB1cnBvc2UiOiJBVFRFTVBUX0FTU0lHTk1FTlRfTk9USUZJQ0FUSU9OIiwic3RhdHVzIjoiUEVORElORyIsInByb3ZpZGVySWQiOm51bGwsInByb3ZpZGVySWRlbXBvdGVuY3lLZXkiOiJhN2VlZjc5Ni01ZTYzLTQ0MmQtOTNjMS0wNzk2MWYyMDkwZDEvYXNzaWdubWVudC1ub3RpZmljYXRpb24iLCJhdHRlbXB0cyI6MSwibGFzdEVycm9yIjpudWxsLCJuZXh0UmV0cnlBdCI6bnVsbCwid2FpdmVyQWN0b3JJZCI6bnVsbCwid2FpdmVyUmVhc29uIjpudWxsLCJjb250cmFjdG9ySWQiOm51bGwsInNjb3JlRGVsdGEiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzE5WiIsInVwZGF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzE5WiJ9"
+            }
+          ]
+        },
+        "scheduledEventId": 37,
+        "startedEventId": 39,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 41,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 329000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 42,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 329000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 41,
+        "identity": "3180@Charles",
+        "historySizeBytes": 7903
+      }
+    },
+    {
+      "links": [],
+      "eventId": 43,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 336000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 41,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 44,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 336000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "7",
+        "activityType": {
+          "name": "dispatchEmailEffect"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImE3ZWVmNzk2LTVlNjMtNDQyZC05M2MxLTA3OTYxZjIwOTBkMS9hc3NpZ25tZW50LW5vdGlmaWNhdGlvbiIsIm5leHRSZXRyeUF0IjoiMjAyNi0wOC0wN1QxMjoyNzowNi4zMTJaIn0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 42,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          },
+          "maximumAttempts": 1
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 45,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 336000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 2
+      }
+    },
+    {
+      "links": [],
+      "eventId": 46,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 336000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 45,
+        "identity": "3180@Charles",
+        "historySizeBytes": 8464
+      }
+    },
+    {
+      "links": [],
+      "eventId": 47,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 340000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 45,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 48,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 340000000
+      },
+      "eventType": 41,
+      "workflowExecutionUpdateAcceptedEventAttributes": {
+        "protocolInstanceId": "141a5887-2eb1-4c29-9ca7-17c01ed7d0ad",
+        "acceptedRequestMessageId": "141a5887-2eb1-4c29-9ca7-17c01ed7d0ad/request",
+        "acceptedRequestSequencingEventId": 45,
+        "acceptedRequest": {
+          "completionCallbacks": [],
+          "links": [],
+          "meta": {
+            "updateId": "141a5887-2eb1-4c29-9ca7-17c01ed7d0ad",
+            "identity": "3180@Charles"
+          },
+          "input": {
+            "header": {
+              "fields": {}
+            },
+            "name": "acceptAllocation",
+            "args": {
+              "payloads": [
+                {
+                  "metadata": {
+                    "encoding": "anNvbi9wbGFpbg=="
+                  },
+                  "externalPayloads": [],
+                  "data": "eyJpZGVtcG90ZW5jeUtleSI6ImJlOTJiMWFmLWMxZjQtNGEzNS04ZDJmLWNmYTVmZTUxYWI2MCIsInBheWxvYWRIYXNoIjoiY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYyIsIm9wZXJhdGlvbklkIjoiYmU5MmIxYWYtYzFmNC00YTM1LThkMmYtY2ZhNWZlNTFhYjYwLmNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MiLCJhY3RvcklkIjoiMGNlMmQwMzYtNjE0My00OTc3LTg0ZWQtOTAyNmY4N2I1MWNiIiwiYWN0b3JSb2xlIjoiQ09OVFJBQ1RPUiIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsImFzc2lnbm1lbnRJZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOSIsImF0dGVtcHRJZCI6ImE3ZWVmNzk2LTVlNjMtNDQyZC05M2MxLTA3OTYxZjIwOTBkMSIsImlucHV0Ijp7InN0YXJ0VGltZSI6IjIwMjYtMDgtMDdUMTI6Mjc6MDQuMzI2WiIsImVuZFRpbWUiOiIyMDI2LTA4LTA3VDEyOjMyOjA1LjMyNloifX0="
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 49,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 340000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "8",
+        "activityType": {
+          "name": "acceptAllocation"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZGVtcG90ZW5jeUtleSI6ImJlOTJiMWFmLWMxZjQtNGEzNS04ZDJmLWNmYTVmZTUxYWI2MCIsInBheWxvYWRIYXNoIjoiY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYyIsIm9wZXJhdGlvbklkIjoiYmU5MmIxYWYtYzFmNC00YTM1LThkMmYtY2ZhNWZlNTFhYjYwLmNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MiLCJhY3RvcklkIjoiMGNlMmQwMzYtNjE0My00OTc3LTg0ZWQtOTAyNmY4N2I1MWNiIiwiYWN0b3JSb2xlIjoiQ09OVFJBQ1RPUiIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsImFzc2lnbm1lbnRJZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOSIsImF0dGVtcHRJZCI6ImE3ZWVmNzk2LTVlNjMtNDQyZC05M2MxLTA3OTYxZjIwOTBkMSIsImlucHV0Ijp7InN0YXJ0VGltZSI6IjIwMjYtMDgtMDdUMTI6Mjc6MDQuMzI2WiIsImVuZFRpbWUiOiIyMDI2LTA4LTA3VDEyOjMyOjA1LjMyNloifX0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 46,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 50,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 336000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 44,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 51,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 340000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImE3ZWVmNzk2LTVlNjMtNDQyZC05M2MxLTA3OTYxZjIwOTBkMS9hc3NpZ25tZW50LW5vdGlmaWNhdGlvbiIsImNhc2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsInR5cGUiOiJFTUFJTCIsInB1cnBvc2UiOiJBVFRFTVBUX0FTU0lHTk1FTlRfTk9USUZJQ0FUSU9OIiwic3RhdHVzIjoiU0VOVCIsInByb3ZpZGVySWQiOm51bGwsInByb3ZpZGVySWRlbXBvdGVuY3lLZXkiOiJhN2VlZjc5Ni01ZTYzLTQ0MmQtOTNjMS0wNzk2MWYyMDkwZDEvYXNzaWdubWVudC1ub3RpZmljYXRpb24iLCJhdHRlbXB0cyI6MSwibGFzdEVycm9yIjpudWxsLCJuZXh0UmV0cnlBdCI6bnVsbCwid2FpdmVyQWN0b3JJZCI6bnVsbCwid2FpdmVyUmVhc29uIjpudWxsLCJjb250cmFjdG9ySWQiOm51bGwsInNjb3JlRGVsdGEiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzI1WiIsInVwZGF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzI1WiJ9"
+            }
+          ]
+        },
+        "scheduledEventId": 44,
+        "startedEventId": 47,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 52,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 340000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 53,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 340000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 52,
+        "identity": "3180@Charles",
+        "historySizeBytes": 10994
+      }
+    },
+    {
+      "links": [],
+      "eventId": 54,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 52,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 55,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "9",
+        "activityType": {
+          "name": "resolveDerivedEffectAttention"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXNlSWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUiLCJlZmZlY3RJZCI6ImE3ZWVmNzk2LTVlNjMtNDQyZC05M2MxLTA3OTYxZjIwOTBkMS9hc3NpZ25tZW50LW5vdGlmaWNhdGlvbiJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 53,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          },
+          "maximumAttempts": 1
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 56,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 340000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 49,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 57,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJraW5kIjoiU1VDQ0VTUyIsImRhdGEiOnsiYXNzaWdubWVudCI6eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOSIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzMxWiIsInVwZGF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzMxWiJ9LCJhdHRlbXB0Ijp7ImlkIjoiYTdlZWY3OTYtNWU2My00NDJkLTkzYzEtMDc5NjFmMjA5MGQxIiwiYXNzaWdubWVudElkIjoiZmFiMzhhYjYtM2Y1NS00OTY2LThkYTAtOWY1NDk1ZGZiYTI5IiwiY29udHJhY3RvcklkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwic291cmNlIjoiQVVUT19BU1NJR04iLCJzdGF0dXMiOiJBQ0NFUFRFRCIsImFjY2VwdGFuY2VTbGFNcyI6NjAwMDAsImRlYWRsaW5lQXQiOiIyMDI2LTA4LTA3VDEyOjI3OjA1LjMzMVoiLCJhY3RvcklkIjoiMGNlMmQwMzYtNjE0My00OTc3LTg0ZWQtOTAyNmY4N2I1MWNiIiwiYWN0b3JSb2xlIjoiQ09OVFJBQ1RPUiIsInJlYXNvbiI6bnVsbCwib3BlcmF0aW9uSWQiOiJiZTkyYjFhZi1jMWY0LTRhMzUtOGQyZi1jZmE1ZmU1MWFiNjAuY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYyIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzMxWiJ9LCJhcHBvaW50bWVudCI6eyJpZCI6IjQ1MmJmYzJlLTgzNTEtNDI3ZS05YjM4LTNjZDk0YjM5ZmNmZSIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsImFzc2lnbm1lbnRJZCI6ImM3OTNmNGVlLWI2OWMtNDI4ZC1iZTY2LWEyZWMyMGQ4NGJkYiIsImF0dGVtcHRJZCI6ImMzYjk1YzA3LWY4MWItNGVlNi05OTBiLWU1MDkyN2YzMDJhOCIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSIsInN0YXJ0VGltZSI6IjIwMjYtMDgtMDdUMTI6Mjc6MDQuMzI2WiIsImVuZFRpbWUiOiIyMDI2LTA4LTA3VDEyOjMyOjA1LjMyNloiLCJzdGF0dXMiOiJTQ0hFRFVMRUQiLCJyZWFzb24iOm51bGwsIm9wZXJhdGlvbklkIjoiYXBwb2ludG1lbnQvNDUyYmZjMmUtODM1MS00MjdlLTliMzgtM2NkOTRiMzlmY2ZlIiwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIn19fQ=="
+            }
+          ]
+        },
+        "scheduledEventId": 49,
+        "startedEventId": 54,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 58,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 59,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 58,
+        "identity": "3180@Charles",
+        "historySizeBytes": 12900
+      }
+    },
+    {
+      "links": [],
+      "eventId": 60,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 58,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 61,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 43,
+      "workflowExecutionUpdateCompletedEventAttributes": {
+        "meta": {
+          "updateId": "141a5887-2eb1-4c29-9ca7-17c01ed7d0ad",
+          "identity": "3180@Charles"
+        },
+        "outcome": {
+          "success": {
+            "payloads": [
+              {
+                "metadata": {
+                  "encoding": "anNvbi9wbGFpbg=="
+                },
+                "externalPayloads": [],
+                "data": "eyJraW5kIjoiU1VDQ0VTUyIsImRhdGEiOnsiYXNzaWdubWVudCI6eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOSIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzMxWiIsInVwZGF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzMxWiJ9LCJhdHRlbXB0Ijp7ImlkIjoiYTdlZWY3OTYtNWU2My00NDJkLTkzYzEtMDc5NjFmMjA5MGQxIiwiYXNzaWdubWVudElkIjoiZmFiMzhhYjYtM2Y1NS00OTY2LThkYTAtOWY1NDk1ZGZiYTI5IiwiY29udHJhY3RvcklkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwic291cmNlIjoiQVVUT19BU1NJR04iLCJzdGF0dXMiOiJBQ0NFUFRFRCIsImFjY2VwdGFuY2VTbGFNcyI6NjAwMDAsImRlYWRsaW5lQXQiOiIyMDI2LTA4LTA3VDEyOjI3OjA1LjMzMVoiLCJhY3RvcklkIjoiMGNlMmQwMzYtNjE0My00OTc3LTg0ZWQtOTAyNmY4N2I1MWNiIiwiYWN0b3JSb2xlIjoiQ09OVFJBQ1RPUiIsInJlYXNvbiI6bnVsbCwib3BlcmF0aW9uSWQiOiJiZTkyYjFhZi1jMWY0LTRhMzUtOGQyZi1jZmE1ZmU1MWFiNjAuY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYyIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzMxWiJ9LCJhcHBvaW50bWVudCI6eyJpZCI6IjQ1MmJmYzJlLTgzNTEtNDI3ZS05YjM4LTNjZDk0YjM5ZmNmZSIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsImFzc2lnbm1lbnRJZCI6ImM3OTNmNGVlLWI2OWMtNDI4ZC1iZTY2LWEyZWMyMGQ4NGJkYiIsImF0dGVtcHRJZCI6ImMzYjk1YzA3LWY4MWItNGVlNi05OTBiLWU1MDkyN2YzMDJhOCIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSIsInN0YXJ0VGltZSI6IjIwMjYtMDgtMDdUMTI6Mjc6MDQuMzI2WiIsImVuZFRpbWUiOiIyMDI2LTA4LTA3VDEyOjMyOjA1LjMyNloiLCJzdGF0dXMiOiJTQ0hFRFVMRUQiLCJyZWFzb24iOm51bGwsIm9wZXJhdGlvbklkIjoiYXBwb2ludG1lbnQvNDUyYmZjMmUtODM1MS00MjdlLTliMzgtM2NkOTRiMzlmY2ZlIiwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIn19fQ=="
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 62,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 19,
+      "timerCanceledEventAttributes": {
+        "timerId": "1",
+        "startedEventId": 38,
+        "workflowTaskCompletedEventId": 59
+      }
+    },
+    {
+      "links": [],
+      "eventId": 63,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 17,
+      "timerStartedEventAttributes": {
+        "timerId": "2",
+        "startToFireTimeout": {
+          "seconds": 299,
+          "nanos": 981000000
+        },
+        "workflowTaskCompletedEventId": 59
+      }
+    },
+    {
+      "links": [],
+      "eventId": 64,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 55,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 65,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "YmluYXJ5L251bGw="
+              },
+              "externalPayloads": []
+            }
+          ]
+        },
+        "scheduledEventId": 55,
+        "startedEventId": 60,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 66,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 67,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 66,
+        "identity": "3180@Charles",
+        "historySizeBytes": 14655
+      }
+    },
+    {
+      "links": [],
+      "eventId": 68,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 66,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 69,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 19,
+      "timerCanceledEventAttributes": {
+        "timerId": "2",
+        "startedEventId": 63,
+        "workflowTaskCompletedEventId": 67
+      }
+    },
+    {
+      "links": [],
+      "eventId": 70,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 17,
+      "timerStartedEventAttributes": {
+        "timerId": "3",
+        "startToFireTimeout": {
+          "seconds": 299,
+          "nanos": 981000000
+        },
+        "workflowTaskCompletedEventId": 67
+      }
+    },
+    {
+      "links": [],
+      "eventId": 71,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 72,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 345000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 71,
+        "identity": "3180@Charles",
+        "historySizeBytes": 14981
+      }
+    },
+    {
+      "links": [],
+      "eventId": 73,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 71,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 74,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 41,
+      "workflowExecutionUpdateAcceptedEventAttributes": {
+        "protocolInstanceId": "6e4159ba-80c7-4b40-b2ea-2ea56c01abc4",
+        "acceptedRequestMessageId": "6e4159ba-80c7-4b40-b2ea-2ea56c01abc4/request",
+        "acceptedRequestSequencingEventId": 71,
+        "acceptedRequest": {
+          "completionCallbacks": [],
+          "links": [],
+          "meta": {
+            "updateId": "6e4159ba-80c7-4b40-b2ea-2ea56c01abc4",
+            "identity": "3180@Charles"
+          },
+          "input": {
+            "header": {
+              "fields": {}
+            },
+            "name": "startWork",
+            "args": {
+              "payloads": [
+                {
+                  "metadata": {
+                    "encoding": "anNvbi9wbGFpbg=="
+                  },
+                  "externalPayloads": [],
+                  "data": "eyJpZGVtcG90ZW5jeUtleSI6IjlhZmI3YzkwLThhOGMtNDkyNS1iYmRhLTc3OTc2YWIxYjgxMyIsInBheWxvYWRIYXNoIjoiZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZCIsIm9wZXJhdGlvbklkIjoiOWFmYjdjOTAtOGE4Yy00OTI1LWJiZGEtNzc5NzZhYjFiODEzLmRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGQiLCJhY3RvcklkIjoiOTVkYzY3NDItYzlkMi00YzlhLWIxNmEtZDhjZGU3YzZiZDlkIiwiYWN0b3JSb2xlIjoiQ09OVFJBQ1RPUiIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsImFzc2lnbm1lbnRJZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOSIsImFwcG9pbnRtZW50SWQiOiI0NTJiZmMyZS04MzUxLTQyN2UtOWIzOC0zY2Q5NGIzOWZjZmUiLCJzdGFydFRpbWUiOiIyMDI2LTA4LTA3VDEyOjI3OjA0LjMyNloiLCJlbmRUaW1lIjoiMjAyNi0wOC0wN1QxMjozMjowNS4zMjZaIn0="
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 75,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "10",
+        "activityType": {
+          "name": "startWorkAppointment"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvcGVyYXRpb25JZCI6IjlhZmI3YzkwLThhOGMtNDkyNS1iYmRhLTc3OTc2YWIxYjgxMy5kZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkL2FwcG9pbnRtZW50IiwiYXBwb2ludG1lbnRJZCI6IjQ1MmJmYzJlLTgzNTEtNDI3ZS05YjM4LTNjZDk0YjM5ZmNmZSIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 72,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 76,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 75,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 77,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvdXRjb21lIjoiU1RBUlRFRCIsImFwcG9pbnRtZW50Ijp7ImlkIjoiNDUyYmZjMmUtODM1MS00MjdlLTliMzgtM2NkOTRiMzlmY2ZlIiwiY2FzZUlkIjoiIiwiYXNzaWdubWVudElkIjoiZWZiMGY1MDQtYjA4Ny00YThhLTgwNzAtNjlkNWU4Mjk0NDNhIiwiYXR0ZW1wdElkIjoiZjdkYTYxZjMtMjdhZS00Yjc2LTlhMTgtMjM1YzgxNGRkOTkyIiwiY29udHJhY3RvcklkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwic3RhcnRUaW1lIjoiMjAyNi0wOC0wN1QxMjoyNzowNC4zNjBaIiwiZW5kVGltZSI6IjIwMjYtMDgtMDdUMTI6Mjg6MDUuMzYwWiIsInN0YXR1cyI6IklOX1BST0dSRVNTIiwicmVhc29uIjpudWxsLCJvcGVyYXRpb25JZCI6ImFwcG9pbnRtZW50LzQ1MmJmYzJlLTgzNTEtNDI3ZS05YjM4LTNjZDk0YjM5ZmNmZSIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMDA6MDA6MDAuMDAwWiJ9fQ=="
+            }
+          ]
+        },
+        "scheduledEventId": 75,
+        "startedEventId": 76,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 78,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 79,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 78,
+        "identity": "3180@Charles",
+        "historySizeBytes": 17085
+      }
+    },
+    {
+      "links": [],
+      "eventId": 80,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 78,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 81,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "11",
+        "activityType": {
+          "name": "markAssignmentInProgress"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvcGVyYXRpb25JZCI6IjlhZmI3YzkwLThhOGMtNDkyNS1iYmRhLTc3OTc2YWIxYjgxMy5kZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkL2Fzc2lnbm1lbnQiLCJhc3NpZ25tZW50SWQiOiJmYWIzOGFiNi0zZjU1LTQ5NjYtOGRhMC05ZjU0OTVkZmJhMjkiLCJjaGFuZ2VkQnkiOiI5NWRjNjc0Mi1jOWQyLTRjOWEtYjE2YS1kOGNkZTdjNmJkOWQifQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 79,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 82,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 81,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 83,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvdXRjb21lIjoiSU5fUFJPR1JFU1MiLCJhc3NpZ25tZW50Ijp7ImlkIjoiZmFiMzhhYjYtM2Y1NS00OTY2LThkYTAtOWY1NDk1ZGZiYTI5IiwiY2FzZUlkIjoiIiwiY3JlYXRlZEF0IjoiIiwidXBkYXRlZEF0IjoiIn19"
+            }
+          ]
+        },
+        "scheduledEventId": 81,
+        "startedEventId": 82,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 84,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 85,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 84,
+        "identity": "3180@Charles",
+        "historySizeBytes": 18014
+      }
+    },
+    {
+      "links": [],
+      "eventId": 86,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 84,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 87,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "12",
+        "activityType": {
+          "name": "markCaseInProgress"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXNlSWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUiLCJvcGVyYXRpb25JZCI6IjlhZmI3YzkwLThhOGMtNDkyNS1iYmRhLTc3OTc2YWIxYjgxMy5kZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkL2Nhc2UiLCJhY3RvcklkIjoiOTVkYzY3NDItYzlkMi00YzlhLWIxNmEtZDhjZGU3YzZiZDlkIiwiYWN0b3JSb2xlIjoiQ09OVFJBQ1RPUiJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 85,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 88,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 87,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 89,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvdXRjb21lIjoiSU5fUFJPR1JFU1MiLCJjYXNlIjp7ImlkIjoiZTYzMzcyZTUtYzAyZi00ZWJlLTljY2YtY2I1OTA0MzVlMzg1IiwicmVzaWRlbnRJZCI6ImIzMGIxYzNhLTc3NTctNDJiYi04MWU5LTI0NWI5ZTQ1NDE3ZCIsImNhdGVnb3J5IjoiTEUiLCJwcmlvcml0eSI6IkhJR0giLCJzdGF0dXMiOiJJTl9QUk9HUkVTUyIsImRlc2NyaXB0aW9uIjoiQnJva2VuIHN0cmVldCBsaWdodCIsImFkZHJlc3NEZXRhaWxzIjpudWxsLCJwb3N0YWxDb2RlIjoiMTIzNDU2IiwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIiwidXBkYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIn19"
+            }
+          ]
+        },
+        "scheduledEventId": 87,
+        "startedEventId": 88,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 90,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 91,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 360000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 90,
+        "identity": "3180@Charles",
+        "historySizeBytes": 19168
+      }
+    },
+    {
+      "links": [],
+      "eventId": 92,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 376000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 90,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 93,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 376000000
+      },
+      "eventType": 43,
+      "workflowExecutionUpdateCompletedEventAttributes": {
+        "meta": {
+          "updateId": "6e4159ba-80c7-4b40-b2ea-2ea56c01abc4",
+          "identity": "3180@Charles"
+        },
+        "outcome": {
+          "success": {
+            "payloads": [
+              {
+                "metadata": {
+                  "encoding": "anNvbi9wbGFpbg=="
+                },
+                "externalPayloads": [],
+                "data": "eyJraW5kIjoiU1VDQ0VTUyIsImRhdGEiOnsiYXBwb2ludG1lbnQiOnsiaWQiOiI0NTJiZmMyZS04MzUxLTQyN2UtOWIzOC0zY2Q5NGIzOWZjZmUiLCJjYXNlSWQiOiIiLCJhc3NpZ25tZW50SWQiOiJlZmIwZjUwNC1iMDg3LTRhOGEtODA3MC02OWQ1ZTgyOTQ0M2EiLCJhdHRlbXB0SWQiOiJmN2RhNjFmMy0yN2FlLTRiNzYtOWExOC0yMzVjODE0ZGQ5OTIiLCJjb250cmFjdG9ySWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJzdGFydFRpbWUiOiIyMDI2LTA4LTA3VDEyOjI3OjA0LjM2MFoiLCJlbmRUaW1lIjoiMjAyNi0wOC0wN1QxMjoyODowNS4zNjBaIiwic3RhdHVzIjoiSU5fUFJPR1JFU1MiLCJyZWFzb24iOm51bGwsIm9wZXJhdGlvbklkIjoiYXBwb2ludG1lbnQvNDUyYmZjMmUtODM1MS00MjdlLTliMzgtM2NkOTRiMzlmY2ZlIiwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIn0sImFzc2lnbm1lbnQiOnsiaWQiOiJmYWIzOGFiNi0zZjU1LTQ5NjYtOGRhMC05ZjU0OTVkZmJhMjkiLCJjYXNlSWQiOiIiLCJjcmVhdGVkQXQiOiIiLCJ1cGRhdGVkQXQiOiIifSwiY2FzZSI6eyJpZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsInJlc2lkZW50SWQiOiJiMzBiMWMzYS03NzU3LTQyYmItODFlOS0yNDViOWU0NTQxN2QiLCJjYXRlZ29yeSI6IkxFIiwicHJpb3JpdHkiOiJISUdIIiwic3RhdHVzIjoiSU5fUFJPR1JFU1MiLCJkZXNjcmlwdGlvbiI6IkJyb2tlbiBzdHJlZXQgbGlnaHQiLCJhZGRyZXNzRGV0YWlscyI6bnVsbCwicG9zdGFsQ29kZSI6IjEyMzQ1NiIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMDA6MDA6MDAuMDAwWiIsInVwZGF0ZWRBdCI6IjIwMjYtMDgtMDdUMDA6MDA6MDAuMDAwWiJ9fX0="
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 94,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 376000000
+      },
+      "eventType": 19,
+      "timerCanceledEventAttributes": {
+        "timerId": "3",
+        "startedEventId": 70,
+        "workflowTaskCompletedEventId": 91
+      }
+    },
+    {
+      "links": [],
+      "eventId": 95,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 376000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 96,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 376000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 95,
+        "identity": "3180@Charles",
+        "historySizeBytes": 20466
+      }
+    },
+    {
+      "links": [],
+      "eventId": 97,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 384000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 95,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 98,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 384000000
+      },
+      "eventType": 41,
+      "workflowExecutionUpdateAcceptedEventAttributes": {
+        "protocolInstanceId": "46b74b5f-5815-4cd6-b39c-c6421083ac39",
+        "acceptedRequestMessageId": "46b74b5f-5815-4cd6-b39c-c6421083ac39/request",
+        "acceptedRequestSequencingEventId": 95,
+        "acceptedRequest": {
+          "completionCallbacks": [],
+          "links": [],
+          "meta": {
+            "updateId": "46b74b5f-5815-4cd6-b39c-c6421083ac39",
+            "identity": "3180@Charles"
+          },
+          "input": {
+            "header": {
+              "fields": {}
+            },
+            "name": "completeCase",
+            "args": {
+              "payloads": [
+                {
+                  "metadata": {
+                    "encoding": "anNvbi9wbGFpbg=="
+                  },
+                  "externalPayloads": [],
+                  "data": "eyJpZGVtcG90ZW5jeUtleSI6ImY1NzVjYmZkLWNhOTUtNDZkZC05NGJkLTFiYjFiZjZiNWE5NiIsInBheWxvYWRIYXNoIjoiMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsIm9wZXJhdGlvbklkIjoiZjU3NWNiZmQtY2E5NS00NmRkLTk0YmQtMWJiMWJmNmI1YTk2LjExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJhY3RvcklkIjoiNGFjYzE3NjEtMzMyMi00ZWNjLWE2MjQtYWIxYTFhZDk5NGJhIiwiYWN0b3JSb2xlIjoiQ09OVFJBQ1RPUiIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsImFzc2lnbm1lbnRJZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOSIsImFwcG9pbnRtZW50SWQiOiI0NTJiZmMyZS04MzUxLTQyN2UtOWIzOC0zY2Q5NGIzOWZjZmUiLCJpbnB1dCI6eyJyZXBvcnQiOiJXb3JrIGNvbXBsZXRlZC4iLCJwcm9vZkl0ZW1JZHMiOlsiNDdlMjQwMzktNWQ3ZS00NWZkLWJmYTYtYzE2ODBkY2FiNGYwIl19fQ=="
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 99,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 384000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "13",
+        "activityType": {
+          "name": "validateCompletion"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZGVtcG90ZW5jeUtleSI6ImY1NzVjYmZkLWNhOTUtNDZkZC05NGJkLTFiYjFiZjZiNWE5NiIsInBheWxvYWRIYXNoIjoiMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsIm9wZXJhdGlvbklkIjoiZjU3NWNiZmQtY2E5NS00NmRkLTk0YmQtMWJiMWJmNmI1YTk2LjExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEiLCJhY3RvcklkIjoiNGFjYzE3NjEtMzMyMi00ZWNjLWE2MjQtYWIxYTFhZDk5NGJhIiwiYWN0b3JSb2xlIjoiQ09OVFJBQ1RPUiIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsImFzc2lnbm1lbnRJZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOSIsImFwcG9pbnRtZW50SWQiOiI0NTJiZmMyZS04MzUxLTQyN2UtOWIzOC0zY2Q5NGIzOWZjZmUiLCJpbnB1dCI6eyJyZXBvcnQiOiJXb3JrIGNvbXBsZXRlZC4iLCJwcm9vZkl0ZW1JZHMiOlsiNDdlMjQwMzktNWQ3ZS00NWZkLWJmYTYtYzE2ODBkY2FiNGYwIl19fQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 96,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 100,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 384000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 99,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 101,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 384000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvdXRjb21lIjoiUkVBRFkifQ=="
+            }
+          ]
+        },
+        "scheduledEventId": 99,
+        "startedEventId": 100,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 102,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 384000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 103,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 384000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 102,
+        "identity": "3180@Charles",
+        "historySizeBytes": 22529
+      }
+    },
+    {
+      "links": [],
+      "eventId": 104,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 386000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 102,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 105,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 386000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "14",
+        "activityType": {
+          "name": "completeAppointment"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvcGVyYXRpb25JZCI6ImY1NzVjYmZkLWNhOTUtNDZkZC05NGJkLTFiYjFiZjZiNWE5Ni4xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExL2FwcG9pbnRtZW50IiwiYXBwb2ludG1lbnRJZCI6IjQ1MmJmYzJlLTgzNTEtNDI3ZS05YjM4LTNjZDk0YjM5ZmNmZSIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 103,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 106,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 386000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 105,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 107,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 386000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvdXRjb21lIjoiQ09NUExFVEVEIiwiYXBwb2ludG1lbnQiOnsiaWQiOiI0NTJiZmMyZS04MzUxLTQyN2UtOWIzOC0zY2Q5NGIzOWZjZmUiLCJjYXNlSWQiOiIiLCJhc3NpZ25tZW50SWQiOiJhNDk5Y2YwZi0xYWYzLTQ1MmItOTA3My04YWNkMDI1NmQ4NWEiLCJhdHRlbXB0SWQiOiI1Zjc4ZTBmZS1lZjY4LTQ0OWItOWEwOC0yMjZlZDU0N2UwNDciLCJjb250cmFjdG9ySWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJzdGFydFRpbWUiOiIyMDI2LTA4LTA3VDEyOjI3OjAzLjM4NVoiLCJlbmRUaW1lIjoiMjAyNi0wOC0wN1QxMjoyNzowNC4zODVaIiwic3RhdHVzIjoiQ09NUExFVEVEIiwicmVhc29uIjpudWxsLCJvcGVyYXRpb25JZCI6ImFwcG9pbnRtZW50LzQ1MmJmYzJlLTgzNTEtNDI3ZS05YjM4LTNjZDk0YjM5ZmNmZSIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMDA6MDA6MDAuMDAwWiJ9fQ=="
+            }
+          ]
+        },
+        "scheduledEventId": 105,
+        "startedEventId": 106,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 108,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 386000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 109,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 386000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 108,
+        "identity": "3180@Charles",
+        "historySizeBytes": 23802
+      }
+    },
+    {
+      "links": [],
+      "eventId": 110,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 108,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 111,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "15",
+        "activityType": {
+          "name": "completeAssignment"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvcGVyYXRpb25JZCI6ImY1NzVjYmZkLWNhOTUtNDZkZC05NGJkLTFiYjFiZjZiNWE5Ni4xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExL2Fzc2lnbm1lbnQiLCJhc3NpZ25tZW50SWQiOiJmYWIzOGFiNi0zZjU1LTQ5NjYtOGRhMC05ZjU0OTVkZmJhMjkiLCJjaGFuZ2VkQnkiOiI0YWNjMTc2MS0zMzIyLTRlY2MtYTYyNC1hYjFhMWFkOTk0YmEifQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 109,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 112,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 111,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 113,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvdXRjb21lIjoiQ09NUExFVEVEIiwiYXNzaWdubWVudCI6eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOSIsImNhc2VJZCI6IiIsImNyZWF0ZWRBdCI6IiIsInVwZGF0ZWRBdCI6IiJ9fQ=="
+            }
+          ]
+        },
+        "scheduledEventId": 111,
+        "startedEventId": 112,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 114,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 115,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 114,
+        "identity": "3180@Charles",
+        "historySizeBytes": 24723
+      }
+    },
+    {
+      "links": [],
+      "eventId": 116,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 114,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 117,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "16",
+        "activityType": {
+          "name": "completeCase"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXNlSWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUiLCJvcGVyYXRpb25JZCI6ImY1NzVjYmZkLWNhOTUtNDZkZC05NGJkLTFiYjFiZjZiNWE5Ni4xMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExL2Nhc2UiLCJhY3RvcklkIjoiNGFjYzE3NjEtMzMyMi00ZWNjLWE2MjQtYWIxYTFhZDk5NGJhIiwiYWN0b3JSb2xlIjoiQ09OVFJBQ1RPUiIsInJlcG9ydCI6IldvcmsgY29tcGxldGVkLiIsInByb29mSXRlbUlkcyI6WyI0N2UyNDAzOS01ZDdlLTQ1ZmQtYmZhNi1jMTY4MGRjYWI0ZjAiXX0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 115,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 118,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 117,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 119,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJvdXRjb21lIjoiQ09NUExFVEVEIiwiY2FzZSI6eyJpZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsInJlc2lkZW50SWQiOiI5OTIwNjY2NS0wNjM5LTQ4NzgtYTlkYi1mZWJkNTc1OTJiZTkiLCJjYXRlZ29yeSI6IkxFIiwicHJpb3JpdHkiOiJISUdIIiwic3RhdHVzIjoiQ09NUExFVEVEIiwiZGVzY3JpcHRpb24iOiJCcm9rZW4gc3RyZWV0IGxpZ2h0IiwiYWRkcmVzc0RldGFpbHMiOm51bGwsInBvc3RhbENvZGUiOiIxMjM0NTYiLCJjcmVhdGVkQXQiOiIyMDI2LTA4LTA3VDAwOjAwOjAwLjAwMFoiLCJ1cGRhdGVkQXQiOiIyMDI2LTA4LTA3VDAwOjAwOjAwLjAwMFoifX0="
+            }
+          ]
+        },
+        "scheduledEventId": 117,
+        "startedEventId": 118,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 120,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 121,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 392000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 120,
+        "identity": "3180@Charles",
+        "historySizeBytes": 25950
+      }
+    },
+    {
+      "links": [],
+      "eventId": 122,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 403000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 120,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 123,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 403000000
+      },
+      "eventType": 43,
+      "workflowExecutionUpdateCompletedEventAttributes": {
+        "meta": {
+          "updateId": "46b74b5f-5815-4cd6-b39c-c6421083ac39",
+          "identity": "3180@Charles"
+        },
+        "outcome": {
+          "success": {
+            "payloads": [
+              {
+                "metadata": {
+                  "encoding": "anNvbi9wbGFpbg=="
+                },
+                "externalPayloads": [],
+                "data": "eyJraW5kIjoiU1VDQ0VTUyIsImRhdGEiOnsiYXBwb2ludG1lbnQiOnsiaWQiOiI0NTJiZmMyZS04MzUxLTQyN2UtOWIzOC0zY2Q5NGIzOWZjZmUiLCJjYXNlSWQiOiIiLCJhc3NpZ25tZW50SWQiOiJhNDk5Y2YwZi0xYWYzLTQ1MmItOTA3My04YWNkMDI1NmQ4NWEiLCJhdHRlbXB0SWQiOiI1Zjc4ZTBmZS1lZjY4LTQ0OWItOWEwOC0yMjZlZDU0N2UwNDciLCJjb250cmFjdG9ySWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJzdGFydFRpbWUiOiIyMDI2LTA4LTA3VDEyOjI3OjAzLjM4NVoiLCJlbmRUaW1lIjoiMjAyNi0wOC0wN1QxMjoyNzowNC4zODVaIiwic3RhdHVzIjoiQ09NUExFVEVEIiwicmVhc29uIjpudWxsLCJvcGVyYXRpb25JZCI6ImFwcG9pbnRtZW50LzQ1MmJmYzJlLTgzNTEtNDI3ZS05YjM4LTNjZDk0YjM5ZmNmZSIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMDA6MDA6MDAuMDAwWiJ9LCJhc3NpZ25tZW50Ijp7ImlkIjoiZmFiMzhhYjYtM2Y1NS00OTY2LThkYTAtOWY1NDk1ZGZiYTI5IiwiY2FzZUlkIjoiIiwiY3JlYXRlZEF0IjoiIiwidXBkYXRlZEF0IjoiIn0sImNhc2UiOnsiaWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUiLCJyZXNpZGVudElkIjoiOTkyMDY2NjUtMDYzOS00ODc4LWE5ZGItZmViZDU3NTkyYmU5IiwiY2F0ZWdvcnkiOiJMRSIsInByaW9yaXR5IjoiSElHSCIsInN0YXR1cyI6IkNPTVBMRVRFRCIsImRlc2NyaXB0aW9uIjoiQnJva2VuIHN0cmVldCBsaWdodCIsImFkZHJlc3NEZXRhaWxzIjpudWxsLCJwb3N0YWxDb2RlIjoiMTIzNDU2IiwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIiwidXBkYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIn19fQ=="
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 124,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 403000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "17",
+        "activityType": {
+          "name": "reserveEffect"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uLW5vdGlmaWNhdGlvbiIsImNhc2VJZCI6ImU2MzM3MmU1LWMwMmYtNGViZS05Y2NmLWNiNTkwNDM1ZTM4NSIsInR5cGUiOiJFTUFJTCIsInB1cnBvc2UiOiJBU1NJR05NRU5UX0NPTVBMRVRJT05fTk9USUZJQ0FUSU9OIiwicmVjaXBpZW50Ijp7InR5cGUiOiJSRVNJREVOVCIsImlkIjoiOTkyMDY2NjUtMDYzOS00ODc4LWE5ZGItZmViZDU3NTkyYmU5In19"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 121,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          },
+          "maximumAttempts": 1
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 125,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 403000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "18",
+        "activityType": {
+          "name": "reserveEffect"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uIiwiY2FzZUlkIjoiZTYzMzcyZTUtYzAyZi00ZWJlLTljY2YtY2I1OTA0MzVlMzg1IiwidHlwZSI6IlBFUkZPUk1BTkNFX0VOVFJZIiwicHVycG9zZSI6IkFTU0lHTk1FTlRfQ09NUExFVElPTl9QRVJGT1JNQU5DRSIsImNvbnRyYWN0b3JJZCI6IjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSIsInNjb3JlRGVsdGEiOjEwLCJyZWFzb24iOiJBU1NJR05NRU5UX0NPTVBMRVRFRCJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 121,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          },
+          "maximumAttempts": 1
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 126,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 403000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 124,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 127,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 403000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uLW5vdGlmaWNhdGlvbiIsImNhc2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsInR5cGUiOiJFTUFJTCIsInB1cnBvc2UiOiJBVFRFTVBUX0FTU0lHTk1FTlRfTk9USUZJQ0FUSU9OIiwic3RhdHVzIjoiUEVORElORyIsInByb3ZpZGVySWQiOm51bGwsInByb3ZpZGVySWRlbXBvdGVuY3lLZXkiOiJmYWIzOGFiNi0zZjU1LTQ5NjYtOGRhMC05ZjU0OTVkZmJhMjkvY29tcGxldGlvbi1ub3RpZmljYXRpb24iLCJhdHRlbXB0cyI6MSwibGFzdEVycm9yIjpudWxsLCJuZXh0UmV0cnlBdCI6bnVsbCwid2FpdmVyQWN0b3JJZCI6bnVsbCwid2FpdmVyUmVhc29uIjpudWxsLCJjb250cmFjdG9ySWQiOm51bGwsInNjb3JlRGVsdGEiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzk1WiIsInVwZGF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuMzk1WiJ9"
+            }
+          ]
+        },
+        "scheduledEventId": 124,
+        "startedEventId": 126,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 128,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 403000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 129,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 403000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 128,
+        "identity": "3180@Charles",
+        "historySizeBytes": 28742
+      }
+    },
+    {
+      "links": [],
+      "eventId": 130,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 128,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 131,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "19",
+        "activityType": {
+          "name": "dispatchEmailEffect"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uLW5vdGlmaWNhdGlvbiIsIm5leHRSZXRyeUF0IjoiMjAyNi0wOC0wN1QxMjoyNzowNi4zOTJaIn0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 129,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          },
+          "maximumAttempts": 1
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 132,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 403000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 125,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 133,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uIiwiY2FzZUlkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidHlwZSI6IkVNQUlMIiwicHVycG9zZSI6IkFUVEVNUFRfQVNTSUdOTUVOVF9OT1RJRklDQVRJT04iLCJzdGF0dXMiOiJQRU5ESU5HIiwicHJvdmlkZXJJZCI6bnVsbCwicHJvdmlkZXJJZGVtcG90ZW5jeUtleSI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uIiwiYXR0ZW1wdHMiOjEsImxhc3RFcnJvciI6bnVsbCwibmV4dFJldHJ5QXQiOm51bGwsIndhaXZlckFjdG9ySWQiOm51bGwsIndhaXZlclJlYXNvbiI6bnVsbCwiY29udHJhY3RvcklkIjpudWxsLCJzY29yZURlbHRhIjpudWxsLCJjcmVhdGVkQXQiOiIyMDI2LTA4LTA3VDEyOjI3OjA1LjM5NVoiLCJ1cGRhdGVkQXQiOiIyMDI2LTA4LTA3VDEyOjI3OjA1LjM5NVoifQ=="
+            }
+          ]
+        },
+        "scheduledEventId": 125,
+        "startedEventId": 130,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 134,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 2
+      }
+    },
+    {
+      "links": [],
+      "eventId": 135,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 134,
+        "identity": "3180@Charles",
+        "historySizeBytes": 29908
+      }
+    },
+    {
+      "links": [],
+      "eventId": 136,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 134,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 137,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "20",
+        "activityType": {
+          "name": "dispatchPerformanceEffect"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uIiwiY29udHJhY3RvcklkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwic2NvcmVEZWx0YSI6MTAsInJlYXNvbiI6IkFTU0lHTk1FTlRfQ09NUExFVEVEIiwibmV4dFJldHJ5QXQiOiIyMDI2LTA4LTA3VDEyOjI3OjA2LjM5MloifQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 135,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          },
+          "maximumAttempts": 1
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 138,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 131,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 139,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uLW5vdGlmaWNhdGlvbiIsImNhc2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsInR5cGUiOiJFTUFJTCIsInB1cnBvc2UiOiJBVFRFTVBUX0FTU0lHTk1FTlRfTk9USUZJQ0FUSU9OIiwic3RhdHVzIjoiU0VOVCIsInByb3ZpZGVySWQiOm51bGwsInByb3ZpZGVySWRlbXBvdGVuY3lLZXkiOiJmYWIzOGFiNi0zZjU1LTQ5NjYtOGRhMC05ZjU0OTVkZmJhMjkvY29tcGxldGlvbi1ub3RpZmljYXRpb24iLCJhdHRlbXB0cyI6MSwibGFzdEVycm9yIjpudWxsLCJuZXh0UmV0cnlBdCI6bnVsbCwid2FpdmVyQWN0b3JJZCI6bnVsbCwid2FpdmVyUmVhc29uIjpudWxsLCJjb250cmFjdG9ySWQiOm51bGwsInNjb3JlRGVsdGEiOm51bGwsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuNDAwWiIsInVwZGF0ZWRBdCI6IjIwMjYtMDgtMDdUMTI6Mjc6MDUuNDAwWiJ9"
+            }
+          ]
+        },
+        "scheduledEventId": 131,
+        "startedEventId": 136,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 140,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 141,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 140,
+        "identity": "3180@Charles",
+        "historySizeBytes": 31195
+      }
+    },
+    {
+      "links": [],
+      "eventId": 142,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 140,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 143,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "21",
+        "activityType": {
+          "name": "resolveDerivedEffectAttention"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXNlSWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUiLCJlZmZlY3RJZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uLW5vdGlmaWNhdGlvbiJ9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 141,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          },
+          "maximumAttempts": 1
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 144,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 137,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 145,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJpZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uIiwiY2FzZUlkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwIiwidHlwZSI6IkVNQUlMIiwicHVycG9zZSI6IkFUVEVNUFRfQVNTSUdOTUVOVF9OT1RJRklDQVRJT04iLCJzdGF0dXMiOiJTRU5UIiwicHJvdmlkZXJJZCI6bnVsbCwicHJvdmlkZXJJZGVtcG90ZW5jeUtleSI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uIiwiYXR0ZW1wdHMiOjEsImxhc3RFcnJvciI6bnVsbCwibmV4dFJldHJ5QXQiOm51bGwsIndhaXZlckFjdG9ySWQiOm51bGwsIndhaXZlclJlYXNvbiI6bnVsbCwiY29udHJhY3RvcklkIjpudWxsLCJzY29yZURlbHRhIjpudWxsLCJjcmVhdGVkQXQiOiIyMDI2LTA4LTA3VDEyOjI3OjA1LjQwM1oiLCJ1cGRhdGVkQXQiOiIyMDI2LTA4LTA3VDEyOjI3OjA1LjQwM1oifQ=="
+            }
+          ]
+        },
+        "scheduledEventId": 137,
+        "startedEventId": 142,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 146,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 147,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 146,
+        "identity": "3180@Charles",
+        "historySizeBytes": 32383
+      }
+    },
+    {
+      "links": [],
+      "eventId": 148,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 146,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 149,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 10,
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "22",
+        "activityType": {
+          "name": "resolveDerivedEffectAttention"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "header": {
+          "fields": {}
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXNlSWQiOiJlNjMzNzJlNS1jMDJmLTRlYmUtOWNjZi1jYjU5MDQzNWUzODUiLCJlZmZlY3RJZCI6ImZhYjM4YWI2LTNmNTUtNDk2Ni04ZGEwLTlmNTQ5NWRmYmEyOS9jb21wbGV0aW9uIn0="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": {
+          "seconds": 315360000
+        },
+        "scheduleToStartTimeout": {
+          "seconds": 315360000
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "heartbeatTimeout": {},
+        "workflowTaskCompletedEventId": 147,
+        "retryPolicy": {
+          "nonRetryableErrorTypes": [],
+          "initialInterval": {
+            "seconds": 1
+          },
+          "backoffCoefficient": 2,
+          "maximumInterval": {
+            "seconds": 100
+          },
+          "maximumAttempts": 1
+        }
+      }
+    },
+    {
+      "links": [],
+      "eventId": 150,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 143,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 151,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "YmluYXJ5L251bGw="
+              },
+              "externalPayloads": []
+            }
+          ]
+        },
+        "scheduledEventId": 143,
+        "startedEventId": 148,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 152,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 153,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 152,
+        "identity": "3180@Charles",
+        "historySizeBytes": 33075
+      }
+    },
+    {
+      "links": [],
+      "eventId": 154,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 423000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 152,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 155,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 407000000
+      },
+      "eventType": 11,
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": 149,
+        "identity": "3180@Charles",
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 156,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 423000000
+      },
+      "eventType": 12,
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "YmluYXJ5L251bGw="
+              },
+              "externalPayloads": []
+            }
+          ]
+        },
+        "scheduledEventId": 149,
+        "startedEventId": 154,
+        "identity": "3180@Charles"
+      }
+    },
+    {
+      "links": [],
+      "eventId": 157,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 423000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-c4691d35-66a9-4085-a67b-0c5f895b075b",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 158,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 423000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 157,
+        "identity": "3180@Charles",
+        "historySizeBytes": 33454
+      }
+    },
+    {
+      "links": [],
+      "eventId": 159,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 423000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 157,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [],
+          "langUsedFlags": []
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 160,
+      "eventTime": {
+        "seconds": 1786105625,
+        "nanos": 423000000
+      },
+      "eventType": 2,
+      "workflowExecutionCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "YmluYXJ5L251bGw="
+              },
+              "externalPayloads": []
+            }
+          ]
+        },
+        "workflowTaskCompletedEventId": 158
+      }
+    }
+  ]
+}

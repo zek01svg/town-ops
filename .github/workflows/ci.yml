@@ -6,34 +6,11 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
-  changes:
-    name: Check for Changes
-    runs-on: ubuntu-latest
-    outputs:
-      ts: ${{ steps.filter.outputs.ts }}
-      py: ${{ steps.filter.outputs.py }}
-      shared: ${{ steps.filter.outputs.shared }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            ts:
-              - 'apps/**/*.ts'
-              - 'apps/**/*.tsx'
-              - 'apps/**/package.json'
-              - 'packages/**/*.ts'
-              - 'packages/**/*.tsx'
-              - 'frontend/**'
-              - 'pnpm-lock.yaml'
-              - 'tsconfig.json'
-            shared:
-              - '.github/workflows/ci.yml'
-              - 'tooling/**'
-
   scan-for-secrets:
     name: Scan for secrets
     runs-on: ubuntu-latest
@@ -48,10 +25,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  lint:
-    name: Lint
-    needs: [changes]
-    if: ${{ needs.changes.outputs.ts == 'true' || needs.changes.outputs.shared == 'true' }}
+  verify-and-test:
+    name: Verify and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +37,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: latest
       - name: Get pnpm store directory
         shell: bash
         run: |
@@ -83,45 +58,17 @@ jobs:
             ${{ runner.os }}-turbo-
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
-      - name: Check Formatting
-        run: bun run format:check
-      - name: Lint JS/TS
-        run: pnpm lint:js
-
-  test:
-    name: Test
-    needs: [changes]
-    if: ${{ needs.changes.outputs.ts == 'true' || needs.changes.outputs.shared == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+      - name: Run format, lint, and build checks
+        run: bun run format:check && bun run lint:check && bun run build
+      - name: Run tests
+        run: bun run test -- --concurrency=1
+      - name: Software Composition Analysis (SCA)
+        run: pnpm audit --audit-level=high
+      - name: Initialize CodeQL (SAST)
+        uses: github/codeql-action/init@v3
         with:
-          version: 11.15.0
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+          languages: javascript, typescript
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
         with:
-          bun-version: 1.3.14
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-      - name: Setup Turbo cache
-        uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml', 'turbo.json') }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-
-      - name: Install TS dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Run TS Tests
-        run: pnpm test
+          category: "/language:javascript,typescript"

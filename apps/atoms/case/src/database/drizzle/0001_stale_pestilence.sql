@@ -1,0 +1,1 @@
+ALTER TYPE "public"."officer_attention_kind" ADD VALUE 'MISSED_APPOINTMENT';

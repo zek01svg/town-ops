@@ -65,6 +65,15 @@ function RootComponent() {
                 Dashboard
               </span>
             </Link>
+            <Link
+              to="/cases"
+              className={navLinkClass}
+              activeProps={{ className: navLinkActiveClass }}
+            >
+              <span className="font-label text-xs uppercase tracking-widest">
+                Report
+              </span>
+            </Link>
             <span className={navLinkClass}>
               <span className="font-label text-xs uppercase tracking-widest">
                 Settings
@@ -80,6 +89,13 @@ function RootComponent() {
               activeProps={{ className: "text-primary font-bold" }}
             >
               Dash
+            </Link>
+            <Link
+              to="/cases"
+              className="font-label text-xs uppercase"
+              activeProps={{ className: "text-primary font-bold" }}
+            >
+              Report
             </Link>
             <span className="font-label text-xs opacity-60 uppercase">Set</span>
           </>

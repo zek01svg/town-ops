@@ -12,6 +12,7 @@ export async function setup() {
 
   process.env.DATABASE_URL = dbUrl;
   process.env.PORT = "5002";
+  process.env.WORKER_SERVICE_TOKEN = "a".repeat(32);
   process.env.JWKS_URI = "http://localhost:5001/.well-known/jwks.json";
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
@@ -27,18 +28,12 @@ export async function setup() {
   }
 
   try {
-    console.log("[Integration Setup] Pushing schema with drizzle-kit...");
-    try {
-      execSync("bun drizzle-kit push --force", {
-        env: { ...process.env, DATABASE_URL: dbUrl },
-        stdio: "pipe",
-      });
-      console.log("[Integration Setup] Schema setup completed.");
-    } catch (pushError: any) {
-      console.warn(
-        `[Integration Setup] drizzle-kit push warning/error: ${pushError}`
-      );
-    }
+    console.log("[Integration Setup] Applying migrations with drizzle-kit...");
+    execSync("bun drizzle-kit migrate", {
+      env: { ...process.env, DATABASE_URL: dbUrl },
+      stdio: "pipe",
+    });
+    console.log("[Integration Setup] Schema setup completed.");
   } catch (error) {
     await container.stop();
     throw error;

@@ -1,23 +1,19 @@
-import { Scalar } from "@scalar/hono-api-reference";
+import { RecordPerformanceEntryInputSchema } from "@townops/orchestration-contract";
 import {
   logger,
   honoLogger,
   corsOrigins,
   initSentry,
   captureHonoException,
+  workerAuth,
 } from "@townops/shared-ts";
-import { createInsertSchema } from "drizzle-zod";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, openAPIRouteHandler, validator } from "hono-openapi";
 import { cors } from "hono/cors";
 
-import { contractorMetrics } from "./database/schema";
 import { env } from "./env";
 import * as metricsService from "./service";
-import { getMetricSchema } from "./validation-schemas";
-
-const insertMetricSchema = createInsertSchema(contractorMetrics);
 
 const app = new Hono();
 
@@ -49,39 +45,43 @@ app.onError((err, c) => {
 
 app.use("*", honoLogger());
 
-const metricsRoutes = app
+const metricsRoutes = app.get(
+  "/health",
+  describeRoute({ description: "Service health check" }),
+  async (c: Context) => c.json({ status: "healthy" }, 200)
+);
+
+const internalPerformanceRouter = new Hono()
+  .use("*", workerAuth(env.WORKER_SERVICE_TOKEN))
   .get(
-    "/health",
-    describeRoute({ description: "Service health check" }),
-    async (c: Context) => c.json({ status: "healthy" }, 200)
-  )
-  .get(
-    "/api/metrics/:contractor_id",
-    describeRoute({ description: "Get metrics for a contractor" }),
-    validator("param", getMetricSchema),
+    "/totals",
+    describeRoute({ description: "Total performance score per Contractor" }),
     async (c) => {
-      const { contractor_id } = c.req.valid("param");
-      const rows = await metricsService.getMetricsByContractorId(contractor_id);
-      return c.json({ metrics: rows }, 200);
+      const totals = await metricsService.getScoreTotals();
+      return c.json({ totals }, 200);
     }
   )
   .post(
-    "/api/metrics",
-    describeRoute({ description: "Create contractor metric" }),
-    validator("json", insertMetricSchema),
+    "/entries",
+    describeRoute({
+      description: "Record one Contractor performance entry, once per effect",
+    }),
+    validator("json", RecordPerformanceEntryInputSchema),
     async (c) => {
       const body = c.req.valid("json");
-      const metric = await metricsService.createMetric(body);
-      return c.json({ metric }, 201);
+      const entry = await metricsService.recordPerformanceEntry(body);
+      return c.json({ entry }, 201);
     }
   );
+
+app.route("/internal/performance", internalPerformanceRouter);
 
 app.get(
   "/openapi",
   openAPIRouteHandler(app, {
     documentation: {
       info: {
-        title: "Metrics Atom API",
+        title: "Performance Atom API",
         version: "1.0.0",
         description: "Standalone specs",
       },
@@ -92,10 +92,8 @@ app.get(
   })
 );
 
-app.get("/scalar", Scalar({ url: "/openapi", theme: "deepSpace" }));
-
 export { app };
-export type MetricsAtomType = typeof metricsRoutes;
+export type PerformanceAtomType = typeof metricsRoutes;
 
 export default {
   port: env.PORT,

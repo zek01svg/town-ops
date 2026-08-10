@@ -1,0 +1,2308 @@
+import {
+  allHandlersFinished,
+  condition,
+  continueAsNew,
+  defineUpdate,
+  log,
+  patched,
+  proxyActivities,
+  setHandler,
+  workflowInfo,
+} from "@temporalio/workflow";
+import {
+  ACCEPTANCE_SLA_BREACH_SCORE_DELTA,
+  ASSIGNMENT_COMPLETED_SCORE_DELTA,
+  AcceptAllocationCommandSchema,
+  CancelCaseCommandSchema,
+  CompleteCaseCommandSchema,
+  DEFAULT_ACCEPTANCE_SLA_MS,
+  ManualAllocationCommandSchema,
+  OpenCaseCommandSchema,
+  postalSector,
+  ReplaceAppointmentCommandSchema,
+  ReportNoAccessCommandSchema,
+  RetryEffectCommandSchema,
+  StartWorkCommandSchema,
+  UPDATE_NAMES,
+  WaiveEffectCommandSchema,
+} from "@townops/orchestration-contract";
+import type {
+  AcceptAllocationCommand,
+  AcceptAllocationResult,
+  AllocationAttemptDto,
+  AllocationCandidate,
+  AllocationSnapshot,
+  BreachAllocationAttemptInput,
+  BreachAllocationAttemptResult,
+  CaseCarryOver,
+  CaseDto,
+  CancelAppointmentInput,
+  CancelAppointmentResult,
+  CancelAssignmentInput,
+  CancelAssignmentResult,
+  CancelCaseCommand,
+  CancelCaseResult,
+  CancelCaseTransitionInput,
+  CancelCaseTransitionResult,
+  CommitAllocationInput,
+  CommitAllocationResult,
+  CompleteAppointmentInput,
+  CompleteAppointmentResult,
+  CompleteAssignmentInput,
+  CompleteAssignmentResult,
+  CompleteCaseCommand,
+  CompleteCaseResult,
+  CompleteCaseTransitionInput,
+  CompleteCaseTransitionResult,
+  CreateCaseActivityInput,
+  DerivedEffectSummary,
+  ManualAllocationCommand,
+  ManualAllocationResult,
+  MarkAppointmentMissedInput,
+  MarkAppointmentMissedResult,
+  MarkAssignmentInProgressInput,
+  MarkAssignmentInProgressResult,
+  MarkCaseAppointmentReplacedInput,
+  MarkCaseAppointmentReplacedResult,
+  MarkCaseAssignedResult,
+  MarkCaseBreachedInput,
+  MarkCaseBreachedResult,
+  MarkCaseInProgressInput,
+  MarkCaseInProgressResult,
+  MarkCaseNoAccessInput,
+  MarkCaseNoAccessResult,
+  OpenCaseCommand,
+  OpenCaseResult,
+  OfficerAttentionKind,
+  PerformanceEntryDto,
+  RecordPerformanceEntryInput,
+  EffectRepairResult,
+  RetryEffectCommand,
+  ReplaceAppointmentCommand,
+  ReplaceAppointmentResult,
+  ReplaceAppointmentSlotInput,
+  ReplaceAppointmentSlotResult,
+  ReportNoAccessAppointmentInput,
+  ReportNoAccessAppointmentResult,
+  ReportNoAccessCommand,
+  ReportNoAccessResult,
+  StartWorkAppointmentInput,
+  StartWorkAppointmentResult,
+  StartWorkCommand,
+  StartWorkResult,
+  WaiveEffectCommand,
+} from "@townops/orchestration-contract";
+
+import type { DerivedEffectIntent } from "../activities/derived-effects.ts";
+
+export const openCase = defineUpdate<OpenCaseResult, [OpenCaseCommand]>(
+  UPDATE_NAMES.openCase
+);
+export const allocateContractor = defineUpdate<
+  ManualAllocationResult,
+  [ManualAllocationCommand]
+>(UPDATE_NAMES.allocateContractor);
+export const acceptAllocation = defineUpdate<
+  AcceptAllocationResult,
+  [AcceptAllocationCommand]
+>(UPDATE_NAMES.acceptAllocation);
+export const startWork = defineUpdate<StartWorkResult, [StartWorkCommand]>(
+  UPDATE_NAMES.startWork
+);
+export const reportNoAccess = defineUpdate<
+  ReportNoAccessResult,
+  [ReportNoAccessCommand]
+>(UPDATE_NAMES.reportNoAccess);
+export const replaceAppointment = defineUpdate<
+  ReplaceAppointmentResult,
+  [ReplaceAppointmentCommand]
+>(UPDATE_NAMES.replaceAppointment);
+export const completeCase = defineUpdate<
+  CompleteCaseResult,
+  [CompleteCaseCommand]
+>(UPDATE_NAMES.completeCase);
+export const cancelCase = defineUpdate<CancelCaseResult, [CancelCaseCommand]>(
+  UPDATE_NAMES.cancelCase
+);
+export const retryEffect = defineUpdate<
+  EffectRepairResult,
+  [RetryEffectCommand]
+>(UPDATE_NAMES.retryEffect);
+export const waiveEffect = defineUpdate<
+  EffectRepairResult,
+  [WaiveEffectCommand]
+>(UPDATE_NAMES.waiveEffect);
+
+const activities = proxyActivities<{
+  isCaseTerminal(input: { caseId: string }): Promise<boolean>;
+  openCase(input: CreateCaseActivityInput): Promise<CaseDto>;
+  fetchAllocationSnapshot(input: {
+    category: string;
+    postalSector: string;
+  }): Promise<AllocationSnapshot>;
+  commitAllocationAttempt(
+    input: CommitAllocationInput
+  ): Promise<CommitAllocationResult>;
+  acceptAllocation(
+    input: AcceptAllocationCommand
+  ): Promise<AcceptAllocationResult>;
+  markCaseAssigned(input: {
+    caseId: string;
+    operationId: string;
+    actorId: string;
+    actorRole: string;
+  }): Promise<MarkCaseAssignedResult["outcome"]>;
+  raiseOfficerAttention(input: {
+    caseId: string;
+    kind: OfficerAttentionKind;
+    detail: string;
+    operationId: string;
+  }): Promise<unknown>;
+  breachAllocationAttempt(
+    input: BreachAllocationAttemptInput
+  ): Promise<BreachAllocationAttemptResult>;
+  recordPerformanceEntry(
+    input: RecordPerformanceEntryInput
+  ): Promise<PerformanceEntryDto>;
+  markCaseBreached(
+    input: MarkCaseBreachedInput
+  ): Promise<MarkCaseBreachedResult["outcome"]>;
+  startWorkAppointment(
+    input: StartWorkAppointmentInput
+  ): Promise<StartWorkAppointmentResult>;
+  markAssignmentInProgress(
+    input: MarkAssignmentInProgressInput
+  ): Promise<MarkAssignmentInProgressResult>;
+  markCaseInProgress(
+    input: MarkCaseInProgressInput
+  ): Promise<MarkCaseInProgressResult>;
+  reportNoAccessAppointment(
+    input: ReportNoAccessAppointmentInput
+  ): Promise<ReportNoAccessAppointmentResult>;
+  markAppointmentMissed(
+    input: MarkAppointmentMissedInput
+  ): Promise<MarkAppointmentMissedResult>;
+  markCaseNoAccess(
+    input: MarkCaseNoAccessInput
+  ): Promise<MarkCaseNoAccessResult>;
+  replaceAppointmentSlot(
+    input: ReplaceAppointmentSlotInput
+  ): Promise<ReplaceAppointmentSlotResult>;
+  markCaseAppointmentReplaced(
+    input: MarkCaseAppointmentReplacedInput
+  ): Promise<MarkCaseAppointmentReplacedResult>;
+  validateCompletion(
+    input: CompleteCaseCommand
+  ): Promise<
+    | { outcome: "READY" }
+    | { outcome: "ALREADY_COMPLETED"; case: CaseDto }
+    | { outcome: "NOT_IN_PROGRESS" }
+    | { outcome: "COMPLETION_INVALID" }
+    | { outcome: "APPOINTMENT_MISMATCH" }
+    | { outcome: "WRONG_CONTRACTOR" }
+  >;
+  completeAppointment(
+    input: CompleteAppointmentInput
+  ): Promise<CompleteAppointmentResult>;
+  completeAssignment(
+    input: CompleteAssignmentInput
+  ): Promise<CompleteAssignmentResult>;
+  completeCase(
+    input: CompleteCaseTransitionInput
+  ): Promise<CompleteCaseTransitionResult>;
+  cancelScheduledAppointment(
+    input: CancelAppointmentInput
+  ): Promise<CancelAppointmentResult>;
+  cancelAssignmentForCase(
+    input: CancelAssignmentInput
+  ): Promise<CancelAssignmentResult>;
+  cancelCase(
+    input: CancelCaseTransitionInput
+  ): Promise<CancelCaseTransitionResult>;
+  recordCompletionPerformance(input: {
+    effectId: string;
+    contractorId: string;
+    scoreDelta: number;
+    reason: string;
+  }): Promise<PerformanceEntryDto>;
+}>({ startToCloseTimeout: "10 seconds" });
+
+const effectActivities = proxyActivities<{
+  reserveEffect(input: DerivedEffectIntent): Promise<DerivedEffectSummary>;
+  dispatchEmailEffect(input: {
+    id: string;
+    nextRetryAt: string;
+  }): Promise<DerivedEffectSummary>;
+  dispatchPerformanceEffect(input: {
+    id: string;
+    contractorId: string;
+    scoreDelta: number;
+    reason: string;
+    nextRetryAt: string;
+  }): Promise<DerivedEffectSummary>;
+  markEffectUnknown(id: string): Promise<DerivedEffectSummary>;
+  retryEffect(input: {
+    id: string;
+    acknowledgeDuplicateRisk: boolean;
+  }): Promise<
+    | { kind: "SUCCESS"; effect: DerivedEffectSummary }
+    | { kind: "NOT_FOUND" }
+    | { kind: "ACK_REQUIRED" }
+    | { kind: "NOT_REPAIRABLE" }
+  >;
+  waiveEffect(input: {
+    id: string;
+    actorId: string;
+    reason: string;
+  }): Promise<DerivedEffectSummary | null>;
+  raiseDerivedEffectAttention(input: {
+    caseId: string;
+    effectId: string;
+    detail: string;
+  }): Promise<void>;
+  resolveDerivedEffectAttention(input: {
+    caseId: string;
+    effectId: string;
+  }): Promise<void>;
+}>({ startToCloseTimeout: "10 seconds", retry: { maximumAttempts: 1 } });
+
+type Operation = {
+  payloadHash: string;
+  result?: OpenCaseResult;
+  pending?: Promise<OpenCaseResult>;
+};
+
+/**
+ * A committed Attempt the Workflow is currently tracking, with its deadline
+ * pre-resolved to epoch ms so the main loop can arm a timer on it without
+ * re-parsing a string every iteration.
+ */
+type CommittedAttempt = {
+  attemptId: string;
+  assignmentId: string;
+  contractorId: string;
+  deadlineAt: number;
+};
+
+/** The currently scheduled Appointment whose end timer this Workflow owns. */
+type CurrentAppointment = {
+  appointmentId: string;
+  endAt: number;
+};
+
+type AutomaticAllocationRequest = {
+  kind: "AUTOMATIC";
+  // AUTO_ASSIGN for a Case's first allocation pass, BREACH_REASSIGN for a
+  // replacement after PRS-144's acceptance SLA breach — carried through to
+  // commitAllocationAttempt purely for the Attempt's audit trail.
+  source: "AUTO_ASSIGN" | "BREACH_REASSIGN";
+  category: string;
+  postalCode: string;
+};
+type ManualAllocationRequest = {
+  kind: "MANUAL";
+  command: ManualAllocationCommand;
+  complete: (result: ManualAllocationResult) => void;
+};
+type AllocationRequest = AutomaticAllocationRequest | ManualAllocationRequest;
+type AllocationContext = { category: string; postalCode: string };
+
+type ManualOperation = {
+  payloadHash: string;
+  result?: ManualAllocationResult;
+  pending?: Promise<ManualAllocationResult>;
+};
+type AcceptanceOperation = {
+  payloadHash: string;
+  result?: AcceptAllocationResult;
+  pending?: Promise<AcceptAllocationResult>;
+};
+type StartWorkOperation = {
+  payloadHash: string;
+  result?: StartWorkResult;
+  pending?: Promise<StartWorkResult>;
+};
+type NoAccessOperation = {
+  payloadHash: string;
+  result?: ReportNoAccessResult;
+  pending?: Promise<ReportNoAccessResult>;
+};
+type ReplaceAppointmentOperation = {
+  payloadHash: string;
+  result?: ReplaceAppointmentResult;
+  pending?: Promise<ReplaceAppointmentResult>;
+};
+type CompletionOperation = {
+  payloadHash: string;
+  result?: CompleteCaseResult;
+  pending?: Promise<CompleteCaseResult>;
+};
+type CancellationOperation = {
+  payloadHash: string;
+  result?: CancelCaseResult;
+  pending?: Promise<CancelCaseResult>;
+};
+type EffectRepairOperation = {
+  payloadHash: string;
+  result?: EffectRepairResult;
+  pending?: Promise<EffectRepairResult>;
+};
+type EffectRuntime = {
+  intent: DerivedEffectIntent;
+  attempts: number;
+  nextRetryAt?: number;
+  status: "PENDING" | "SENT" | "FAILED" | "UNKNOWN" | "WAIVED";
+  inFlight: boolean;
+  manualRetry: boolean;
+};
+
+/**
+ * The public ManualAllocationResult carries no Attempt payload on every
+ * outcome (ACTIVE_ATTEMPT_EXISTS in particular). This internal wrapper
+ * carries the committed Attempt alongside it, purely so the caller can arm
+ * the breach timer, without widening the contract type callers depend on.
+ */
+type ManualAllocationOutcome = {
+  result: ManualAllocationResult;
+  attempt?: CommittedAttempt;
+};
+
+/**
+ * Outcome of the last allocation pass. `NO_CANDIDATE` and `FAILED` both leave
+ * the Case PENDING but for different reasons, and PRS-141 acts on each
+ * differently — so they must stay distinguishable rather than collapsing into
+ * one silent nothing.
+ */
+type AllocationState =
+  | { status: "IDLE" }
+  | { status: "ALLOCATED"; attempt: CommittedAttempt }
+  | { status: "TERMINAL" }
+  | { status: "NO_CANDIDATE" }
+  | { status: "FAILED"; reason: string };
+
+// Automatic allocation (PRS-139) acts on the Case's behalf, not a Resident
+// or Officer — a fixed system identity keeps the actor fields non-null.
+const SYSTEM_ACTOR_ID = "00000000-0000-0000-0000-000000000000";
+const SYSTEM_ACTOR_ROLE = "SYSTEM";
+const MAX_ALLOCATION_ROUNDS = 5;
+const INITIAL_ALLOCATION_RETRY_MS = 60_000;
+const MAX_ALLOCATION_RETRY_MS = 60 * 60_000;
+
+/**
+ * Fewest active Assignments, then highest total score, then Contractor ID
+ * ascending (plain string compare — locale-aware compare is not guaranteed
+ * stable across replay). Excludes Contractors this Workflow already
+ * attempted.
+ */
+function rankCandidates(
+  candidates: AllocationCandidate[],
+  excluded: Set<string>
+) {
+  return candidates
+    .filter((candidate) => !excluded.has(candidate.contractorId))
+    .toSorted((a, b) => {
+      if (a.activeAssignments !== b.activeAssignments) {
+        return a.activeAssignments - b.activeAssignments;
+      }
+      if (a.totalScore !== b.totalScore) {
+        return b.totalScore - a.totalScore;
+      }
+      return a.contractorId < b.contractorId
+        ? -1
+        : a.contractorId > b.contractorId
+          ? 1
+          : 0;
+    });
+}
+
+/** Resolves an Attempt DTO's ISO deadline to epoch ms once, at commit time. */
+function toCommittedAttempt(attempt: AllocationAttemptDto): CommittedAttempt {
+  return {
+    attemptId: attempt.id,
+    assignmentId: attempt.assignmentId,
+    contractorId: attempt.contractorId,
+    deadlineAt: Date.parse(attempt.deadlineAt),
+  };
+}
+
+/**
+ * Automatic Contractor allocation for a just-opened Case (PRS-139), or for a
+ * breach replacement (PRS-144, source "BREACH_REASSIGN"). Ranking happens
+ * here, in the Workflow, so it stays deterministic and replayable — the
+ * Activities above do I/O only.
+ *
+ * Returns the outcome rather than throwing it away, so a Case that could not
+ * be allocated is distinguishable from one that never tried.
+ */
+async function runAllocation(
+  caseId: string,
+  source: "AUTO_ASSIGN" | "BREACH_REASSIGN",
+  category: string,
+  postalCode: string,
+  attemptedContractorIds: Set<string>
+): Promise<AllocationState> {
+  if (await activities.isCaseTerminal({ caseId })) {
+    return { status: "TERMINAL" };
+  }
+
+  const sector = postalSector(postalCode);
+  let snapshot = await activities.fetchAllocationSnapshot({
+    category,
+    postalSector: sector,
+  });
+
+  for (let round = 0; round < MAX_ALLOCATION_ROUNDS; round++) {
+    const [candidate] = rankCandidates(
+      snapshot.candidates,
+      attemptedContractorIds
+    );
+    if (!candidate) {
+      // No eligible Contractor was found. PRS-141 owns retry-polling and
+      // Officer Attention for a Case stuck like this — leave it PENDING.
+      return { status: "NO_CANDIDATE" };
+    }
+
+    const operationId = `${caseId}/allocate/${candidate.contractorId}/${snapshot.epoch}`;
+    const result = await activities.commitAllocationAttempt({
+      operationId,
+      caseId,
+      contractorId: candidate.contractorId,
+      source,
+      expectedEpoch: snapshot.epoch,
+      acceptanceSlaMs: DEFAULT_ACCEPTANCE_SLA_MS,
+      actorId: SYSTEM_ACTOR_ID,
+      actorRole: SYSTEM_ACTOR_ROLE,
+    });
+
+    if (
+      result.outcome === "COMMITTED" ||
+      result.outcome === "ALREADY_COMMITTED"
+    ) {
+      attemptedContractorIds.add(candidate.contractorId);
+      const assignmentOutcome = await activities.markCaseAssigned({
+        caseId,
+        operationId,
+        actorId: SYSTEM_ACTOR_ID,
+        actorRole: SYSTEM_ACTOR_ROLE,
+      });
+      if (assignmentOutcome === "CASE_TERMINAL") {
+        return { status: "TERMINAL" };
+      }
+      return {
+        status: "ALLOCATED",
+        attempt: toCommittedAttempt(result.attempt),
+      };
+    }
+
+    if (result.outcome === "ACTIVE_ATTEMPT_EXISTS") {
+      // Another allocation already won the race for this Case. Arm on its
+      // Attempt regardless — it is this same Workflow's own outstanding
+      // offer, and the breach timer must track whichever Attempt is live.
+      return {
+        status: "ALLOCATED",
+        attempt: toCommittedAttempt(result.attempt),
+      };
+    }
+
+    // STALE_EPOCH — the epoch moved under us; refetch and rerank.
+    // (OVERRIDE_REASON_REQUIRED cannot occur here: automatic allocation
+    // never sends source "MANUAL_ASSIGN".)
+    snapshot = await activities.fetchAllocationSnapshot({
+      category,
+      postalSector: sector,
+    });
+  }
+
+  // Every round lost its epoch race. Treated as unresolved rather than
+  // successful, so PRS-141's polling can pick the Case back up.
+  return {
+    status: "FAILED",
+    reason: `allocation lost the epoch race ${MAX_ALLOCATION_ROUNDS} times`,
+  };
+}
+
+async function runManualAllocation(
+  command: ManualAllocationCommand,
+  attemptedContractorIds: Set<string>
+): Promise<ManualAllocationOutcome> {
+  if (await activities.isCaseTerminal({ caseId: command.caseId })) {
+    return { result: { kind: "CASE_TERMINAL" } };
+  }
+
+  const sector = postalSector(command.postalCode);
+  let snapshot = await activities.fetchAllocationSnapshot({
+    category: command.category,
+    postalSector: sector,
+  });
+
+  for (let round = 0; round < MAX_ALLOCATION_ROUNDS; round++) {
+    const candidate = snapshot.candidates.find(
+      ({ contractorId }) => contractorId === command.input.contractorId
+    );
+    if (!candidate) return { result: { kind: "CONTRACTOR_NOT_ELIGIBLE" } };
+
+    const result = await activities.commitAllocationAttempt({
+      operationId: command.operationId,
+      caseId: command.caseId,
+      contractorId: candidate.contractorId,
+      source: "MANUAL_ASSIGN",
+      expectedEpoch: snapshot.epoch,
+      acceptanceSlaMs: DEFAULT_ACCEPTANCE_SLA_MS,
+      actorId: command.actorId,
+      actorRole: command.actorRole,
+      reason: command.input.reason,
+      replaceAttemptId: command.input.replaceAttemptId,
+    });
+
+    if (
+      result.outcome === "COMMITTED" ||
+      result.outcome === "ALREADY_COMMITTED"
+    ) {
+      attemptedContractorIds.add(candidate.contractorId);
+      const assignmentOutcome = await activities.markCaseAssigned({
+        caseId: command.caseId,
+        operationId: command.operationId,
+        actorId: command.actorId,
+        actorRole: command.actorRole,
+      });
+      if (assignmentOutcome === "CASE_TERMINAL") {
+        return { result: { kind: "CASE_TERMINAL" } };
+      }
+      return {
+        result: {
+          kind: "SUCCESS",
+          data: { assignment: result.assignment, attempt: result.attempt },
+        },
+        attempt: toCommittedAttempt(result.attempt),
+      };
+    }
+
+    if (result.outcome === "ACTIVE_ATTEMPT_EXISTS") {
+      return { result: { kind: "ACTIVE_ATTEMPT_EXISTS" } };
+    }
+    if (result.outcome === "REPLACEMENT_ATTEMPT_NOT_PENDING") {
+      return { result: { kind: "REPLACEMENT_ATTEMPT_NOT_PENDING" } };
+    }
+    if (result.outcome === "OVERRIDE_REASON_REQUIRED") {
+      // AC6: reusing a Contractor who already breached on this Assignment,
+      // without a reason. A manual allocation is the only source that can
+      // hit this — automatic allocation never sends a reason-less override.
+      return { result: { kind: "OVERRIDE_REASON_REQUIRED" } };
+    }
+
+    snapshot = await activities.fetchAllocationSnapshot({
+      category: command.category,
+      postalSector: sector,
+    });
+  }
+
+  return {
+    result: {
+      kind: "ALLOCATION_FAILED",
+      reason: `manual allocation lost the epoch race ${MAX_ALLOCATION_ROUNDS} times`,
+    },
+  };
+}
+
+async function raiseAllocationAttention(
+  caseId: string,
+  allocation: Extract<AllocationState, { status: "NO_CANDIDATE" | "FAILED" }>
+) {
+  const kind =
+    allocation.status === "NO_CANDIDATE"
+      ? "NO_ELIGIBLE_CONTRACTOR"
+      : "ALLOCATION_FAILED";
+  const detail =
+    allocation.status === "NO_CANDIDATE"
+      ? "No eligible Contractor covers this Case."
+      : allocation.reason;
+
+  await activities.raiseOfficerAttention({
+    caseId,
+    kind,
+    detail,
+    operationId: `${caseId}/attention/${kind}`,
+  });
+}
+
+type BreachOutcome =
+  | { status: "REPLACED" }
+  | { status: "CASE_TERMINAL" }
+  | { status: "ATTEMPT_NO_LONGER_LIVE" };
+
+/**
+ * The acceptance SLA breach sequence (PRS-144): breach the Attempt, apply
+ * the -10 penalty, return the Case to PENDING, and report what happened so
+ * the caller can re-arm Workflow state and requeue a replacement. Kept as a
+ * pure request/response function, like runAllocation above, rather than
+ * closing over the Workflow's mutable state directly.
+ *
+ * Both `BREACHED` and `ALREADY_BREACHED` from the Activity proceed to the
+ * penalty — a replay or a duplicate timer delivery must not silently drop
+ * it. Only `ACCEPTED`/`WITHDRAWN` mean the offer is no longer live.
+ */
+async function runBreach(
+  caseId: string,
+  attempt: CommittedAttempt
+): Promise<BreachOutcome> {
+  const breach = await activities.breachAllocationAttempt({
+    operationId: `${caseId}/breach/${attempt.attemptId}`,
+    attemptId: attempt.attemptId,
+    assignmentId: attempt.assignmentId,
+    actorId: SYSTEM_ACTOR_ID,
+    actorRole: SYSTEM_ACTOR_ROLE,
+  });
+
+  if (breach.outcome === "ACCEPTED" || breach.outcome === "WITHDRAWN") {
+    return { status: "ATTEMPT_NO_LONGER_LIVE" };
+  }
+
+  const caseOutcome = await activities.markCaseBreached({
+    caseId,
+    operationId: `${caseId}/breach/${attempt.attemptId}/pending`,
+    attemptId: attempt.attemptId,
+    actorId: SYSTEM_ACTOR_ID,
+    actorRole: SYSTEM_ACTOR_ROLE,
+    detail: `Contractor ${attempt.contractorId} did not accept before the acceptance SLA deadline.`,
+  });
+
+  return caseOutcome === "CASE_TERMINAL"
+    ? { status: "CASE_TERMINAL" }
+    : { status: "REPLACED" };
+}
+
+/**
+ * The start-work Saga (PRS-145), forward-only: Appointment SCHEDULED ->
+ * IN_PROGRESS, then Assignment ACCEPTED -> IN_PROGRESS, then Case ->
+ * in_progress, one deterministic operation ID fanned out to each atom.
+ *
+ * A step-1 rejection (NOT_SCHEDULED / WRONG_CONTRACTOR / the Appointment not
+ * found) means nothing was mutated anywhere — a clean, stable domain
+ * response. A step-2 or step-3 rejection happens only *after* the
+ * Appointment already committed: that is an invariant break, not a clean
+ * rejection, so it raises Officer Attention and never rolls the Appointment
+ * back (AC4 — no compensation, start-work is forward-only).
+ */
+async function runStartWork(
+  command: StartWorkCommand
+): Promise<StartWorkResult> {
+  const op = command.operationId;
+
+  const appointmentResult = await activities.startWorkAppointment({
+    operationId: `${op}/appointment`,
+    appointmentId: command.appointmentId,
+    contractorId: command.contractorId,
+  });
+  if (appointmentResult.outcome === "APPOINTMENT_NOT_FOUND") {
+    return { kind: "APPOINTMENT_MISMATCH" };
+  }
+  if (appointmentResult.outcome === "NOT_SCHEDULED") {
+    return { kind: "NOT_SCHEDULED" };
+  }
+  if (appointmentResult.outcome === "WRONG_CONTRACTOR") {
+    return { kind: "WRONG_CONTRACTOR" };
+  }
+  const appointment = appointmentResult.appointment;
+
+  const assignmentResult = await activities.markAssignmentInProgress({
+    operationId: `${op}/assignment`,
+    assignmentId: command.assignmentId,
+    changedBy: command.actorId,
+  });
+  if (
+    assignmentResult.outcome !== "IN_PROGRESS" &&
+    assignmentResult.outcome !== "ALREADY_IN_PROGRESS"
+  ) {
+    await activities.raiseOfficerAttention({
+      caseId: command.caseId,
+      kind: "WORK_START_FAILED",
+      detail: `Assignment could not start work (${assignmentResult.outcome}) after the Appointment already started.`,
+      operationId: `${op}/work-start-failed`,
+    });
+    return { kind: "WORK_START_FAILED" };
+  }
+  const assignment = assignmentResult.assignment;
+
+  const caseResult = await activities.markCaseInProgress({
+    caseId: command.caseId,
+    operationId: `${op}/case`,
+    actorId: command.actorId,
+    actorRole: command.actorRole,
+  });
+  if (caseResult.outcome !== "IN_PROGRESS") {
+    await activities.raiseOfficerAttention({
+      caseId: command.caseId,
+      kind: "WORK_START_FAILED",
+      detail: `Case could not start work (${caseResult.outcome}) after the Appointment and Assignment already started.`,
+      operationId: `${op}/work-start-failed`,
+    });
+    return { kind: "WORK_START_FAILED" };
+  }
+
+  return {
+    kind: "SUCCESS",
+    data: { appointment, assignment, case: caseResult.case },
+  };
+}
+
+/**
+ * Forward-only completion: validate all immutable proof before writes, then
+ * Appointment -> Assignment -> Case -> performance. Once any transition has
+ * committed, a permanent downstream invariant failure becomes Officer
+ * Attention rather than a misleading clean rejection.
+ */
+async function runCompletion(
+  command: CompleteCaseCommand
+): Promise<CompleteCaseResult> {
+  const validation = await activities.validateCompletion(command);
+  if (validation.outcome === "COMPLETION_INVALID") {
+    return { kind: "COMPLETION_INVALID" };
+  }
+  if (validation.outcome === "NOT_IN_PROGRESS") {
+    return { kind: "NOT_IN_PROGRESS" };
+  }
+  if (validation.outcome === "APPOINTMENT_MISMATCH") {
+    return { kind: "APPOINTMENT_MISMATCH" };
+  }
+  if (validation.outcome === "WRONG_CONTRACTOR") {
+    return { kind: "WRONG_CONTRACTOR" };
+  }
+
+  const op = command.operationId;
+  const appointmentResult = await activities.completeAppointment({
+    operationId: `${op}/appointment`,
+    appointmentId: command.appointmentId,
+    contractorId: command.contractorId,
+  });
+  if (appointmentResult.outcome === "APPOINTMENT_NOT_FOUND") {
+    return { kind: "APPOINTMENT_MISMATCH" };
+  }
+  if (appointmentResult.outcome === "WRONG_CONTRACTOR") {
+    return { kind: "WRONG_CONTRACTOR" };
+  }
+  if (
+    appointmentResult.outcome === "NOT_IN_PROGRESS" ||
+    appointmentResult.outcome === "COMPLETION_OPERATION_CONFLICT"
+  ) {
+    return { kind: "NOT_IN_PROGRESS" };
+  }
+
+  const assignmentResult = await activities.completeAssignment({
+    operationId: `${op}/assignment`,
+    assignmentId: command.assignmentId,
+    changedBy: command.actorId,
+  });
+  if (assignmentResult.outcome === "COMPLETION_OPERATION_CONFLICT") {
+    return { kind: "NOT_IN_PROGRESS" };
+  }
+  if (
+    assignmentResult.outcome !== "COMPLETED" &&
+    assignmentResult.outcome !== "ALREADY_COMPLETED"
+  ) {
+    await activities.raiseOfficerAttention({
+      caseId: command.caseId,
+      kind: "COMPLETION_FAILED",
+      detail: `Assignment could not complete (${assignmentResult.outcome}) after the Appointment completed.`,
+      operationId: `${op}/completion-failed`,
+    });
+    return { kind: "COMPLETION_FAILED" };
+  }
+
+  const caseResult = await activities.completeCase({
+    caseId: command.caseId,
+    operationId: `${op}/case`,
+    actorId: command.actorId,
+    actorRole: command.actorRole,
+    report: command.input.report,
+    proofItemIds: command.input.proofItemIds,
+  });
+  if (
+    caseResult.outcome !== "COMPLETED" &&
+    caseResult.outcome !== "ALREADY_COMPLETED"
+  ) {
+    await activities.raiseOfficerAttention({
+      caseId: command.caseId,
+      kind: "COMPLETION_FAILED",
+      detail: `Case could not complete (${caseResult.outcome}) after the Appointment and Assignment completed.`,
+      operationId: `${op}/completion-failed`,
+    });
+    return { kind: "COMPLETION_FAILED" };
+  }
+
+  return {
+    kind: "SUCCESS",
+    data: {
+      appointment: appointmentResult.appointment,
+      assignment: assignmentResult.assignment,
+      case: caseResult.case,
+    },
+  };
+}
+
+/**
+ * Forward-only cancellation: a live appointment releases its slot, the stable
+ * pre-work Assignment is cancelled, and only then does the Case go terminal.
+ * Domain rejections are returned to the caller; transport failures escape so
+ * Temporal retries the convergent sequence from its first step.
+ */
+async function runCancellation(
+  command: CancelCaseCommand
+): Promise<CancelCaseResult> {
+  const op = command.operationId;
+  const appointment = await activities.cancelScheduledAppointment({
+    caseId: command.caseId,
+    operationId: `${op}/appointment`,
+    changedBy: command.actorId,
+  });
+  if (appointment.outcome === "IN_PROGRESS") {
+    return { kind: "NOT_CANCELLABLE" };
+  }
+
+  const assignment = await activities.cancelAssignmentForCase({
+    caseId: command.caseId,
+    operationId: `${op}/assignment`,
+    changedBy: command.actorId,
+    reason: command.input.reason,
+  });
+  if (
+    assignment.outcome === "IN_PROGRESS" ||
+    assignment.outcome === "NOT_CANCELLABLE"
+  ) {
+    return { kind: "NOT_CANCELLABLE" };
+  }
+
+  const caseResult = await activities.cancelCase({
+    caseId: command.caseId,
+    operationId: `${op}/case`,
+    actorId: command.actorId,
+    actorRole: command.actorRole,
+    reason: command.input.reason,
+  });
+  if (caseResult.outcome === "NOT_CANCELLABLE") {
+    return { kind: "NOT_CANCELLABLE" };
+  }
+
+  return { kind: "SUCCESS", data: { case: caseResult.case } };
+}
+
+/**
+ * The No-Access Saga (PRS-146 AC1), forward-only: Appointment SCHEDULED ->
+ * NO_ACCESS, then the Case parked on the Resident.
+ *
+ * Unlike start-work there is no Officer Attention branch here: the Case write
+ * is total — it either succeeds or reports CASE_TERMINAL, which is a clean
+ * domain answer, never a half-applied state needing repair. The Assignment is
+ * deliberately untouched; the Contractor keeps the job across the reschedule
+ * (AC7).
+ */
+async function runNoAccess(
+  command: ReportNoAccessCommand
+): Promise<ReportNoAccessResult> {
+  const op = command.operationId;
+
+  const appointmentResult = await activities.reportNoAccessAppointment({
+    operationId: `${op}/appointment`,
+    appointmentId: command.appointmentId,
+    contractorId: command.contractorId,
+  });
+  if (appointmentResult.outcome === "APPOINTMENT_NOT_FOUND") {
+    return { kind: "APPOINTMENT_MISMATCH" };
+  }
+  if (appointmentResult.outcome === "NOT_SCHEDULED") {
+    return { kind: "NOT_SCHEDULED" };
+  }
+  if (appointmentResult.outcome === "WRONG_CONTRACTOR") {
+    return { kind: "WRONG_CONTRACTOR" };
+  }
+  const appointment = appointmentResult.appointment;
+
+  const caseResult = await activities.markCaseNoAccess({
+    caseId: command.caseId,
+    operationId: `${op}/case`,
+    actorId: command.actorId,
+    actorRole: command.actorRole,
+  });
+  if (caseResult.outcome === "CASE_TERMINAL") {
+    return { kind: "CASE_TERMINAL" };
+  }
+
+  return {
+    kind: "SUCCESS",
+    data: { appointment, case: caseResult.case },
+  };
+}
+
+/**
+ * The reschedule Saga (PRS-146 AC4/AC5), forward-only: the Appointment atom
+ * retires the old slot and books the replacement in one transaction, then the
+ * Case records it. A step-1 rejection means nothing was mutated — the old
+ * schedule still stands, which is what makes APPOINTMENT_CONFLICT safe to
+ * return to the caller as "pick another slot".
+ */
+async function runReplaceAppointment(
+  command: ReplaceAppointmentCommand
+): Promise<ReplaceAppointmentResult> {
+  const op = command.operationId;
+
+  // The atom derives its own `/claim` and `/appointment` suffixes beneath
+  // this, so name the step for what it is rather than doubling `/appointment`.
+  const slotResult = await activities.replaceAppointmentSlot({
+    operationId: `${op}/replace`,
+    caseId: command.caseId,
+    appointmentId: command.appointmentId,
+    startTime: command.input.startTime,
+    endTime: command.input.endTime,
+    reason: command.input.reason,
+  });
+  if (slotResult.outcome === "APPOINTMENT_NOT_FOUND") {
+    return { kind: "APPOINTMENT_MISMATCH" };
+  }
+  if (slotResult.outcome === "CASE_MISMATCH") {
+    return { kind: "CASE_MISMATCH" };
+  }
+  if (slotResult.outcome === "NOT_REPLACEABLE") {
+    return { kind: "NOT_REPLACEABLE" };
+  }
+  if (slotResult.outcome === "CONFLICT") {
+    return { kind: "APPOINTMENT_CONFLICT" };
+  }
+  const appointment = slotResult.appointment;
+
+  const caseResult = await activities.markCaseAppointmentReplaced({
+    caseId: command.caseId,
+    operationId: `${op}/case`,
+    actorId: command.actorId,
+    actorRole: command.actorRole,
+  });
+  if (caseResult.outcome === "CASE_TERMINAL") {
+    return { kind: "CASE_TERMINAL" };
+  }
+
+  return {
+    kind: "SUCCESS",
+    data: { appointment, case: caseResult.case },
+  };
+}
+
+/**
+ * PRS-149 expiry is intentionally narrow: it changes only the Appointment
+ * and raises attention. Case, Assignment, performance, and allocation stay
+ * untouched until an Officer or Resident replaces the missed visit.
+ */
+async function runMissedAppointment(
+  caseId: string,
+  appointment: CurrentAppointment
+) {
+  const operationId = `${caseId}/missed-appointment/${appointment.appointmentId}`;
+  const result = await activities.markAppointmentMissed({
+    operationId,
+    appointmentId: appointment.appointmentId,
+  });
+
+  if (result.outcome === "MISSED" || result.outcome === "ALREADY_MISSED") {
+    await activities.raiseOfficerAttention({
+      caseId,
+      kind: "MISSED_APPOINTMENT",
+      detail: `Appointment ${appointment.appointmentId} ended at ${new Date(appointment.endAt).toISOString()} without work start, No Access, or Reschedule.`,
+      operationId,
+    });
+    return;
+  }
+
+  if (result.outcome === "APPOINTMENT_NOT_FOUND") {
+    await activities.raiseOfficerAttention({
+      caseId,
+      kind: "MISSED_APPOINTMENT",
+      detail: `Appointment ${appointment.appointmentId} was not found when its ${new Date(appointment.endAt).toISOString()} expiry fired.`,
+      operationId,
+    });
+  }
+}
+
+/**
+ * Nine of the Workflow's ten idempotency caches hold the same
+ * `{payloadHash, result}` shape keyed by idempotency key, so one pair of
+ * helpers carries all of them across Continue-As-New (PRS-152). `pending` is
+ * never carried: it exists only while a handler is awaiting, and
+ * Continue-As-New is gated on every handler having finished.
+ */
+type OperationCache<T> = Map<string, { payloadHash: string; result?: T }>;
+type CarriedOperation<T> = { key: string; payloadHash: string; result?: T };
+
+function dumpOperations<T>(cache: OperationCache<T>): CarriedOperation<T>[] {
+  return [...cache].map(([key, { payloadHash, result }]) => ({
+    key,
+    payloadHash,
+    result,
+  }));
+}
+
+function restoreOperations<T>(
+  cache: OperationCache<T>,
+  carried: CarriedOperation<T>[] | undefined
+) {
+  for (const { key, payloadHash, result } of carried ?? []) {
+    cache.set(key, { payloadHash, result });
+  }
+}
+
+/**
+ * The carry-over as this Worker reads it. `DerivedEffectIntent` belongs to the
+ * Worker's Activities, not to the contract, so the contract carries the intent
+ * opaquely and this names it back — with no assertion, and no second
+ * definition of the shape.
+ */
+type WorkerCarryOver = Omit<CaseCarryOver, "effects"> & {
+  effects: (Omit<CaseCarryOver["effects"][number], "intent"> & {
+    intent: DerivedEffectIntent;
+  })[];
+};
+
+/**
+ * Durable owner of the opening operation for one Case.
+ *
+ * The workflow remains open for later PRS-81 lifecycle updates. Its first
+ * Update writes a Case through the Case atom exactly once per operation ID.
+ *
+ * A long-lived Case Continues-As-New (PRS-152) under the same Workflow ID,
+ * handing the next run its `carryOver` — see `snapshot()` below.
+ */
+export async function CaseWorkflow({
+  caseId,
+  carryOver,
+  continueAsNewAfterEvents,
+}: {
+  caseId: string;
+  carryOver?: WorkerCarryOver;
+  // ponytail: the server only sets continueAsNewSuggested at thousands of
+  // events, which no test can drive in reasonable time. This optional
+  // override lowers the bar to a plain history-length check; the Gateway
+  // omits it, so production runs on the server's suggestion alone. It is
+  // deliberately not carried over, so one start Continues-As-New once.
+  continueAsNewAfterEvents?: number;
+}): Promise<void> {
+  const operations = new Map<string, Operation>();
+  const manualOperations = new Map<string, ManualOperation>();
+  const acceptanceOperations = new Map<string, AcceptanceOperation>();
+  const startWorkOperations = new Map<string, StartWorkOperation>();
+  const noAccessOperations = new Map<string, NoAccessOperation>();
+  const replaceAppointmentOperations = new Map<
+    string,
+    ReplaceAppointmentOperation
+  >();
+  const completionOperations = new Map<string, CompletionOperation>();
+  const cancellationOperations = new Map<string, CancellationOperation>();
+  let closeAfterCompletion = carryOver?.closeAfterCompletion ?? false;
+  let cancellationStarted = carryOver?.cancellationStarted ?? false;
+  // In-Workflow only — never exposed as a Query/read model. Tracks which
+  // Contractors this Workflow already committed or attempted, across
+  // allocation passes for this Case's whole lifetime.
+  const attemptedContractorIds = new Set(carryOver?.attemptedContractorIds);
+  const allocationQueue: AllocationRequest[] = [
+    ...(carryOver?.allocationQueue ?? []),
+  ];
+  let allocation: AllocationState = carryOver?.allocation ?? { status: "IDLE" };
+  let automaticRetryAt: number | undefined = carryOver?.automaticRetryAt;
+  let automaticRetryDelayMs =
+    carryOver?.automaticRetryDelayMs ?? INITIAL_ALLOCATION_RETRY_MS;
+  let automaticAllocationActive = carryOver?.automaticAllocationActive ?? false;
+  let allocationMutationGuard = 0;
+  let automaticAllocationSource: "AUTO_ASSIGN" | "BREACH_REASSIGN" =
+    carryOver?.automaticAllocationSource ?? "AUTO_ASSIGN";
+  let allocationContext: AllocationContext | undefined =
+    carryOver?.allocationContext;
+  // The Attempt currently awaiting acceptance, if any (PRS-144). Armed by
+  // every path that commits or discovers a PENDING_ACCEPTANCE Attempt;
+  // cleared on acceptance and on breach. Its deadline is absolute epoch ms, so
+  // it stays valid across Continue-As-New.
+  let currentAttempt: CommittedAttempt | undefined = carryOver?.currentAttempt;
+  let accepted = carryOver?.accepted ?? false;
+  let currentAppointment: CurrentAppointment | undefined =
+    carryOver?.currentAppointment;
+  // Every lifecycle transition increments this so a timerless Workflow wait
+  // still re-evaluates immediately when an Appointment is armed or cleared.
+  let appointmentStateRevision = 0;
+  // A handler admitted before endAt settles before expiry runs; a handler that
+  // first arrives at endAt fails its window gate and never acquires this guard.
+  let appointmentLifecycleGuard = 0;
+  // A MISSED replacement waits for this Saga to raise attention before it can
+  // resolve that attention through the existing Case replacement write.
+  let missedAppointmentRecovery: string | undefined;
+  // Counts acceptAllocation handlers currently running the real Activity.
+  // Armed synchronously before the first await so the main loop's breach
+  // check can never race a handler that started before the deadline.
+  let acceptanceGuard = 0;
+  let completionGuard = 0;
+  let appointmentExpiryGuard = 0;
+  const effects = new Map<string, EffectRuntime>(
+    // `inFlight` is never carried — see the Continue-As-New gate below.
+    (carryOver?.effects ?? []).map((carried) => [
+      carried.intent.id,
+      { ...carried, inFlight: false },
+    ])
+  );
+  const effectRepairOperations = new Map<string, EffectRepairOperation>();
+  let effectRevision = 0;
+
+  restoreOperations(operations, carryOver?.operations);
+  restoreOperations(manualOperations, carryOver?.manualOperations);
+  restoreOperations(acceptanceOperations, carryOver?.acceptanceOperations);
+  restoreOperations(startWorkOperations, carryOver?.startWorkOperations);
+  restoreOperations(noAccessOperations, carryOver?.noAccessOperations);
+  restoreOperations(
+    replaceAppointmentOperations,
+    carryOver?.replaceAppointmentOperations
+  );
+  restoreOperations(completionOperations, carryOver?.completionOperations);
+  restoreOperations(cancellationOperations, carryOver?.cancellationOperations);
+  restoreOperations(effectRepairOperations, carryOver?.effectRepairOperations);
+
+  /**
+   * The state one run hands to the next. Everything omitted is a transient
+   * guard or revision counter that legitimately resets, and each is provably
+   * zero at the gate: the handler-incremented ones because
+   * `allHandlersFinished()` is false while any is non-zero, the
+   * loop-incremented ones because their `finally` clears them inside the same
+   * iteration that raised them.
+   *
+   * ponytail: the carry-over grows with commands-per-Case and is never pruned.
+   * A Case takes a bounded number of commands — one open, a handful of
+   * allocations, one acceptance, one start, one completion, plus effect
+   * repairs — so it stays well under Temporal's 2 MB payload limit. The
+   * binding constraint is the cached openCase result: it embeds a full CaseDto
+   * whose description alone is capped at 10,000 characters, so worst case is
+   * on the order of two hundred cached operations. Add eviction, oldest
+   * idempotency key first, only if a real Case ever approaches that.
+   */
+  function snapshot(): WorkerCarryOver {
+    return {
+      operations: dumpOperations(operations),
+      manualOperations: dumpOperations(manualOperations),
+      acceptanceOperations: dumpOperations(acceptanceOperations),
+      startWorkOperations: dumpOperations(startWorkOperations),
+      noAccessOperations: dumpOperations(noAccessOperations),
+      replaceAppointmentOperations: dumpOperations(
+        replaceAppointmentOperations
+      ),
+      completionOperations: dumpOperations(completionOperations),
+      cancellationOperations: dumpOperations(cancellationOperations),
+      effectRepairOperations: dumpOperations(effectRepairOperations),
+      effects: [...effects.values()].map(
+        ({ intent, attempts, nextRetryAt, status, manualRetry }) => ({
+          intent,
+          attempts,
+          nextRetryAt,
+          status,
+          manualRetry,
+        })
+      ),
+      attemptedContractorIds: [...attemptedContractorIds],
+      // A MANUAL request holds the resolve function of a promise an Update
+      // handler is awaiting, so none can exist once every handler finished.
+      allocationQueue: allocationQueue.filter(
+        (request) => request.kind === "AUTOMATIC"
+      ),
+      allocation,
+      allocationContext,
+      currentAttempt,
+      currentAppointment,
+      accepted,
+      closeAfterCompletion,
+      cancellationStarted,
+      automaticRetryAt,
+      automaticRetryDelayMs,
+      automaticAllocationActive,
+      automaticAllocationSource,
+    };
+  }
+
+  function queueEffect(intent: DerivedEffectIntent) {
+    if (effects.has(intent.id)) return;
+    effects.set(intent.id, {
+      intent,
+      attempts: 0,
+      status: "PENDING",
+      inFlight: false,
+      manualRetry: false,
+    });
+    effectRevision++;
+  }
+
+  function queueAssignmentNotification(attempt: CommittedAttempt) {
+    queueEffect({
+      id: `${attempt.attemptId}/assignment-notification`,
+      caseId,
+      type: "EMAIL",
+      purpose: "ATTEMPT_ASSIGNMENT_NOTIFICATION",
+      recipient: { type: "CONTRACTOR", id: attempt.contractorId },
+    });
+  }
+
+  function effectsSettled() {
+    return [...effects.values()].every(
+      (effect) =>
+        !effect.inFlight &&
+        (effect.status === "SENT" || effect.status === "WAIVED")
+    );
+  }
+
+  function nextEffectDeadline(): number | undefined {
+    const now = Date.now();
+    const upcoming = [...effects.values()]
+      .filter(
+        (effect) =>
+          !effect.inFlight &&
+          (effect.status === "PENDING" || effect.status === "FAILED")
+      )
+      .flatMap((effect) =>
+        effect.nextRetryAt !== undefined && effect.nextRetryAt > now
+          ? [effect.nextRetryAt]
+          : []
+      );
+    return upcoming.length > 0 ? Math.min(...upcoming) : undefined;
+  }
+
+  /**
+   * Resolving an Attention is bookkeeping, not delivery: the ledger is already
+   * authoritative that the effect was sent or waived. Letting a failure here
+   * propagate would demote a delivered effect back to FAILED (via runEffect's
+   * catch) or fail an Update whose durable waive already committed, and in both
+   * cases `effectsSettled()` would never trip so a terminal Workflow would
+   * never close. Tolerating it leaves an orphaned open DERIVED_EFFECT_UNKNOWN
+   * row instead, which self-heals on the next raise/resolve cycle.
+   *
+   * Raising an Attention is deliberately NOT tolerated the same way — swallowing
+   * that would silently lose an effect the Officer must repair.
+   */
+  async function resolveAttentionTolerantly(effect: EffectRuntime) {
+    try {
+      await effectActivities.resolveDerivedEffectAttention({
+        caseId,
+        effectId: effect.intent.id,
+      });
+    } catch {
+      log.warn("Derived effect Attention resolution failed", {
+        caseId,
+        effectId: effect.intent.id,
+      });
+    }
+  }
+
+  async function finishEffect(
+    effect: EffectRuntime,
+    result: DerivedEffectSummary
+  ) {
+    effect.status = result.status;
+    effect.nextRetryAt = result.nextRetryAt
+      ? Date.parse(result.nextRetryAt)
+      : undefined;
+    if (result.status === "UNKNOWN") {
+      await effectActivities.raiseDerivedEffectAttention({
+        caseId,
+        effectId: effect.intent.id,
+        detail: `Derived effect ${effect.intent.id} was not confirmed within Resend's 24-hour idempotency window.`,
+      });
+    }
+    if (result.status === "SENT" || result.status === "WAIVED") {
+      await resolveAttentionTolerantly(effect);
+    }
+  }
+
+  async function runEffect(effect: EffectRuntime) {
+    try {
+      effect.attempts++;
+      const nextRetryAt = new Date(
+        Date.now() + Math.min(1_000 * 2 ** (effect.attempts - 1), 5 * 60_000)
+      ).toISOString();
+      let current = await effectActivities.reserveEffect(effect.intent);
+      await finishEffect(effect, current);
+      if (effect.status === "FAILED") {
+        const retried = await effectActivities.retryEffect({
+          id: effect.intent.id,
+          acknowledgeDuplicateRisk: false,
+        });
+        if (retried.kind !== "SUCCESS") return;
+        current = retried.effect;
+        await finishEffect(effect, current);
+      }
+      if (effect.status !== "PENDING") return;
+      if (
+        effect.intent.type === "EMAIL" &&
+        !effect.manualRetry &&
+        current.attempts > 0 &&
+        Date.now() - Date.parse(current.createdAt) >= 24 * 60 * 60_000
+      ) {
+        await finishEffect(
+          effect,
+          await effectActivities.markEffectUnknown(effect.intent.id)
+        );
+        return;
+      }
+      effect.manualRetry = false;
+      const result =
+        effect.intent.type === "EMAIL"
+          ? await effectActivities.dispatchEmailEffect({
+              id: effect.intent.id,
+              nextRetryAt,
+            })
+          : await effectActivities.dispatchPerformanceEffect({
+              id: effect.intent.id,
+              contractorId: effect.intent.contractorId,
+              scoreDelta: effect.intent.scoreDelta,
+              reason: effect.intent.reason,
+              nextRetryAt,
+            });
+      await finishEffect(effect, result);
+    } catch {
+      effect.status = "FAILED";
+      effect.nextRetryAt =
+        Date.now() + Math.min(1_000 * 2 ** (effect.attempts - 1), 5 * 60_000);
+    } finally {
+      effect.inFlight = false;
+      effectRevision++;
+    }
+  }
+
+  function startReadyEffects() {
+    const ready = [...effects.values()].filter(
+      (effect) =>
+        !effect.inFlight &&
+        (effect.status === "PENDING" || effect.status === "FAILED") &&
+        (effect.nextRetryAt === undefined || effect.nextRetryAt <= Date.now())
+    );
+    for (const effect of ready) {
+      effect.inFlight = true;
+      void runEffect(effect);
+    }
+  }
+
+  setHandler(openCase, async (unparsedCommand) => {
+    const command = OpenCaseCommandSchema.parse(unparsedCommand);
+    const existing = operations.get(command.idempotencyKey);
+
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error("Open-case operation has no result or pending activity");
+    }
+
+    const operation: Operation = { payloadHash: command.payloadHash };
+    operations.set(command.idempotencyKey, operation);
+    operation.pending = activities
+      .openCase({
+        caseId,
+        operationId: command.operationId,
+        actorId: command.actorId,
+        actorRole: command.actorRole,
+        input: command.input,
+      })
+      .then((data) => ({ kind: "SUCCESS", data }));
+
+    try {
+      operation.result = await operation.pending;
+    } catch (error) {
+      operations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
+
+    const result = operation.result;
+    if (!result) {
+      throw new Error("Open-case operation completed without a result");
+    }
+
+    if (result.kind === "SUCCESS") {
+      // Record the intent only. The main body below runs allocation, so this
+      // handler never spawns an untracked promise and returns as soon as the
+      // Case is durably created.
+      allocationContext = {
+        category: result.data.category,
+        postalCode: result.data.postalCode,
+      };
+      allocationQueue.push({
+        kind: "AUTOMATIC",
+        source: "AUTO_ASSIGN",
+        ...allocationContext,
+      });
+    }
+
+    return result;
+  });
+
+  setHandler(allocateContractor, async (unparsedCommand) => {
+    const command = ManualAllocationCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) {
+      return {
+        kind: "ALLOCATION_FAILED",
+        reason: "Manual allocation Case does not match this Workflow",
+      };
+    }
+    allocationContext = {
+      category: command.category,
+      postalCode: command.postalCode,
+    };
+
+    const existing = manualOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error(
+        "Manual allocation operation has no result or pending allocation"
+      );
+    }
+    if (cancellationStarted) return { kind: "CASE_TERMINAL" };
+
+    const operation: ManualOperation = { payloadHash: command.payloadHash };
+    manualOperations.set(command.idempotencyKey, operation);
+    operation.pending = new Promise<ManualAllocationResult>((resolve) => {
+      allocationQueue.push({ kind: "MANUAL", command, complete: resolve });
+    });
+
+    operation.result = await operation.pending;
+    delete operation.pending;
+    return operation.result;
+  });
+
+  setHandler(acceptAllocation, async (unparsedCommand) => {
+    const command = AcceptAllocationCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    // The idempotency cache lookup must stay before the deadline check
+    // below (PRS-144 AC2): a legitimate before-deadline acceptance whose
+    // retry lands after the deadline must still return its cached result,
+    // not get wrongly rejected as late.
+    const existing = acceptanceOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error("Acceptance operation has no result or pending activity");
+    }
+    if (cancellationStarted) return { kind: "ATTEMPT_NOT_PENDING" };
+
+    // A new, unseen acceptance that lands after this Attempt's own deadline
+    // is rejected outright, without calling the atom — this closes the
+    // late-acceptance race (AC3) rather than leaving it to the atom's row
+    // lock as the only defence.
+    if (
+      currentAttempt &&
+      command.attemptId === currentAttempt.attemptId &&
+      Date.now() >= currentAttempt.deadlineAt
+    ) {
+      return { kind: "ATTEMPT_NOT_PENDING" };
+    }
+
+    const operation: AcceptanceOperation = { payloadHash: command.payloadHash };
+    acceptanceOperations.set(command.idempotencyKey, operation);
+    try {
+      // Armed synchronously, as the first statement in the try and before
+      // the first await, so a synchronous throw from acceptAllocation still
+      // hits `finally` — the main loop's deadline wait can always observe
+      // an in-flight acceptance that started before the deadline, which is
+      // what makes the accept Activity and the breach Activity mutually
+      // exclusive.
+      acceptanceGuard++;
+      operation.pending = activities.acceptAllocation(command);
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        accepted = true;
+        currentAttempt = undefined;
+        currentAppointment = {
+          appointmentId: operation.result.data.appointment.id,
+          endAt: Date.parse(operation.result.data.appointment.endTime),
+        };
+        appointmentStateRevision++;
+      }
+      // A semantic conflict (e.g. APPOINTMENT_CONFLICT) leaves `accepted`
+      // and `currentAttempt` untouched, so the Attempt still breaches.
+      return operation.result;
+    } catch (error) {
+      acceptanceOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+      acceptanceGuard--;
+    }
+  });
+
+  setHandler(startWork, async (unparsedCommand) => {
+    const command = StartWorkCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    const existing = startWorkOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error("Start-work operation has no result or pending activity");
+    }
+    if (cancellationStarted) return { kind: "CASE_TERMINAL" };
+
+    // The window gate runs before the cache below is populated — load-
+    // bearing. A before-window NOT_IN_WINDOW is non-terminal (the window
+    // opens later), so a same-key retry once startTime arrives must still be
+    // able to succeed, never replay a stale rejection. SUCCESS and every
+    // atom-returned terminal outcome below (WRONG_CONTRACTOR, NOT_SCHEDULED,
+    // WORK_START_FAILED, …) are cached and replay on a same-key retry; the
+    // catch below deletes the entry so a transient failure re-runs (mirrors
+    // acceptAllocation above).
+    const now = Date.now();
+    if (now < Date.parse(command.startTime)) return { kind: "NOT_IN_WINDOW" };
+    if (now >= Date.parse(command.endTime)) return { kind: "NOT_IN_WINDOW" };
+
+    const guardsAppointmentExpiry =
+      currentAppointment?.appointmentId === command.appointmentId;
+    if (guardsAppointmentExpiry) appointmentLifecycleGuard++;
+
+    const operation: StartWorkOperation = { payloadHash: command.payloadHash };
+    startWorkOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = runStartWork(command);
+      operation.result = await operation.pending;
+      if (
+        currentAppointment?.appointmentId === command.appointmentId &&
+        (operation.result.kind === "SUCCESS" ||
+          operation.result.kind === "WORK_START_FAILED" ||
+          operation.result.kind === "NOT_SCHEDULED")
+      ) {
+        currentAppointment = undefined;
+        appointmentStateRevision++;
+      }
+      return operation.result;
+    } catch (error) {
+      startWorkOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+      if (guardsAppointmentExpiry) appointmentLifecycleGuard--;
+    }
+  });
+
+  setHandler(reportNoAccess, async (unparsedCommand) => {
+    const command = ReportNoAccessCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    // Cache lookup ahead of the window gate, exactly as in startWork above: a
+    // legitimate in-window report whose retry only lands after endTime must
+    // replay its cached result rather than be rejected as out of window.
+    const existing = noAccessOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error("No-access operation has no result or pending activity");
+    }
+    if (cancellationStarted) return { kind: "CASE_TERMINAL" };
+
+    // Half-open [startTime, endTime), same gate as start-work: No Access is a
+    // report about an attended visit, so it is only truthful while the
+    // Appointment is actually running.
+    const now = Date.now();
+    if (now < Date.parse(command.startTime)) return { kind: "NOT_IN_WINDOW" };
+    if (now >= Date.parse(command.endTime)) return { kind: "NOT_IN_WINDOW" };
+
+    const guardsAppointmentExpiry =
+      currentAppointment?.appointmentId === command.appointmentId;
+    if (guardsAppointmentExpiry) appointmentLifecycleGuard++;
+
+    const operation: NoAccessOperation = { payloadHash: command.payloadHash };
+    noAccessOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = runNoAccess(command);
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        queueEffect({
+          id: `${operation.result.data.appointment.id}/no-access-notification`,
+          caseId,
+          type: "EMAIL",
+          purpose: "APPOINTMENT_NO_ACCESS_NOTIFICATION",
+          recipient: {
+            type: "RESIDENT",
+            id: operation.result.data.case.residentId,
+          },
+        });
+      }
+      if (
+        currentAppointment?.appointmentId === command.appointmentId &&
+        (operation.result.kind === "SUCCESS" ||
+          operation.result.kind === "CASE_TERMINAL" ||
+          operation.result.kind === "NOT_SCHEDULED")
+      ) {
+        currentAppointment = undefined;
+        appointmentStateRevision++;
+      }
+      return operation.result;
+    } catch (error) {
+      noAccessOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+      if (guardsAppointmentExpiry) appointmentLifecycleGuard--;
+    }
+  });
+
+  setHandler(replaceAppointment, async (unparsedCommand) => {
+    const command = ReplaceAppointmentCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    // Same ordering rule as the two handlers above — a cached result outranks
+    // a time gate that has since closed under a retry.
+    const existing = replaceAppointmentOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error(
+        "Replace-appointment operation has no result or pending activity"
+      );
+    }
+    if (cancellationStarted) return { kind: "CASE_TERMINAL" };
+
+    const now = Date.now();
+    if (Date.parse(command.input.startTime) <= now) {
+      return { kind: "NOT_FUTURE" };
+    }
+    // AC4 permits a proactive reschedule only of a *future* SCHEDULED
+    // Appointment: once its window has opened, moving it is missed-visit
+    // recovery, which PRS-149 owns. A NO_ACCESS Appointment carries no such
+    // constraint — rescheduling one is precisely the AC5 recovery path.
+    if (
+      command.previousStatus === "SCHEDULED" &&
+      Date.parse(command.previousStartTime) <= now
+    ) {
+      return { kind: "NOT_FUTURE" };
+    }
+
+    if (
+      command.previousStatus === "MISSED" &&
+      missedAppointmentRecovery === command.appointmentId
+    ) {
+      await condition(
+        () => missedAppointmentRecovery !== command.appointmentId
+      );
+    }
+
+    const guardsAppointmentExpiry =
+      currentAppointment?.appointmentId === command.appointmentId;
+    if (guardsAppointmentExpiry) appointmentLifecycleGuard++;
+
+    const operation: ReplaceAppointmentOperation = {
+      payloadHash: command.payloadHash,
+    };
+    replaceAppointmentOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = runReplaceAppointment(command);
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        const appointment = operation.result.data.appointment;
+        const notification = {
+          caseId,
+          type: "EMAIL" as const,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+        };
+        queueEffect({
+          id: `${appointment.id}/reschedule/resident`,
+          ...notification,
+          purpose: "APPOINTMENT_RESCHEDULE_RESIDENT_NOTIFICATION",
+          recipient: {
+            type: "RESIDENT",
+            id: operation.result.data.case.residentId,
+          },
+        });
+        queueEffect({
+          id: `${appointment.id}/reschedule/contractor`,
+          ...notification,
+          purpose: "APPOINTMENT_RESCHEDULE_CONTRACTOR_NOTIFICATION",
+          recipient: { type: "CONTRACTOR", id: appointment.contractorId },
+        });
+        currentAppointment = {
+          appointmentId: operation.result.data.appointment.id,
+          endAt: Date.parse(operation.result.data.appointment.endTime),
+        };
+        appointmentStateRevision++;
+      } else if (
+        currentAppointment?.appointmentId === command.appointmentId &&
+        (operation.result.kind === "NOT_REPLACEABLE" ||
+          operation.result.kind === "CASE_TERMINAL")
+      ) {
+        currentAppointment = undefined;
+        appointmentStateRevision++;
+      }
+      return operation.result;
+    } catch (error) {
+      replaceAppointmentOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+      if (guardsAppointmentExpiry) appointmentLifecycleGuard--;
+    }
+  });
+
+  setHandler(cancelCase, async (unparsedCommand) => {
+    const command = CancelCaseCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    const existing = cancellationOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error(
+        "Cancellation operation has no result or pending activity"
+      );
+    }
+    if (cancellationStarted) return { kind: "NOT_CANCELLABLE" };
+
+    cancellationStarted = true;
+    while (allocationQueue.length > 0) {
+      const request = allocationQueue.shift();
+      if (request?.kind === "MANUAL") {
+        request.complete({ kind: "CASE_TERMINAL" });
+      }
+    }
+
+    const operation: CancellationOperation = {
+      payloadHash: command.payloadHash,
+    };
+    cancellationOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = (async () => {
+        await condition(
+          () =>
+            allocationMutationGuard === 0 &&
+            acceptanceGuard === 0 &&
+            appointmentLifecycleGuard === 0 &&
+            appointmentExpiryGuard === 0 &&
+            completionGuard === 0
+        );
+        return runCancellation(command);
+      })();
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        currentAttempt = undefined;
+        currentAppointment = undefined;
+        appointmentStateRevision++;
+        automaticAllocationActive = true;
+        automaticRetryAt = undefined;
+        closeAfterCompletion = true;
+      } else {
+        cancellationStarted = false;
+      }
+      return operation.result;
+    } catch (error) {
+      cancellationOperations.delete(command.idempotencyKey);
+      cancellationStarted = false;
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
+  });
+
+  setHandler(retryEffect, async (unparsedCommand) => {
+    const command = RetryEffectCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+    const existing = effectRepairOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error(
+        "Effect repair operation has no result or pending activity"
+      );
+    }
+    const effect = effects.get(command.effectId);
+    if (!effect) return { kind: "EFFECT_NOT_FOUND" };
+
+    const operation: EffectRepairOperation = {
+      payloadHash: command.payloadHash,
+    };
+    effectRepairOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = effectActivities
+        .retryEffect({
+          id: command.effectId,
+          acknowledgeDuplicateRisk: command.input.acknowledgeDuplicateRisk,
+        })
+        .then((result): EffectRepairResult =>
+          result.kind === "NOT_FOUND"
+            ? { kind: "EFFECT_NOT_FOUND" }
+            : result.kind === "ACK_REQUIRED"
+              ? { kind: "DUPLICATE_RISK_ACKNOWLEDGEMENT_REQUIRED" }
+              : result.kind === "NOT_REPAIRABLE"
+                ? { kind: "EFFECT_NOT_REPAIRABLE" }
+                : { kind: "SUCCESS", effect: result.effect }
+        );
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        effect.status = "PENDING";
+        effect.nextRetryAt = undefined;
+        // Restarts the backoff ramp: without this, a manual retry after many
+        // automatic attempts would dispatch its very first try already
+        // capped at the 5-minute ceiling instead of the 1s start.
+        effect.attempts = 0;
+        effect.manualRetry = command.input.acknowledgeDuplicateRisk;
+        effectRevision++;
+      }
+      return operation.result;
+    } catch (error) {
+      effectRepairOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
+  });
+
+  setHandler(waiveEffect, async (unparsedCommand) => {
+    const command = WaiveEffectCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+    const existing = effectRepairOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error(
+        "Effect repair operation has no result or pending activity"
+      );
+    }
+    const effect = effects.get(command.effectId);
+    if (!effect) return { kind: "EFFECT_NOT_FOUND" };
+
+    const operation: EffectRepairOperation = {
+      payloadHash: command.payloadHash,
+    };
+    effectRepairOperations.set(command.idempotencyKey, operation);
+    try {
+      operation.pending = effectActivities
+        .waiveEffect({
+          id: command.effectId,
+          actorId: command.actorId,
+          reason: command.input.reason,
+        })
+        .then((waived): EffectRepairResult =>
+          waived
+            ? { kind: "SUCCESS", effect: waived }
+            : { kind: "EFFECT_NOT_FOUND" }
+        );
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        // Local state must never lag the durable commit it represents: the
+        // atom has already recorded WAIVED above, so this Workflow reflects
+        // that before doing anything that can fail. See
+        // `resolveAttentionTolerantly` for why the resolve below cannot be
+        // allowed to fail this Update.
+        effect.status = "WAIVED";
+        effect.nextRetryAt = undefined;
+        effectRevision++;
+        await resolveAttentionTolerantly(effect);
+      }
+      return operation.result;
+    } catch (error) {
+      effectRepairOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+    }
+  });
+
+  setHandler(completeCase, async (unparsedCommand) => {
+    const command = CompleteCaseCommandSchema.parse(unparsedCommand);
+    if (command.caseId !== caseId) return { kind: "CASE_MISMATCH" };
+
+    const existing = completionOperations.get(command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== command.payloadHash) {
+        return { kind: "IDEMPOTENCY_KEY_REUSED" };
+      }
+      if (existing.result) return existing.result;
+      if (existing.pending) return await existing.pending;
+      throw new Error("Completion operation has no result or pending activity");
+    }
+    if (cancellationStarted) return { kind: "NOT_IN_PROGRESS" };
+
+    const operation: CompletionOperation = { payloadHash: command.payloadHash };
+    completionOperations.set(command.idempotencyKey, operation);
+    try {
+      completionGuard++;
+      operation.pending = runCompletion(command);
+      operation.result = await operation.pending;
+      if (operation.result.kind === "SUCCESS") {
+        queueEffect({
+          id: `${command.assignmentId}/completion-notification`,
+          caseId,
+          type: "EMAIL",
+          purpose: "ASSIGNMENT_COMPLETION_NOTIFICATION",
+          recipient: {
+            type: "RESIDENT",
+            id: operation.result.data.case.residentId,
+          },
+        });
+        queueEffect({
+          id: `${command.assignmentId}/completion`,
+          caseId,
+          type: "PERFORMANCE_ENTRY",
+          purpose: "ASSIGNMENT_COMPLETION_PERFORMANCE",
+          contractorId: command.contractorId,
+          scoreDelta: ASSIGNMENT_COMPLETED_SCORE_DELTA,
+          reason: "ASSIGNMENT_COMPLETED",
+        });
+        closeAfterCompletion = true;
+      }
+      if (operation.result.kind === "COMPLETION_FAILED") {
+        completionOperations.delete(command.idempotencyKey);
+      }
+      return operation.result;
+    } catch (error) {
+      completionOperations.delete(command.idempotencyKey);
+      throw error;
+    } finally {
+      delete operation.pending;
+      completionGuard--;
+    }
+  });
+
+  // Allocation runs here, never inside an Update handler. PRS-141 extends this
+  // loop with a lossless intent queue. A timed automatic poll never blocks an
+  // Officer Update: `condition` wakes as soon as the queue receives a manual
+  // request, while the absolute retry deadline remains intact. PRS-144 adds a
+  // second timer on the same wait — the current Attempt's acceptance
+  // deadline — so an unaccepted offer breaches without a manual poll.
+  //
+  // lint: several checks below on cancellationStarted, closeAfterCompletion,
+  // currentAppointment, and accepted read as unnecessary to TypeScript's flow
+  // analysis, since nothing between their declaration and use reassigns them
+  // in straight-line code. They are load-bearing: every one of those
+  // variables is mutated only inside a setHandler closure (cancelCase,
+  // completeCase, replaceAppointment, acceptAllocation, ...), which can run
+  // and interleave across any `await` in this loop (runMissedAppointment,
+  // runBreach, the condition() waits). Flow analysis can't see that
+  // interleaving, so it looks redundant; it is the actual race guard. Do not
+  // delete or suppress these on the strength of the warning alone.
+  //
+  // Every closeAfterCompletion && effectsSettled() check below also gates on
+  // allHandlersFinished(): a repair handler (retryEffect/waiveEffect) can
+  // settle the last open effect and bump effectRevision from inside its own
+  // still-running Update — the settle wakes this loop before that handler
+  // has returned, and returning here out from under it fails the Update
+  // with AcceptedUpdateCompletedWorkflow. Do not drop this guard.
+  while (true) {
+    if (closeAfterCompletion && effectsSettled() && allHandlersFinished())
+      return;
+    // The only correct call site: continueAsNew from inside an Update handler
+    // fails that Update. `patched` is load-bearing, not decorative — Workflows
+    // already in flight have histories with no ContinueAsNew command at points
+    // where the gate below was true, and emitting one unguarded fails replay.
+    // The effect check extends allHandlersFinished(): startReadyEffects floats
+    // `void runEffect(effect)` from this loop, outside any handler, so a
+    // Continue-As-New while one is in flight would abandon a live delivery.
+    // It runs before startReadyEffects so a ready-but-unstarted effect carries
+    // over as data and the new run dispatches it.
+    //
+    // `patched` is last on purpose: it is the only operand with a side effect
+    // (it records a marker command the first time it runs), and this loop
+    // iterates far more often than it continues as new. Ordering is safe for
+    // replay because every operand ahead of it replays identically —
+    // continueAsNewSuggested and historyLength are both taken from the
+    // persisted WorkflowTaskStarted attributes as history is applied
+    // (sdk-core workflow_machines.rs), not sampled live.
+    if (
+      (workflowInfo().continueAsNewSuggested ||
+        (continueAsNewAfterEvents !== undefined &&
+          workflowInfo().historyLength >= continueAsNewAfterEvents)) &&
+      allHandlersFinished() &&
+      ![...effects.values()].some((effect) => effect.inFlight) &&
+      patched("prs-152-continue-as-new")
+    ) {
+      await continueAsNew<typeof CaseWorkflow>({
+        caseId,
+        carryOver: snapshot(),
+      });
+    }
+    startReadyEffects();
+    if (cancellationStarted && !closeAfterCompletion) {
+      await condition(() => !cancellationStarted || closeAfterCompletion);
+      continue;
+    }
+    if (allocationQueue.length === 0) {
+      const deadlines: number[] = [];
+      if (currentAttempt) deadlines.push(currentAttempt.deadlineAt);
+      if (currentAppointment) deadlines.push(currentAppointment.endAt);
+      if (!automaticAllocationActive && automaticRetryAt !== undefined) {
+        deadlines.push(automaticRetryAt);
+      }
+      const effectDeadline = nextEffectDeadline();
+      if (effectDeadline !== undefined) deadlines.push(effectDeadline);
+
+      if (deadlines.length > 0) {
+        const earliestDeadline = Math.min(...deadlines);
+        const revisionAtWait = appointmentStateRevision;
+        const effectRevisionAtWait = effectRevision;
+        const wokeForRequest = await condition(
+          () =>
+            (closeAfterCompletion &&
+              effectsSettled() &&
+              allHandlersFinished()) ||
+            allocationQueue.length > 0 ||
+            appointmentStateRevision !== revisionAtWait ||
+            effectRevision !== effectRevisionAtWait,
+          // ponytail: floor is 1, not 0 — @temporalio/workflow's condition(fn, 0)
+          // special-cases a zero timeout back to an indefinite wait with no timer
+          // (conditionInner), silently discarding every deadline here. Do not
+          // "simplify" this back to Math.max(0, ...).
+          Math.max(1, earliestDeadline - Date.now())
+        );
+
+        // Why this is not just `!wokeForRequest`: waking early and having a
+        // deadline due are independent facts, and conflating them starves the
+        // deadline. A derived effect that keeps failing bumps `effectRevision`
+        // on every attempt, so the predicate above can keep returning true at
+        // the exact moments an Appointment expiry or acceptance SLA comes due,
+        // skipping this block indefinitely. Every action inside re-checks its
+        // own `Date.now() >=` guard, so entering on an elapsed deadline is
+        // safe — it just decides nothing is due yet.
+        if (!wokeForRequest || earliestDeadline <= Date.now()) {
+          // A handler armed before the deadline must finish before this
+          // check runs, or a before-deadline acceptance could lose the race
+          // to the breach it should have prevented.
+          if (acceptanceGuard > 0) {
+            await condition(() => acceptanceGuard === 0);
+          }
+          if (appointmentLifecycleGuard > 0) {
+            await condition(() => appointmentLifecycleGuard === 0);
+          }
+
+          if (cancellationStarted) continue;
+
+          if (currentAppointment && Date.now() >= currentAppointment.endAt) {
+            const expiringAppointment = currentAppointment;
+            missedAppointmentRecovery = expiringAppointment.appointmentId;
+            try {
+              appointmentExpiryGuard++;
+              await runMissedAppointment(caseId, expiringAppointment);
+            } finally {
+              appointmentExpiryGuard--;
+              if (
+                currentAppointment?.appointmentId ===
+                expiringAppointment.appointmentId
+              ) {
+                currentAppointment = undefined;
+                appointmentStateRevision++;
+              }
+              missedAppointmentRecovery = undefined;
+            }
+          }
+
+          if (
+            currentAttempt &&
+            !accepted &&
+            Date.now() >= currentAttempt.deadlineAt
+          ) {
+            const breached = currentAttempt;
+            let outcome: BreachOutcome;
+            allocationMutationGuard++;
+            try {
+              outcome = await runBreach(caseId, breached);
+            } finally {
+              allocationMutationGuard--;
+            }
+            if (outcome.status !== "ATTEMPT_NO_LONGER_LIVE") {
+              queueEffect({
+                id: `${breached.attemptId}/acceptance-sla-breach-notification`,
+                caseId,
+                type: "EMAIL",
+                purpose: "ATTEMPT_BREACH_NOTIFICATION",
+                recipient: { type: "CONTRACTOR", id: breached.contractorId },
+              });
+              queueEffect({
+                id: `${breached.attemptId}/acceptance-sla-breach`,
+                caseId,
+                type: "PERFORMANCE_ENTRY",
+                purpose: "ATTEMPT_BREACH_PERFORMANCE",
+                contractorId: breached.contractorId,
+                scoreDelta: ACCEPTANCE_SLA_BREACH_SCORE_DELTA,
+                reason: "ACCEPTANCE_SLA_BREACH",
+              });
+            }
+            currentAttempt = undefined;
+            if (outcome.status === "REPLACED") {
+              automaticAllocationActive = false;
+              automaticRetryAt = undefined;
+              automaticAllocationSource = "BREACH_REASSIGN";
+              if (allocationContext) {
+                allocationQueue.push({
+                  kind: "AUTOMATIC",
+                  source: "BREACH_REASSIGN",
+                  ...allocationContext,
+                });
+              }
+            } else if (outcome.status === "CASE_TERMINAL") {
+              automaticAllocationActive = true;
+              automaticRetryAt = undefined;
+            }
+            // ATTEMPT_NO_LONGER_LIVE: the offer already resolved elsewhere
+            // (accepted or manually withdrawn) — nothing left to do here.
+          } else if (
+            !currentAttempt &&
+            !automaticAllocationActive &&
+            automaticRetryAt !== undefined &&
+            Date.now() >= automaticRetryAt &&
+            allocationContext
+          ) {
+            allocationQueue.push({
+              kind: "AUTOMATIC",
+              source: automaticAllocationSource,
+              ...allocationContext,
+            });
+          }
+        }
+      } else {
+        const revisionAtWait = appointmentStateRevision;
+        const effectRevisionAtWait = effectRevision;
+        await condition(
+          () =>
+            (closeAfterCompletion &&
+              effectsSettled() &&
+              allHandlersFinished()) ||
+            allocationQueue.length > 0 ||
+            appointmentStateRevision !== revisionAtWait ||
+            effectRevision !== effectRevisionAtWait
+        );
+      }
+    }
+
+    if (closeAfterCompletion && effectsSettled() && allHandlersFinished())
+      return;
+
+    const request = allocationQueue.shift();
+    if (!request) continue;
+
+    if (cancellationStarted) {
+      if (request.kind === "MANUAL") {
+        request.complete({ kind: "CASE_TERMINAL" });
+      }
+      continue;
+    }
+
+    if (request.kind === "MANUAL") {
+      let outcome: ManualAllocationOutcome;
+      allocationMutationGuard++;
+      try {
+        outcome = await runManualAllocation(
+          request.command,
+          attemptedContractorIds
+        );
+      } catch (error) {
+        outcome = {
+          result: {
+            kind: "ALLOCATION_FAILED",
+            reason: error instanceof Error ? error.message : String(error),
+          },
+        };
+      } finally {
+        allocationMutationGuard--;
+      }
+      const result = outcome.result;
+
+      if (result.kind === "SUCCESS") {
+        automaticAllocationActive = true;
+        automaticRetryAt = undefined;
+        automaticRetryDelayMs = INITIAL_ALLOCATION_RETRY_MS;
+        if (outcome.attempt) {
+          allocation = { status: "ALLOCATED", attempt: outcome.attempt };
+          currentAttempt = outcome.attempt;
+          accepted = false;
+          queueAssignmentNotification(outcome.attempt);
+        }
+      } else if (result.kind === "ACTIVE_ATTEMPT_EXISTS") {
+        automaticAllocationActive = true;
+        automaticRetryAt = undefined;
+      } else if (result.kind === "CASE_TERMINAL") {
+        automaticAllocationActive = true;
+        automaticRetryAt = undefined;
+      } else if (result.kind === "ALLOCATION_FAILED") {
+        allocation = { status: "FAILED", reason: result.reason };
+        await raiseAllocationAttention(caseId, allocation);
+        if (automaticRetryAt === undefined) {
+          automaticRetryAt = Date.now() + automaticRetryDelayMs;
+          automaticRetryDelayMs = Math.min(
+            automaticRetryDelayMs * 2,
+            MAX_ALLOCATION_RETRY_MS
+          );
+        }
+      }
+
+      request.complete(result);
+      continue;
+    }
+
+    if (automaticAllocationActive) continue;
+
+    automaticAllocationSource = request.source;
+    allocationMutationGuard++;
+    try {
+      allocation = await runAllocation(
+        caseId,
+        request.source,
+        request.category,
+        request.postalCode,
+        attemptedContractorIds
+      );
+    } catch (error) {
+      // A permanent Activity failure leaves the Case PENDING with the reason
+      // recorded. It must not fail the Workflow, which stays open to repair
+      // the Case, and it must not vanish.
+      allocation = {
+        status: "FAILED",
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      allocationMutationGuard--;
+    }
+
+    if (allocation.status === "ALLOCATED") {
+      automaticAllocationActive = true;
+      automaticRetryAt = undefined;
+      automaticRetryDelayMs = INITIAL_ALLOCATION_RETRY_MS;
+      currentAttempt = allocation.attempt;
+      accepted = false;
+      queueAssignmentNotification(allocation.attempt);
+      continue;
+    }
+    if (allocation.status === "TERMINAL") {
+      automaticAllocationActive = true;
+      automaticRetryAt = undefined;
+      continue;
+    }
+    if (allocation.status === "IDLE") continue;
+
+    await raiseAllocationAttention(caseId, allocation);
+    log.warn("Case was not allocated", { caseId, allocation });
+    automaticRetryAt = Date.now() + automaticRetryDelayMs;
+    automaticRetryDelayMs = Math.min(
+      automaticRetryDelayMs * 2,
+      MAX_ALLOCATION_RETRY_MS
+    );
+  }
+}

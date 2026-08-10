@@ -1,7 +1,6 @@
 import { execSync } from "child_process";
 
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
-import { Pool } from "pg";
 
 export async function setup() {
   console.log("\n[Integration Setup] Starting Postgres Testcontainer...");
@@ -16,28 +15,23 @@ export async function setup() {
   process.env.PORT = "5000";
   process.env.JWKS_URI = "http://localhost/.well-known/jwks.json";
   process.env.DATABASE_URL = dbUrl;
+  process.env.WORKER_SERVICE_TOKEN =
+    "test-worker-service-token-at-least-32-chars";
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
 
-  const pool = new Pool({ connectionString: dbUrl });
-  try {
-    await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
-    console.log("[Integration Setup] Installed 'uuid-ossp' extension.");
-  } catch (err) {
-    console.warn("[Integration Setup] Failed to install extension:", err);
-  } finally {
-    await pool.end();
-  }
-
-  console.log("[Integration Setup] Pushing schema with drizzle-kit...");
+  console.log("[Integration Setup] Applying appointment migrations...");
 
   try {
-    execSync("bun drizzle-kit push", {
+    // drizzle-kit migrate, not push: the initial migration hand-adds the
+    // btree_gist extension and the slot-claim exclusion constraint, neither of
+    // which lives in schema.ts, so a push would silently omit them.
+    execSync("bun drizzle-kit migrate", {
       env: { ...process.env, DATABASE_URL: dbUrl },
       stdio: "pipe",
     });
-    console.log("[Integration Setup] Schema setup completed.");
-  } catch (error: any) {
+    console.log("[Integration Setup] Appointment migrations completed.");
+  } catch (error) {
     await container.stop();
     throw error;
   }

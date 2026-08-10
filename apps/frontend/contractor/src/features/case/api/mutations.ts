@@ -1,139 +1,175 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { gatewayFetch } from "@townops/ui/libr/gateway";
+import { z } from "zod/v4";
 
 import { env } from "@/env";
-import { acceptJobClient, closeCaseClient, rescheduleJobClient } from "@/libr/api";
-import { clearAuth, getAuthHeader } from "@/libr/auth-token";
 
 import { caseKeys } from "./query-keys";
-
-async function throwIfRequestFailed(res: Response) {
-  if (res.ok) return;
-  if (res.status === 401) clearAuth();
-  const error = (await res.json().catch(() => ({}))) as {
-    message?: string;
-  };
-  throw new Error(error.message ?? `Error ${res.status}`);
-}
 
 export async function uploadProofFile(
   file: File,
   caseId: string,
-  uploaderId: string,
   type: "before" | "after",
-  remarks?: string,
-): Promise<string> {
+  idempotencyKey: string
+) {
   const form = new FormData();
   form.append("file", file);
-  form.append("caseId", caseId);
-  form.append("uploaderId", uploaderId);
-  form.append("type", type);
-  if (remarks) form.append("remarks", remarks);
+  form.append("type", type.toUpperCase());
 
-  const res = await fetch(`${env.VITE_PROOF_ATOM_URL}/api/proof`, {
-    method: "POST",
-    headers: getAuthHeader(),
-    body: form,
-  });
-  if (!res.ok) throw new Error(`Proof upload failed: ${res.status}`);
-  const data = await res.json();
-  return data.proof.mediaUrl as string;
+  const body = await gatewayFetch(
+    `${env.VITE_GATEWAY_URL}/api/cases/${caseId}/proof-items`,
+    {
+      method: "POST",
+      // No Content-Type here — the browser sets the multipart boundary for
+      // FormData bodies; fetchWithAuth only ever overwrites Authorization.
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: form,
+    },
+    env.VITE_GATEWAY_URL
+  );
+  return z
+    .object({
+      data: z.object({
+        id: z.string(),
+        type: z.enum(["BEFORE", "AFTER"]),
+        mediaUrl: z.string(),
+      }),
+    })
+    .parse(body).data;
+}
+
+export async function getReadyProofItems(caseId: string) {
+  const body = await gatewayFetch(
+    `${env.VITE_GATEWAY_URL}/api/cases/${caseId}/proof-items`,
+    {},
+    env.VITE_GATEWAY_URL
+  );
+  return z
+    .object({
+      data: z.array(
+        z.object({
+          id: z.string(),
+          type: z.enum(["BEFORE", "AFTER", "SIGNATURE"]),
+          mediaUrl: z.string(),
+        })
+      ),
+    })
+    .parse(body).data;
 }
 
 export type AcceptJobInput = {
-  case_id: string;
-  assignment_id: string;
-  contractor_id: string;
-  start_time: string;
-  end_time: string;
+  caseId: string;
+  attemptId: string;
+  startTime: string;
+  endTime: string;
+  idempotencyKey: string;
 };
 
 export function useAcceptJobMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: AcceptJobInput) => {
-      const res = await acceptJobClient.api.jobs["accept-job"].$put(
-        { json: input },
-        { headers: getAuthHeader() },
-      );
-      await throwIfRequestFailed(res);
-      return res.json();
-    },
+    mutationFn: (input: AcceptJobInput) =>
+      gatewayFetch(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/allocation-attempts/${input.attemptId}/acceptance`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": input.idempotencyKey,
+          },
+          body: JSON.stringify({
+            startTime: input.startTime,
+            endTime: input.endTime,
+          }),
+        },
+        env.VITE_GATEWAY_URL
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
   });
 }
 
-export type CloseCaseInput = {
-  case_id: string;
-  uploader_id: string;
-  proof_items: Array<{
-    media_url: string;
-    type: "before" | "after" | "signature";
-    remarks?: string;
-  }>;
-  final_status?: "completed";
-};
-
-export function useCloseCaseMutation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: CloseCaseInput) => {
-      const res = await closeCaseClient.api.cases["close-case"].$post(
-        { json: input },
-        { headers: getAuthHeader() },
-      );
-      await throwIfRequestFailed(res);
-      return res.json();
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
-  });
-}
-
-export type RescheduleJobInput = {
-  appointmentId: string;
-  residentId: string;
+export type StartWorkInput = {
   caseId: string;
-  assignmentId: string;
-  newStartTime: string;
-  newEndTime: string;
+  appointmentId: string;
+  idempotencyKey: string;
 };
 
-export function useRescheduleJobMutation() {
+export function useStartWorkMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: RescheduleJobInput) => {
-      const res = await rescheduleJobClient.api.cases["reschedule-job"].$post(
-        { json: input },
-        { headers: getAuthHeader() },
-      );
-      await throwIfRequestFailed(res);
-      return res.json();
-    },
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: caseKeys.all });
-      qc.invalidateQueries({ queryKey: caseKeys.appointments(vars.caseId) });
+    mutationFn: (input: StartWorkInput) =>
+      gatewayFetch(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/appointments/${input.appointmentId}/start-work`,
+        {
+          method: "PUT",
+          headers: {
+            "Idempotency-Key": input.idempotencyKey,
+          },
+        },
+        env.VITE_GATEWAY_URL
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
+  });
+}
+
+export type CompleteCaseInput = {
+  caseId: string;
+  report: string;
+  proofItemIds: string[];
+  idempotencyKey: string;
+};
+
+export function useCompleteCaseMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CompleteCaseInput) =>
+      gatewayFetch(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/completion`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": input.idempotencyKey,
+          },
+          body: JSON.stringify({
+            report: input.report,
+            proofItemIds: input.proofItemIds,
+          }),
+        },
+        env.VITE_GATEWAY_URL
+      ),
+    onSuccess: (_, input) => {
+      void qc.invalidateQueries({ queryKey: caseKeys.all });
+      void qc.invalidateQueries({ queryKey: caseKeys.detail(input.caseId) });
+      void qc.invalidateQueries({
+        queryKey: caseKeys.proofItems(input.caseId),
+      });
+      void qc.invalidateQueries({ queryKey: caseKeys.timeline(input.caseId) });
+      void qc.invalidateQueries({ queryKey: ["gateway-case", input.caseId] });
     },
   });
 }
 
 export type NoAccessInput = {
   caseId: string;
-  assignmentId: string;
-  contractorId: string;
-  reason?: string;
+  appointmentId: string;
+  idempotencyKey: string;
 };
 
 export function useNoAccessMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: NoAccessInput) => {
-      const res = await fetch(`${env.VITE_HANDLE_NO_ACCESS_URL}/api/cases/no-access`, {
-        method: "PUT",
-        headers: { ...getAuthHeader(), "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      await throwIfRequestFailed(res);
-      return res.json();
-    },
+    mutationFn: (input: NoAccessInput) =>
+      gatewayFetch(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/appointments/${input.appointmentId}/no-access`,
+        {
+          method: "PUT",
+          headers: {
+            "Idempotency-Key": input.idempotencyKey,
+          },
+        },
+        env.VITE_GATEWAY_URL
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: caseKeys.all }),
   });
 }

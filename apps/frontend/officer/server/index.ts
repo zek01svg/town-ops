@@ -19,7 +19,7 @@ app.onError((err, c) => {
   return c.json({ error: err.message }, 500);
 });
 
-app.use("*", honoLogger() as any);
+app.use("*", honoLogger());
 
 app.get("/health", (c) => {
   return c.json(

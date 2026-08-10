@@ -1,0 +1,1 @@
+ALTER TABLE "assignments" ADD COLUMN "completion_operation_id" text;

@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -17,10 +16,7 @@ import type { z } from "zod/v4";
 export const contractors = pgTable(
   "contractors",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     name: text("name").notNull(),
     contactNum: varchar("contact_num", { length: 20 }),
     email: text("email").notNull().unique(),
@@ -51,10 +47,7 @@ export const contractors = pgTable(
 export const contractorCategories = pgTable(
   "contractor_categories",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     contractorId: uuid("contractor_id")
       .notNull()
       .references(() => contractors.id, { onDelete: "cascade" }),
@@ -78,10 +71,7 @@ export const contractorCategories = pgTable(
 export const contractorSectors = pgTable(
   "contractor_sectors",
   {
-    id: uuid()
-      .default(sql`uuid_generate_v4()`)
-      .primaryKey()
-      .notNull(),
+    id: uuid().defaultRandom().primaryKey().notNull(),
     contractorId: uuid("contractor_id")
       .notNull()
       .references(() => contractors.id, { onDelete: "cascade" }),

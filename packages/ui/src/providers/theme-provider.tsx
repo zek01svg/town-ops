@@ -10,6 +10,11 @@ type ThemeProviderState = {
   theme: Theme;
   setTheme: (theme: Theme) => void;
 };
+
+function isTheme(value: string | null): value is Theme {
+  return value === "dark" || value === "light" || value === "system";
+}
+
 const ThemeProviderContext = createContext<ThemeProviderState | undefined>(
   undefined
 );
@@ -22,7 +27,10 @@ export function ThemeProvider({
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() =>
     typeof window !== "undefined"
-      ? (localStorage.getItem(storageKey) as Theme | null) || defaultTheme
+      ? (() => {
+          const storedTheme = localStorage.getItem(storageKey);
+          return isTheme(storedTheme) ? storedTheme : defaultTheme;
+        })()
       : defaultTheme
   );
   useEffect(() => {
@@ -40,9 +48,9 @@ export function ThemeProvider({
   }, [theme]);
   const value = {
     theme,
-    setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme);
-      setTheme(theme);
+    setTheme: (nextTheme: Theme) => {
+      localStorage.setItem(storageKey, nextTheme);
+      setTheme(nextTheme);
     },
   };
   return (

@@ -17,7 +17,19 @@ const socialProviders =
     : undefined;
 
 export const auth = betterAuth({
-  plugins: [jwt(), openAPI()],
+  plugins: [
+    jwt({
+      jwt: {
+        definePayload: ({ user }) => ({
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          contractorId: user.contractorId ?? null,
+        }),
+      },
+    }),
+    openAPI(),
+  ],
   database: drizzleAdapter(db, { provider: "pg", schema }),
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
@@ -29,20 +41,30 @@ export const auth = betterAuth({
     },
   },
   trustedOrigins: [
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:3003",
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
   ],
+  /**
+   * `input: false` on both fields means public sign-up can never elect
+   * Officer or Contractor status, or link a Contractor ID, itself — those
+   * are seeded internally only.
+   */
   user: {
     additionalFields: {
       role: {
         type: "string",
-        input: true, // dev: allow role to be set at sign-up for seeding
+        input: false,
+        required: true,
+        defaultValue: "RESIDENT",
       },
       contractorId: {
         type: "string",
         fieldName: "contractor_id",
-        input: true, // contractor's OutSystems UUID
+        input: false,
         required: false,
       },
     },

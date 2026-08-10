@@ -4,6 +4,8 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
 
+import { Toaster } from "@/components/ui/sonner";
+
 import { DevTools } from "./providers/devtools";
 import { getQueryClient } from "./providers/get-query-client";
 // Import the auto-generated route tree
@@ -45,6 +47,7 @@ if (root) {
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
         <DevTools router={router} />
+        <Toaster />
       </QueryClientProvider>
     </React.StrictMode>
   );

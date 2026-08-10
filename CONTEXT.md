@@ -34,14 +34,36 @@ separate domain entity.
 _Avoid_: Using Job when Case, Assignment, or Appointment is meant precisely
 
 **Assignment**:
-The evolving allocation of a Case to a Contractor. It retains its identity when
-the Case is reallocated to another Contractor.
-_Avoid_: Job, Appointment
+A Case's allocation identity. It is created once and retained for the Case's
+lifetime, including when the Case is reallocated. An Assignment names no
+Contractor of its own; the Contractor is named by its Allocation Attempts.
+_Avoid_: Job, Appointment, Allocation Attempt
+
+**Allocation Attempt**:
+One offer of a Case's Assignment to a specific Contractor, carrying its own
+copied Acceptance SLA deadline and its own outcome. Reallocating a Case appends
+a new Attempt rather than replacing the Assignment.
+_Avoid_: Assignment, reassignment
 
 **Appointment**:
 A planned time interval for a Contractor to attend a Case under its Assignment.
-A Case may have multiple Appointments after rescheduling.
+A Case may have multiple Appointments after a Reschedule, of which at most one
+is live at a time. Acceptance confirms an Appointment as SCHEDULED. A
+Contractor starting work during that interval advances it to IN_PROGRESS —
+after which the visit can no longer be reported as No Access, and PRS-148
+(cancellation) guards against it too. An unattended SCHEDULED Appointment
+becomes MISSED at its end time. It remains MISSED until a Reschedule recovers
+the Case and preserves that outcome.
 _Avoid_: Assignment, booking
+
+**Reschedule**:
+Replacing a Case's live Appointment with a new one at a Resident's or an
+Officer's request, while the Assignment and its Allocation Attempt stand. The
+replaced Appointment keeps its own outcome rather than being erased: a
+proactive Reschedule retires it as RESCHEDULED, while one recovering from No
+Access or a missed visit leaves it NO_ACCESS or MISSED. A Contractor cannot
+Reschedule.
+_Avoid_: Appointment replacement, rebooking, reassignment
 
 **Proof Item**:
 One before-work photo, after-work photo, or signature submitted as evidence that
@@ -86,3 +108,37 @@ _Avoid_: Cancellation, reassignment
 **Performance Entry**:
 A reasoned increase or decrease to a Contractor's performance score.
 _Avoid_: Metric, score event
+
+**Officer Attention**:
+A durable review item raised for an Officer by a Case exception or a Derived
+Effect delivery problem. The relevant recovery action resolves it; it is not a
+generic notification.
+_Avoid_: Alert, task, escalation when the specific condition is meant
+
+### Derived effects
+
+**Derived Effect**:
+A side effect — an email notification or a Performance Entry — queued by a
+Case Workflow transition and delivered independently through its own retry
+ledger, rather than inline with the transition that queued it.
+_Avoid_: Notification, side effect, alert, when the ledger entry itself is
+meant
+
+**Effect Ledger**:
+The Alert atom's durable record of one Derived Effect's delivery attempts,
+status, and repair history. It lives with the notification provider rather
+than the Case atom: Case owns lifecycle truth, the Effect Ledger owns
+provider delivery state.
+_Avoid_: Outbox, queue, when the persisted record is meant rather than the
+in-Workflow queue
+
+**Waiver**:
+An Officer's explicit decision to close a Derived Effect without delivery,
+recorded with the acting Officer and a reason rather than silently discarded.
+_Avoid_: Skip, dismiss, ignore
+
+**Duplicate-Risk Acknowledgement**:
+An Officer's explicit confirmation to retry a Derived Effect whose provider
+deduplication window has expired, accepting that the retry may deliver
+twice.
+_Avoid_: Confirmation, override, without naming the duplicate-send risk

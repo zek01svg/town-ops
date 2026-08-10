@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "build": "bun build --production --minify --target=bun --outdir=build src/index.ts",
+    "build": "bun build --production --minify --target=bun --outdir=build src/index.ts src/database/migrate.ts",
     "build:docker": "bun run build && docker build -t alert-atom .",
     "clean": "rimraf node_modules",
     "test": "bun run load-env -- vitest run tests",
@@ -16,6 +16,7 @@
     "db:pull": "bun run load-env -- bun drizzle-kit pull",
     "db:push": "bun run load-env -- bun drizzle-kit push",
     "db:generate": "bun run load-env -- bun drizzle-kit generate",
+    "db:migrate": "bun run load-env -- bun drizzle-kit migrate",
     "db:view": "bun run load-env -- bun drizzle-kit studio"
   },
   "dependencies": {
@@ -32,7 +33,6 @@
     "@hono/standard-validator": "catalog:",
     "@scalar/hono-api-reference": "catalog:",
     "@testcontainers/postgresql": "catalog:",
-    "@testcontainers/rabbitmq": "catalog:",
     "@types/pg": "catalog:",
     "dotenv-cli": "catalog:",
     "drizzle-kit": "catalog:",

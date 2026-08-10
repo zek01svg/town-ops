@@ -1,65 +1,46 @@
-# 🗺️ Service Map
+# Service map
 
-Detailed list of all services in the TownOps ecosystem.
+This is the active Compose topology. Service configuration and source code are
+authoritative for exact routes and ports.
 
-## ⚛️ Atomic Services (Port Range: 5001–5008)
+## Atoms
 
-| Service         | Port     | Responsibility                                   | Core Entity       | Path                     |
-| :-------------- | :------- | :----------------------------------------------- | :---------------- | :----------------------- |
-| **Case**        | 5001     | Maintenance case records and status transitions  | `cases`           | `apps/atoms/case`        |
-| **Resident**    | 5002     | Citizen data and property mapping                | `residents`       | `apps/atoms/resident`    |
-| **Assignment**  | 5003     | Contractor-to-case allocation                    | `assignments`     | `apps/atoms/assignment`  |
-| **Appointment** | 5004     | Schedule management                              | `appointments`    | `apps/atoms/appointment` |
-| **Proof**       | 5005     | Completion evidence (photos, signatures)         | `media`           | `apps/atoms/proof`       |
-| **Alert**       | 5006     | Outgoing email/SMS notifications via Resend      | `alerts`          | `apps/atoms/alert`       |
-| **Metrics**     | 5007     | SLA compliance and contractor performance scores | `metrics_log`     | `apps/atoms/metrics`     |
-| **Auth**        | 5008     | User authentication, JWT issuance (better-auth)  | `user`, `session` | `apps/atoms/auth`        |
-| **Contractor**  | External | Vendor profiles and service coverage             | External          | OutSystems Cloud         |
+| Service                            | Port | Responsibility                             |
+| :--------------------------------- | ---: | :----------------------------------------- |
+| Auth                               | 5001 | Authentication and JWT/JWKS issuance       |
+| Alert                              | 5002 | Derived Effect delivery ledger             |
+| Appointment                        | 5003 | Appointments and Contractor slot claims    |
+| Assignment                         | 5004 | Assignments and Allocation Attempts        |
+| Case                               | 5005 | Cases, Case history, and Officer Attention |
+| Performance Entry (`metrics-atom`) | 5006 | Contractor performance data                |
+| Proof                              | 5007 | Completion evidence                        |
+| Resident                           | 5008 | Resident profiles and property mapping     |
+| Contractor                         | 5009 | Contractor profiles and eligibility        |
 
-### Key Routes (Atoms)
+## Temporal orchestration
 
-| Atom        | Notable Routes                                                                                               |
-| :---------- | :----------------------------------------------------------------------------------------------------------- |
-| Case        | `GET /api/cases`, `POST /api/cases`, `PUT /api/cases/update-case-status`, `GET /api/cases/:id`               |
-| Assignment  | `POST /api/assignments`, `PUT /api/assignments/:id/status`, `GET /api/assignments/contractor/:contractor_id` |
-| Appointment | `POST /api/appointments`, `GET /api/appointments/:case_id`                                                   |
-| Proof       | `POST /api/proof` (multipart), `POST /api/proof/batch`                                                       |
-| Auth        | `POST /api/auth/sign-up/email`, `POST /api/auth/sign-in/email`, `GET /api/auth/token`, `GET /api/auth/jwks`  |
+| Service     | Port | Responsibility                                          |
+| :---------- | ---: | :------------------------------------------------------ |
+| Gateway     | 6010 | Browser API, public `/api/auth/*`, and Workflow Updates |
+| Worker      |    — | Temporal task queue and private atom Activities         |
+| Temporal    | 7233 | Workflow server                                         |
+| Temporal UI | 8080 | Local Workflow inspection                               |
 
-## 🔗 Composite Services (Port Range: 6001–6006)
+The active Case path is Gateway → Temporal → Worker → private atoms. The
+Worker has no public HTTP port, and frontends never reach atoms directly.
 
-| Service            | Port | Primary Orchestration                                                                      | Path                             |
-| :----------------- | :--- | :----------------------------------------------------------------------------------------- | :------------------------------- |
-| **Open Case**      | 6001 | Resident lookup → Case creation → `case.opened` event                                      | `apps/composites/open-case`      |
-| **Assign Job**     | 6002 | Consumes `case.opened` → Contractor selection → Assignment creation → `job.assigned` event | `apps/composites/assign-job`     |
-| **Accept Job**     | 6003 | Assignment acceptance → Case status → Appointment creation                                 | `apps/composites/accept-job`     |
-| **Close Case**     | 6004 | Proof storage → Case closure → `job.done` event                                            | `apps/composites/close-case`     |
-| **Handle Breach**  | 6005 | Consumes `sla.breached` → Re-assignment → Case escalation → Metrics penalty                | `apps/composites/handle-breach`  |
-| **Reschedule Job** | 6006 | Resident verification → New appointment slot → Case restoration                            | `apps/composites/reschedule-job` |
+## Frontends
 
-### Key Routes (Composites)
+| App        | Compose port | Users       |
+| :--------- | -----------: | :---------- |
+| Officer    |         3001 | Officers    |
+| Contractor |         3002 | Contractors |
+| Resident   |         3003 | Residents   |
 
-| Composite      | Route                                |
-| :------------- | :----------------------------------- |
-| Open Case      | `POST /api/cases/open-case`          |
-| Accept Job     | `PUT /api/jobs/accept-job`           |
-| Close Case     | `POST /api/cases/close-case`         |
-| Handle Breach  | `PUT /api/assignments/handle-breach` |
-| Reschedule Job | `POST /api/cases/reschedule-job`     |
+## Shared packages
 
-All composites expose `/health`, `/openapi`, and `/scalar` (API explorer).
-
-## 🖥️ Frontend Apps
-
-| App            | Default Port | Users                                                                 | Path                       |
-| :------------- | :----------- | :-------------------------------------------------------------------- | :------------------------- |
-| **Contractor** | 4000         | Contractor staff — view assigned cases, acknowledge jobs, close cases | `apps/frontend/contractor` |
-| **Officer**    | 4001         | Town council officers — create cases, monitor dashboard               | `apps/frontend/officer`    |
-| **Resident**   | 4002         | Residents — reschedule appointments                                   | `apps/frontend/resident`   |
-
-## 📦 Shared Packages
-
-| Package                | Purpose                                                             | Path                 |
-| :--------------------- | :------------------------------------------------------------------ | :------------------- |
-| **@townops/shared-ts** | Pino logger, AMQP client, OTEL tracing, Sentry helpers, CORS config | `packages/shared-ts` |
-| **@townops/ui**        | Shadcn/Radix UI components, theming                                 | `packages/ui`        |
+| Package                           | Purpose                                                            |
+| :-------------------------------- | :----------------------------------------------------------------- |
+| `@townops/shared-ts`              | Shared observability, logging, and Worker authentication utilities |
+| `@townops/ui`                     | Shared UI components and styling                                   |
+| `@townops/orchestration-contract` | Gateway, Worker, and atom contracts for Case Workflows             |

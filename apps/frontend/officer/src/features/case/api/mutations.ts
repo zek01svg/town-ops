@@ -1,57 +1,136 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { OpenCaseInput } from "@townops/orchestration-contract";
+import { gatewayFetch } from "@townops/ui/libr/gateway";
 
-import { handleBreachClient, openCaseClient } from "@/libr/api";
-import { clearAuth, getAuthHeader } from "@/libr/auth-token";
+import { env } from "@/env";
 
-import type { OpenCaseInput } from "../validation-schemas";
 import { caseKeys } from "./query-keys";
 
 export function useOpenCaseMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: OpenCaseInput) => {
-      const res = await openCaseClient.api.cases["open-case"].$post(
-        { json: input },
-        { headers: getAuthHeader() },
-      );
-      if ((res.status as number) === 401) clearAuth();
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).message ?? `Error ${res.status}`);
-      }
-      return res.json();
-    },
+    mutationFn: (input: OpenCaseInput) =>
+      gatewayFetch(
+        `${env.VITE_GATEWAY_URL}/api/cases`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+          body: JSON.stringify(input),
+        },
+        env.VITE_GATEWAY_URL
+      ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: caseKeys.all });
+      void qc.invalidateQueries({ queryKey: caseKeys.all });
     },
   });
 }
 
-export type HandleBreachInput = {
-  assignment_id: string;
-  case_id: string;
-  breach_details: string;
-  new_assignee_id: string;
-  penalty: number;
+export type ReplaceAppointmentInput = {
+  caseId: string;
+  appointmentId: string;
+  startTime: string;
+  endTime: string;
+  reason?: string;
+  idempotencyKey: string;
 };
 
-export function useHandleBreachMutation() {
+/**
+ * Reschedules a Case's live Appointment. The Gateway requires the reason when
+ * the Appointment is still SCHEDULED and accepts it without one when the
+ * Contractor has already reported No Access — the caller decides which, from
+ * the status it read.
+ */
+export function useReplaceAppointmentMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: HandleBreachInput) => {
-      const res = await handleBreachClient.api.assignments["handle-breach"].$put(
-        { json: input },
-        { headers: getAuthHeader() },
-      );
-      if ((res.status as number) === 401) clearAuth();
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).message ?? `Error ${res.status}`);
-      }
-      return res.json();
+    mutationFn: (input: ReplaceAppointmentInput) =>
+      gatewayFetch(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/appointments/${input.appointmentId}/replacement`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": input.idempotencyKey,
+          },
+          body: JSON.stringify({
+            startTime: input.startTime,
+            endTime: input.endTime,
+            reason: input.reason,
+          }),
+        },
+        env.VITE_GATEWAY_URL
+      ),
+    onSuccess: (_, vars) => {
+      void qc.invalidateQueries({ queryKey: caseKeys.all });
+      void qc.invalidateQueries({
+        queryKey: caseKeys.gatewayCase(vars.caseId),
+      });
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: caseKeys.all });
+  });
+}
+
+export type CancelCaseInput = {
+  caseId: string;
+  reason: string;
+  idempotencyKey: string;
+};
+
+export function useCancelCaseMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CancelCaseInput) =>
+      gatewayFetch(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/cancel`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": input.idempotencyKey,
+          },
+          body: JSON.stringify({ reason: input.reason }),
+        },
+        env.VITE_GATEWAY_URL
+      ),
+    onSuccess: (_, vars) => {
+      void qc.invalidateQueries({ queryKey: caseKeys.all });
+      void qc.invalidateQueries({
+        queryKey: caseKeys.gatewayCase(vars.caseId),
+      });
+    },
+  });
+}
+
+export function useRepairEffectMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      caseId: string;
+      effectId: string;
+      action: "retry" | "waive";
+      reason?: string;
+      acknowledgeDuplicateRisk?: boolean;
+    }) =>
+      gatewayFetch(
+        `${env.VITE_GATEWAY_URL}/api/cases/${input.caseId}/effects/${encodeURIComponent(input.effectId)}/${input.action}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+          body: JSON.stringify(
+            input.action === "waive"
+              ? { reason: input.reason }
+              : { acknowledgeDuplicateRisk: input.acknowledgeDuplicateRisk }
+          ),
+        },
+        env.VITE_GATEWAY_URL
+      ),
+    onSuccess: (_, input) => {
+      void qc.invalidateQueries({ queryKey: caseKeys.effects(input.caseId) });
     },
   });
 }

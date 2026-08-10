@@ -6,8 +6,8 @@ import tanstackRouter from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vite";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = nodePath.dirname(__filename);
+const configFilePath = fileURLToPath(import.meta.url);
+const configDirectoryPath = nodePath.dirname(configFilePath);
 
 export default defineConfig({
   server: {
@@ -24,10 +24,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@/components/ui": nodePath.resolve(
-        __dirname,
+        configDirectoryPath,
         "../../../packages/ui/src/components/ui"
       ),
-      "@": nodePath.resolve(__dirname, "./src"),
+      "@": nodePath.resolve(configDirectoryPath, "./src"),
     },
     dedupe: ["react", "react-dom"],
   },

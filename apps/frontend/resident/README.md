@@ -1,34 +1,21 @@
-# TownOps Resident Frontend
+# TownOps Resident frontend
 
-The self-service portal for residents. Residents receive a magic-link email when their job is rescheduled and use this app to select a new appointment time slot.
+The Resident portal provides Case and Appointment interactions through Gateway.
 
-Runs at `http://localhost:3003` (docker-compose) or `http://localhost:5173` (dev server).
+## Local development
 
-## 🛠️ Tech Stack
-
-- **Routing:** `@tanstack/react-router` — type-safe file-based routing
-- **Data Fetching:** `@tanstack/react-query`
-- **Forms:** `@tanstack/react-form` + `@tanstack/zod-form-adapter`
-- **Validation:** `zod`
-- **Styling:** Tailwind v4 + shadcn/ui
-- **Testing:** `vitest` + `jsdom`
-
-## 🚀 Development
+Run these commands from the monorepo root:
 
 ```bash
-# From monorepo root
-pnpm run dev --filter "@townops/resident-frontend"
-
-# Or from this directory
-pnpm run dev
+pnpm --filter @townops/resident-frontend dev
+pnpm --filter @townops/resident-frontend test
+pnpm --filter @townops/resident-frontend build
 ```
 
-## 🌍 Environment Variables
+The Compose application is available at `http://localhost:3003`; Vite uses
+its normal local development server.
 
-Create a `.env` file in this directory:
+## Configuration
 
-```env
-VITE_APP_URL=http://localhost:3003
-VITE_AUTH_URL=http://localhost:5001
-VITE_RESCHEDULE_JOB_URL=http://localhost:6006
-```
+Browser API calls, including authentication, use `VITE_GATEWAY_URL` (locally
+`http://localhost:6010`). Do not configure direct Auth or atom URLs.

@@ -42,6 +42,18 @@ export async function getContractorById(id: string) {
   return { ...contractor, ...(await withRelations(id)) };
 }
 
+export async function getContractorContact(id: string) {
+  const [contractor] = await db
+    .select({
+      id: contractors.id,
+      email: contractors.email,
+      name: contractors.name,
+    })
+    .from(contractors)
+    .where(eq(contractors.id, id));
+  return contractor ?? null;
+}
+
 export async function createContractor(values: NewContractor) {
   const [contractor] = await db.insert(contractors).values(values).returning();
   if (!contractor) throw new Error("Insert failed");
@@ -132,6 +144,45 @@ export async function removeSector(contractorId: string, sectorCode: string) {
     )
     .returning();
   return row ?? null;
+}
+
+// ─── Eligibility (PRS-139) ────────────────────────────────────────────────────
+
+/**
+ * Active Contractors eligible for automatic allocation: they carry both the
+ * Case's category and its postal sector. The unique (contractorId, code)
+ * constraints on both join tables guarantee at most one row per Contractor
+ * per join, so no JS-side dedupe is needed.
+ */
+export async function getEligibleContractors({
+  category,
+  sector,
+}: {
+  category: string;
+  sector: string;
+}) {
+  return db
+    .select({
+      id: contractors.id,
+      name: contractors.name,
+      isActive: contractors.isActive,
+    })
+    .from(contractors)
+    .innerJoin(
+      contractorCategories,
+      and(
+        eq(contractorCategories.contractorId, contractors.id),
+        eq(contractorCategories.categoryCode, category)
+      )
+    )
+    .innerJoin(
+      contractorSectors,
+      and(
+        eq(contractorSectors.contractorId, contractors.id),
+        eq(contractorSectors.sectorCode, sector)
+      )
+    )
+    .where(eq(contractors.isActive, true));
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────

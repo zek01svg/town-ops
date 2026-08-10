@@ -62,6 +62,15 @@ function RootComponent() {
                 Map View
               </span>
             </Link>
+            <Link
+              to="/attention"
+              className={navLinkClass}
+              activeProps={{ className: navLinkActiveClass }}
+            >
+              <span className="font-label text-xs uppercase tracking-widest">
+                Attention
+              </span>
+            </Link>
             <button type="button" className={navLinkClass}>
               <span className="font-label text-xs uppercase tracking-widest">
                 Settings
@@ -84,6 +93,13 @@ function RootComponent() {
               activeProps={{ className: "text-primary font-bold opacity-100" }}
             >
               Map
+            </Link>
+            <Link
+              to="/attention"
+              className="font-label text-xs opacity-60 uppercase"
+              activeProps={{ className: "text-primary font-bold opacity-100" }}
+            >
+              Attn
             </Link>
             <span className="font-label text-xs opacity-60 uppercase">Set</span>
           </>

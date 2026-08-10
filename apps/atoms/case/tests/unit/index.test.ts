@@ -7,6 +7,7 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
   // Set mock environment variables before running tests
   process.env.DATABASE_URL = "postgres://root:password@localhost:5432/testdb";
   process.env.PORT = "5001";
+  process.env.WORKER_SERVICE_TOKEN = "a".repeat(32);
   process.env.JWT_SECRET = "supersecret";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
@@ -17,6 +18,10 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
     set: vi.fn().mockReturnThis(),
     values: vi.fn().mockReturnThis(),
     returning: vi.fn().mockReturnThis(),
+    // listCases (PRS-151) chains these onto the same builder.
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    offset: vi.fn().mockReturnThis(),
     // eslint-disable-next-line unicorn/no-thenable
     then: vi.fn(),
   };
@@ -25,7 +30,11 @@ const { mockQuery, mockDb } = vi.hoisted(() => {
     select: vi.fn().mockReturnValue(q),
     update: vi.fn().mockReturnValue(q),
     insert: vi.fn().mockReturnValue(q),
+    // Some services (e.g. updateCaseStatus) wrap their writes in a
+    // transaction; hand the callback the same query builder as `tx`.
+    transaction: vi.fn(),
   };
+  db.transaction.mockImplementation(async (cb) => cb(db));
 
   return { mockQuery: q, mockDb: db };
 });
@@ -35,14 +44,19 @@ vi.mock("../../src/database/db", () => ({
 }));
 
 vi.mock("hono/jwk", () => ({
-  jwk: () => (c: any, next: any) => next(),
+  jwk: () => (_c: unknown, next: () => unknown) => next(),
 }));
 
 describe("Case Atom API Endpoints", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Default resolve value for queries:
+    // clearAllMocks clears call history but NOT the mockImplementationOnce
+    // queue, so an unconsumed Once from a prior test (e.g. a handler that
+    // 400s before awaiting its query) would leak into the next and resolve
+    // the wrong row. Fully reset `then` to drain that queue, then restore the
+    // default resolve value.
+    mockQuery.then.mockReset();
     mockQuery.then.mockImplementation((resolve) => resolve([]));
   });
 
@@ -58,6 +72,18 @@ describe("Case Atom API Endpoints", () => {
   });
 
   describe("GET /api/cases", () => {
+    it("requires the Worker service token", async () => {
+      const responses = await Promise.all([
+        app.request("/api/cases"),
+        app.request("/api/cases", {
+          headers: { Authorization: `Bearer ${"b".repeat(32)}` },
+        }),
+      ]);
+
+      expect(responses.map((response) => response.status)).toEqual([401, 401]);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
     it("should return 200 and a list of cases", async () => {
       const mockCases = [
         {
@@ -70,7 +96,9 @@ describe("Case Atom API Endpoints", () => {
       ];
       mockQuery.then.mockImplementationOnce((resolve) => resolve(mockCases));
 
-      const res = await app.request("/api/cases");
+      const res = await app.request("/api/cases", {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ cases: mockCases });
       expect(mockDb.select).toHaveBeenCalled();
@@ -83,7 +111,9 @@ describe("Case Atom API Endpoints", () => {
         reject(new Error("DB query failed"))
       );
 
-      const res = await app.request("/api/cases");
+      const res = await app.request("/api/cases", {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(500);
     });
   });
@@ -99,102 +129,33 @@ describe("Case Atom API Endpoints", () => {
       };
       mockQuery.then.mockImplementationOnce((resolve) => resolve([mockCase]));
 
-      const res = await app.request(`/api/cases/${VALID_UUID_1}`);
+      const res = await app.request(`/api/cases/${VALID_UUID_1}`, {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ cases: [mockCase] });
       expect(mockQuery.where).toHaveBeenCalled();
     });
 
     it("should return 400 for invalid UUID", async () => {
-      const res = await app.request("/api/cases/not-a-uuid");
+      const res = await app.request("/api/cases/not-a-uuid", {
+        headers: { Authorization: `Bearer ${"a".repeat(32)}` },
+      });
       expect(res.status).toBe(400);
       const json = await res.json();
       expect(json.error).toBeDefined();
     });
   });
 
-  describe("PUT /api/cases/update-case-status", () => {
-    it("should update case status and return 200", async () => {
-      const updatedCase = { id: VALID_UUID_1, status: "assigned" };
-      mockQuery.then.mockImplementationOnce((resolve) =>
-        resolve([updatedCase])
-      );
-
-      const payload = { id: VALID_UUID_1, status: "assigned" };
-      const res = await app.request("/api/cases/update-case-status", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ cases: updatedCase });
-      expect(mockDb.update).toHaveBeenCalled();
-    });
-
-    it("should return 400 for invalid status", async () => {
-      const payload = { id: VALID_UUID_1, status: "invalid-status" };
-      const res = await app.request("/api/cases/update-case-status", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(res.status).toBe(400);
-      const json = await res.json();
-      expect(json.error).toBeDefined();
-    });
-
-    it("should return 400 for invalid UUID", async () => {
-      const payload = { id: "not-a-uuid", status: "assigned" };
-      const res = await app.request("/api/cases/update-case-status", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      expect(res.status).toBe(400);
-      const json = await res.json();
-      expect(json.error).toBeDefined();
-    });
-  });
-
-  describe("POST /api/cases/new-case", () => {
-    it("should create a new case and return 201", async () => {
-      const newCaseData = {
-        id: VALID_UUID_1,
-        residentId: VALID_UUID_2,
-        category: "LE",
-        status: "pending",
-      };
-      mockQuery.then.mockImplementationOnce((resolve) =>
-        resolve([newCaseData])
-      );
-
-      const payload = {
-        residentId: VALID_UUID_2,
-        category: "LE",
-        status: "pending",
-      };
-      const res = await app.request("/api/cases/new-case", {
+  describe("POST /internal/cases", () => {
+    it("rejects requests without the Worker service identity", async () => {
+      const res = await app.request("/internal/cases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({}),
       });
 
-      expect(res.status).toBe(201);
-      expect(await res.json()).toEqual({ cases: newCaseData });
-      expect(mockDb.insert).toHaveBeenCalled();
-    });
-
-    it("should return 400 for invalid payload", async () => {
-      const res = await app.request("/api/cases/new-case", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}), // Empty payload
-      });
-
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(401);
     });
   });
 });

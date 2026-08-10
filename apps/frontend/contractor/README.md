@@ -1,43 +1,23 @@
-# TownOps Contractor Frontend
+# TownOps Contractor frontend
 
-The operational dashboard for contractors. Contractors can view assigned jobs, acknowledge new assignments within the SLA window, submit before/after proof photos, close jobs, and report no-access.
+The Contractor dashboard views assigned Case work, records attendance, submits Proof Items, and completes work through Gateway.
 
-Runs at `http://localhost:3002` (docker-compose) or `http://localhost:5173` (dev server).
+## Local development
 
-## 🛠️ Tech Stack
-
-- **Routing:** `@tanstack/react-router` — type-safe file-based routing
-- **Data Fetching:** `@tanstack/react-query`
-- **Forms:** `@tanstack/react-form` + `@tanstack/zod-form-adapter`
-- **Validation:** `zod`
-- **Styling:** Tailwind v4 + shadcn/ui
-- **Testing:** `vitest` + `jsdom`
-
-## 🚀 Development
+Run these commands from the monorepo root:
 
 ```bash
-# From monorepo root
-pnpm run dev --filter "@townops/contractor-frontend"
-
-# Or from this directory
-pnpm run dev
+pnpm --filter @townops/contractor-frontend dev
+pnpm --filter @townops/contractor-frontend test
+pnpm --filter @townops/contractor-frontend build
 ```
 
-## 🌍 Environment Variables
+The Compose application is available at `http://localhost:3002`; Vite uses
+its normal local development server.
 
-Create a `.env` file in this directory:
+## Configuration
 
-```env
-VITE_APP_URL=http://localhost:3002
-VITE_AUTH_URL=http://localhost:5001
-VITE_CASE_ATOM_URL=http://localhost:5005
-VITE_ASSIGNMENT_ATOM_URL=http://localhost:5004
-VITE_APPOINTMENT_ATOM_URL=http://localhost:5003
-VITE_PROOF_ATOM_URL=http://localhost:5007
-VITE_ALERT_ATOM_URL=http://localhost:5002
-VITE_ACCEPT_JOB_URL=http://localhost:6003
-VITE_CLOSE_CASE_URL=http://localhost:6004
-VITE_RESCHEDULE_JOB_URL=http://localhost:6006
-VITE_HANDLE_NO_ACCESS_URL=http://localhost:6007
-VITE_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
-```
+Browser API calls, including authentication, use `VITE_GATEWAY_URL` (locally
+`http://localhost:6010`). Do not configure direct Auth or atom URLs.
+
+Map pages also require `VITE_GOOGLE_MAPS_API_KEY`.

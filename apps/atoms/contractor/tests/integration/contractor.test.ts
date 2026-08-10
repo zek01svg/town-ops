@@ -23,134 +23,39 @@ describe("Contractor API Integration Tests", () => {
     });
   });
 
-  describe("POST /api/contractors", () => {
-    it("should create a new contractor", async () => {
-      const res = await app.request("/api/contractors", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "API Test Contractor",
-          email: "api@test.com",
-          contactNum: "9999999999",
-        }),
-      });
-      expect(res.status).toBe(201);
-      const body = await res.json();
-      expect(body.contractor.name).toBe("API Test Contractor");
-    });
+  describe("GET /internal/contractors/:id/contact (PRS-150)", () => {
+    const workerToken = "a".repeat(32);
 
-    it("should return 400 for invalid data", async () => {
-      const res = await app.request("/api/contractors", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "", // Invalid name
-          email: "invalid-email",
-        }),
-      });
-      expect(res.status).toBe(400);
-    });
-  });
-
-  describe("GET /api/contractors/:id", () => {
-    it("should return a contractor", async () => {
+    it("returns exactly id, email, and name for the correct Worker service token", async () => {
       const c = await contractorService.createContractor({
-        name: "Get Test",
-        email: "get@test.com",
+        name: "Contact Test",
+        email: "contact@test.com",
+        contactNum: "9999999999",
       });
-      const res = await app.request(`/api/contractors/${c.id}`);
+
+      const res = await app.request(`/internal/contractors/${c.id}/contact`, {
+        headers: { Authorization: `Bearer ${workerToken}` },
+      });
+
       expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.contractor.name).toBe("Get Test");
+      const { contact } = await res.json();
+      // Exact-shape assertion: a future widening of getContractorContact's
+      // select() to include e.g. contactNum or isActive must fail this.
+      expect(contact).toEqual({
+        id: c.id,
+        email: "contact@test.com",
+        name: "Contact Test",
+      });
+      expect(Object.keys(contact).toSorted()).toEqual(["email", "id", "name"]);
     });
 
-    it("should return 404 for non-existent contractor", async () => {
+    it("returns 404 for an unknown contractor ID", async () => {
       const res = await app.request(
-        "/api/contractors/00000000-0000-0000-0000-000000000000"
+        "/internal/contractors/00000000-0000-0000-0000-000000000000/contact",
+        { headers: { Authorization: `Bearer ${workerToken}` } }
       );
+
       expect(res.status).toBe(404);
-    });
-  });
-
-  describe("PUT /api/contractors/:id", () => {
-    it("should update a contractor", async () => {
-      const c = await contractorService.createContractor({
-        name: "Update Test",
-        email: "update@test.com",
-      });
-      const res = await app.request(`/api/contractors/${c.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Updated via API" }),
-      });
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.contractor.name).toBe("Updated via API");
-    });
-  });
-
-  describe("DELETE /api/contractors/:id", () => {
-    it("should deactivate a contractor", async () => {
-      const c = await contractorService.createContractor({
-        name: "Delete Test",
-        email: "delete@test.com",
-      });
-      const res = await app.request(`/api/contractors/${c.id}`, {
-        method: "DELETE",
-      });
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.contractor.isActive).toBe(false);
-    });
-  });
-
-  describe("POST /api/contractors/:id/categories", () => {
-    it("should add a category", async () => {
-      const c = await contractorService.createContractor({
-        name: "Category Route Test",
-        email: "catroute@test.com",
-      });
-      const res = await app.request(`/api/contractors/${c.id}/categories`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categoryCode: "API_CAT" }),
-      });
-      expect(res.status).toBe(201);
-      const body = await res.json();
-      expect(body.category.categoryCode).toBe("API_CAT");
-    });
-
-    it("should return 409 for duplicate category", async () => {
-      const c = await contractorService.createContractor({
-        name: "Duplicate Cat Test",
-        email: "dup@test.com",
-      });
-      await contractorService.addCategory(c.id, "DUP_CAT");
-      const res = await app.request(`/api/contractors/${c.id}/categories`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categoryCode: "DUP_CAT" }),
-      });
-      expect(res.status).toBe(409);
-    });
-  });
-
-  describe("GET /api/contractors/search", () => {
-    it("should search contractors", async () => {
-      const c = await contractorService.createContractor({
-        name: "Search Route Test",
-        email: "searchroute@test.com",
-      });
-      await contractorService.addSector(c.id, "S1");
-      await contractorService.addCategory(c.id, "K1");
-
-      const res = await app.request(
-        "/api/contractors/search?sectorCode=S1&categoryCode=K1"
-      );
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.contractors).toHaveLength(1);
-      expect(body.contractors[0].name).toBe("Search Route Test");
     });
   });
 });

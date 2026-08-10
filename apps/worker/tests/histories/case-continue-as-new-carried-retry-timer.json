@@ -1,0 +1,124 @@
+{
+  "events": [
+    {
+      "links": [],
+      "eventId": 1,
+      "eventTime": {
+        "seconds": 1786105644,
+        "nanos": 595000000
+      },
+      "eventType": 1,
+      "workflowExecutionStartedEventAttributes": {
+        "completionCallbacks": [],
+        "workflowType": {
+          "name": "CaseWorkflow"
+        },
+        "taskQueue": {
+          "name": "townops-orchestration-7cfb421c-80e0-4909-ab8a-6fc6b0c66834",
+          "kind": 1
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "externalPayloads": [],
+              "data": "eyJjYXNlSWQiOiJkODBjMWEwNC03ZjMzLTQ5ZGMtYTNiYy04NTJmMzA4ZWI0NzEiLCJjYXJyeU92ZXIiOnsib3BlcmF0aW9ucyI6W3sia2V5IjoiMDc4Mjg3ZjctYWZiZi00MTZhLWE2MTUtODFlNjYyMGQ4ZGI1IiwicGF5bG9hZEhhc2giOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicmVzdWx0Ijp7ImtpbmQiOiJTVUNDRVNTIiwiZGF0YSI6eyJpZCI6ImQ4MGMxYTA0LTdmMzMtNDlkYy1hM2JjLTg1MmYzMDhlYjQ3MSIsInJlc2lkZW50SWQiOiIxNDljYjQ0OS05YzI4LTQ0ZTAtYTc5Yy1mM2NjN2FhMzdiNmIiLCJjYXRlZ29yeSI6IkxFIiwicHJpb3JpdHkiOiJISUdIIiwic3RhdHVzIjoiUEVORElORyIsImRlc2NyaXB0aW9uIjoiQnJva2VuIHN0cmVldCBsaWdodCIsImFkZHJlc3NEZXRhaWxzIjpudWxsLCJwb3N0YWxDb2RlIjoiMTIzNDU2IiwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIiwidXBkYXRlZEF0IjoiMjAyNi0wOC0wN1QwMDowMDowMC4wMDBaIn19fV0sIm1hbnVhbE9wZXJhdGlvbnMiOltdLCJhY2NlcHRhbmNlT3BlcmF0aW9ucyI6W10sInN0YXJ0V29ya09wZXJhdGlvbnMiOltdLCJub0FjY2Vzc09wZXJhdGlvbnMiOltdLCJyZXBsYWNlQXBwb2ludG1lbnRPcGVyYXRpb25zIjpbXSwiY29tcGxldGlvbk9wZXJhdGlvbnMiOltdLCJjYW5jZWxsYXRpb25PcGVyYXRpb25zIjpbXSwiZWZmZWN0UmVwYWlyT3BlcmF0aW9ucyI6W10sImVmZmVjdHMiOlt7ImludGVudCI6eyJpZCI6Ijk3OTliZjE1LTU0ZTgtNDQ4ZS04MGVhLWFmZDc5MmExMzNhMi9hc3NpZ25tZW50LW5vdGlmaWNhdGlvbiIsImNhc2VJZCI6ImQ4MGMxYTA0LTdmMzMtNDlkYy1hM2JjLTg1MmYzMDhlYjQ3MSIsInR5cGUiOiJFTUFJTCIsInB1cnBvc2UiOiJBVFRFTVBUX0FTU0lHTk1FTlRfTk9USUZJQ0FUSU9OIiwicmVjaXBpZW50Ijp7InR5cGUiOiJDT05UUkFDVE9SIiwiaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEifX0sImF0dGVtcHRzIjoxLCJzdGF0dXMiOiJTRU5UIiwibWFudWFsUmV0cnkiOmZhbHNlfSx7ImludGVudCI6eyJpZCI6Ijk3OTliZjE1LTU0ZTgtNDQ4ZS04MGVhLWFmZDc5MmExMzNhMi9hY2NlcHRhbmNlLXNsYS1icmVhY2gtbm90aWZpY2F0aW9uIiwiY2FzZUlkIjoiZDgwYzFhMDQtN2YzMy00OWRjLWEzYmMtODUyZjMwOGViNDcxIiwidHlwZSI6IkVNQUlMIiwicHVycG9zZSI6IkFUVEVNUFRfQlJFQUNIX05PVElGSUNBVElPTiIsInJlY2lwaWVudCI6eyJ0eXBlIjoiQ09OVFJBQ1RPUiIsImlkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIn19LCJhdHRlbXB0cyI6MSwic3RhdHVzIjoiU0VOVCIsIm1hbnVhbFJldHJ5IjpmYWxzZX0seyJpbnRlbnQiOnsiaWQiOiI5Nzk5YmYxNS01NGU4LTQ0OGUtODBlYS1hZmQ3OTJhMTMzYTIvYWNjZXB0YW5jZS1zbGEtYnJlYWNoIiwiY2FzZUlkIjoiZDgwYzFhMDQtN2YzMy00OWRjLWEzYmMtODUyZjMwOGViNDcxIiwidHlwZSI6IlBFUkZPUk1BTkNFX0VOVFJZIiwicHVycG9zZSI6IkFUVEVNUFRfQlJFQUNIX1BFUkZPUk1BTkNFIiwiY29udHJhY3RvcklkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwic2NvcmVEZWx0YSI6LTEwLCJyZWFzb24iOiJBQ0NFUFRBTkNFX1NMQV9CUkVBQ0gifSwiYXR0ZW1wdHMiOjEsInN0YXR1cyI6IlNFTlQiLCJtYW51YWxSZXRyeSI6ZmFsc2V9XSwiYXR0ZW1wdGVkQ29udHJhY3RvcklkcyI6WyIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiXSwiYWxsb2NhdGlvblF1ZXVlIjpbXSwiYWxsb2NhdGlvbiI6eyJzdGF0dXMiOiJOT19DQU5ESURBVEUifSwiYWxsb2NhdGlvbkNvbnRleHQiOnsiY2F0ZWdvcnkiOiJMRSIsInBvc3RhbENvZGUiOiIxMjM0NTYifSwiYWNjZXB0ZWQiOmZhbHNlLCJjbG9zZUFmdGVyQ29tcGxldGlvbiI6ZmFsc2UsImNhbmNlbGxhdGlvblN0YXJ0ZWQiOmZhbHNlLCJhdXRvbWF0aWNSZXRyeUF0IjoxNzg2MTA1NzA0NTM5LCJhdXRvbWF0aWNSZXRyeURlbGF5TXMiOjEyMDAwMCwiYXV0b21hdGljQWxsb2NhdGlvbkFjdGl2ZSI6ZmFsc2UsImF1dG9tYXRpY0FsbG9jYXRpb25Tb3VyY2UiOiJCUkVBQ0hfUkVBU1NJR04ifX0="
+            }
+          ]
+        },
+        "workflowExecutionTimeout": {
+          "seconds": 315360000
+        },
+        "workflowRunTimeout": {
+          "seconds": 315360000
+        },
+        "workflowTaskTimeout": {
+          "seconds": 10
+        },
+        "continuedExecutionRunId": "eb6999e2-fd98-45ff-9b45-f430795cdabb",
+        "lastCompletionResult": {
+          "payloads": []
+        },
+        "originalExecutionRunId": "a619f83c-2efe-4e11-b181-031d7966d18b",
+        "identity": "3180@Charles",
+        "firstExecutionRunId": "eb6999e2-fd98-45ff-9b45-f430795cdabb",
+        "attempt": 1,
+        "firstWorkflowTaskBackoff": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 2,
+      "eventTime": {
+        "seconds": 1786105644,
+        "nanos": 595000000
+      },
+      "eventType": 5,
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "townops-orchestration-7cfb421c-80e0-4909-ab8a-6fc6b0c66834",
+          "kind": 1
+        },
+        "startToCloseTimeout": {
+          "seconds": 10
+        },
+        "attempt": 1
+      }
+    },
+    {
+      "links": [],
+      "eventId": 3,
+      "eventTime": {
+        "seconds": 1786105644,
+        "nanos": 595000000
+      },
+      "eventType": 6,
+      "workflowTaskStartedEventAttributes": {
+        "suggestContinueAsNewReasons": [],
+        "scheduledEventId": 2,
+        "identity": "3180@Charles",
+        "historySizeBytes": 2543
+      }
+    },
+    {
+      "links": [],
+      "eventId": 4,
+      "eventTime": {
+        "seconds": 1786105644,
+        "nanos": 610000000
+      },
+      "eventType": 7,
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": 2,
+        "identity": "3180@Charles",
+        "binaryChecksum": "@temporalio/worker@1.20.3+8906259954f1ba65379cf6cace72059f30fdd0dd7da23f3298e79d80a52da9e5",
+        "sdkMetadata": {
+          "coreUsedFlags": [3, 2, 1],
+          "langUsedFlags": [],
+          "sdkName": "temporal-typescript",
+          "sdkVersion": "1.20.3"
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "links": [],
+      "eventId": 5,
+      "eventTime": {
+        "seconds": 1786105644,
+        "nanos": 610000000
+      },
+      "eventType": 17,
+      "timerStartedEventAttributes": {
+        "timerId": "1",
+        "startToFireTimeout": {
+          "seconds": 59,
+          "nanos": 944000000
+        },
+        "workflowTaskCompletedEventId": 3
+      }
+    }
+  ]
+}

@@ -18,20 +18,133 @@ services:
       timeout: 5s
       retries: 10
 
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
+  # One physical instance, one database per atom. Creates the databases and
+  # their extensions before the atoms start (mirrors temporal-schema).
+  postgres-init:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: townops
+      PGPASSWORD: townops
+    volumes:
+      - ./infrastructure/postgres/scripts:/scripts:ro
+    entrypoint: ["/bin/sh"]
+    command: /scripts/create-databases.sh
+
+  temporal-postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    volumes:
+      - temporal_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 60
+      start_period: 15s
+
+  temporal-schema:
+    image: temporalio/admin-tools:1.31.2
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    environment:
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_SEEDS: temporal-postgres
+      SQL_PASSWORD: temporal
+    volumes:
+      - ./infrastructure/temporal:/scripts:ro
+    entrypoint: ["/bin/sh"]
+    command: /scripts/setup-postgres.sh
+
+  temporal:
+    image: temporalio/server:1.31.2
+    restart: unless-stopped
+    depends_on:
+      temporal-schema:
+        condition: service_completed_successfully
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-postgres
+      BIND_ON_IP: 0.0.0.0
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    volumes:
+      - ./infrastructure/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    ports:
+      - "7233:7233"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+
+  temporal-namespace:
+    image: temporalio/admin-tools:1.31.2
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+    volumes:
+      - ./infrastructure/temporal:/scripts:ro
+    entrypoint: ["/bin/sh"]
+    command: /scripts/create-namespace.sh
+
+  temporal-ui:
+    image: temporalio/ui:2.52.1
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3001
+    ports:
+      - "8080:8080"
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: townops
+      MINIO_ROOT_PASSWORD: townopssecret
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  # Creates the public `proofs` bucket before the proof atom starts (mirrors
+  # postgres-init). Retry loop instead of a MinIO healthcheck (the server image
+  # lacks curl); idempotent — --ignore-existing + anonymous set are safe to rerun.
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    environment:
+      MINIO_ROOT_USER: townops
+      MINIO_ROOT_PASSWORD: townopssecret
+    entrypoint: >
+      /bin/sh -c "
+      set -e;
+      until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do echo waiting for minio; sleep 1; done;
+      mc mb --ignore-existing local/proofs;
+      mc anonymous set download local/proofs;
+      echo minio-init done;
+      "
 
   # ─── Atoms ────────────────────────────────────────────────────────────────────
 
@@ -41,11 +154,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5001
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_auth
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: http://auth-atom:5001
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
     ports:
       - "5001:5001"
 
@@ -55,13 +172,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5002
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_alert
       RESEND_API_KEY: ${RESEND_API_KEY}
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      # Empty OTEL vars satisfy shared-ts env validation and disable tracing
+      # locally (otel.ts treats a falsy endpoint as "tracing disabled").
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5002:5002"
 
@@ -71,9 +192,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5003
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_appointment
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5003:5003"
 
@@ -83,9 +209,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5004
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_assignment
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      JWKS_URI: http://auth-atom:5001/api/auth/jwks
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5004:5004"
 
@@ -95,9 +227,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5005
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_case
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
     ports:
       - "5005:5005"
 
@@ -107,9 +244,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5006
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_metrics
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      JWKS_URI: http://auth-atom:5001/api/auth/jwks
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5006:5006"
 
@@ -119,11 +262,22 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5007
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_KEY: ${SUPABASE_KEY}
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_proof
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_URL: http://localhost:9000/proofs
+      S3_ACCESS_KEY_ID: townops
+      S3_SECRET_ACCESS_KEY: townopssecret
+      S3_BUCKET: proofs
+      S3_REGION: us-east-1
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5007:5007"
 
@@ -133,9 +287,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5008
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_resident
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
     ports:
       - "5008:5008"
 
@@ -145,148 +304,172 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       PORT: 5009
-      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops
+      DATABASE_URL: postgresql://townops:townops@postgres:5432/townops_contractor
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "5009:5009"
 
-  # ─── Composites ───────────────────────────────────────────────────────────────
+  e2e-seed:
+    image: postgres:16-alpine
+    depends_on:
+      auth-atom:
+        condition: service_started
+      contractor-atom:
+        condition: service_started
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: townops
+      PGPASSWORD: townops
+    volumes:
+      - ./apps/atoms/auth/scripts/seed.sql:/scripts/auth-seed.sql:ro
+      - ./apps/atoms/contractor/scripts/seed.sql:/scripts/contractor-seed.sql:ro
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until psql -d townops_auth -tAc "SELECT to_regclass('public.user') IS NOT NULL" | grep -qx t; do
+          echo waiting for auth migration
+          sleep 1
+        done
+        until psql -d townops_contractor -tAc "SELECT to_regclass('public.contractors') IS NOT NULL" | grep -qx t; do
+          echo waiting for contractor migration
+          sleep 1
+        done
+        psql -d townops_auth -v ON_ERROR_STOP=1 -f /scripts/auth-seed.sql
+        psql -d townops_contractor -v ON_ERROR_STOP=1 -f /scripts/contractor-seed.sql
+    command: []
 
-  open-case-composite:
-    build: apps/composites/open-case
+  # ─── Orchestration ────────────────────────────────────────────────────────────
+
+  gateway:
+    build:
+      context: .
+      dockerfile: apps/gateway/Dockerfile
     restart: unless-stopped
     depends_on:
-      rabbitmq:
-        condition: service_healthy
+      auth-atom:
+        condition: service_started
+      case-atom:
+        condition: service_started
+      resident-atom:
+        condition: service_started
+      assignment-atom:
+        condition: service_started
+      proof-atom:
+        condition: service_started
+      e2e-seed:
+        condition: service_completed_successfully
+      temporal-namespace:
+        condition: service_completed_successfully
     environment:
-      PORT: 6001
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      PORT: 6010
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      JWKS_URI: http://auth-atom:5001/api/auth/jwks
+      CASE_ATOM_URL: http://case-atom:5005
       RESIDENT_ATOM_URL: http://resident-atom:5008
-      CASE_ATOM_URL: http://case-atom:5005
-      JWKS_URI: http://auth-atom:5001/api/auth/jwks
-    ports:
-      - "6001:6001"
-
-  assign-job-composite:
-    build: apps/composites/assign-job
-    restart: unless-stopped
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      PORT: 6002
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      CONTRACTOR_ATOM_URL: http://contractor-atom:5009
+      AUTH_ATOM_URL: http://auth-atom:5001
       ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
-      METRICS_ATOM_URL: http://metrics-atom:5006
-    ports:
-      - "6002:6002"
-
-  accept-job-composite:
-    build: apps/composites/accept-job
-    restart: unless-stopped
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      PORT: 6003
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
-      CASE_ATOM_URL: http://case-atom:5005
       APPOINTMENT_ATOM_URL: http://appointment-atom:5003
-      JWKS_URI: http://auth-atom:5001/api/auth/jwks
-    ports:
-      - "6003:6003"
-
-  close-case-composite:
-    build: apps/composites/close-case
-    restart: unless-stopped
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      PORT: 6004
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      CASE_ATOM_URL: http://case-atom:5005
       PROOF_ATOM_URL: http://proof-atom:5007
-      JWKS_URI: http://auth-atom:5001/api/auth/jwks
+      ALERT_ATOM_URL: http://alert-atom:5002
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
+      GATEWAY_UPDATE_TIMEOUT_MS: ${GATEWAY_UPDATE_TIMEOUT_MS:-20000}
     ports:
-      - "6004:6004"
+      - "6010:6010"
 
-  handle-breach-composite:
-    build: apps/composites/handle-breach
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      args:
+        BUILD_ID: ${BUILD_ID:-dev}
     restart: unless-stopped
     depends_on:
-      rabbitmq:
-        condition: service_healthy
+      case-atom:
+        condition: service_started
+      resident-atom:
+        condition: service_started
+      contractor-atom:
+        condition: service_started
+      metrics-atom:
+        condition: service_started
+      assignment-atom:
+        condition: service_started
+      proof-atom:
+        condition: service_started
+      e2e-seed:
+        condition: service_completed_successfully
+      temporal-namespace:
+        condition: service_completed_successfully
     environment:
-      PORT: 6005
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      RESIDENT_ATOM_URL: http://resident-atom:5008
       CASE_ATOM_URL: http://case-atom:5005
-      ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
-      METRICS_ATOM_URL: http://metrics-atom:5006
       CONTRACTOR_ATOM_URL: http://contractor-atom:5009
-      JWKS_URI: http://auth-atom:5001/api/auth/jwks
-    ports:
-      - "6005:6005"
-
-  reschedule-job-composite:
-    build: apps/composites/reschedule-job
-    restart: unless-stopped
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      PORT: 6006
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      RESIDENT_ATOM_URL: http://resident-atom:5008
+      METRICS_ATOM_URL: http://metrics-atom:5006
+      ASSIGNMENT_ATOM_URL: http://assignment-atom:5004
       APPOINTMENT_ATOM_URL: http://appointment-atom:5003
-      CASE_ATOM_URL: http://case-atom:5005
-      JWKS_URI: http://auth-atom:5001/api/auth/jwks
-    ports:
-      - "6006:6006"
-
-  handle-no-access-composite:
-    build: apps/composites/handle-no-access
-    restart: unless-stopped
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      PORT: 6007
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      CASE_ATOM_URL: http://case-atom:5005
-      RESIDENT_ATOM_URL: http://resident-atom:5008
-      JWKS_URI: http://auth-atom:5001/api/auth/jwks
-    ports:
-      - "6007:6007"
+      PROOF_ATOM_URL: http://proof-atom:5007
+      ALERT_ATOM_URL: http://alert-atom:5002
+      WORKER_SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN:?WORKER_SERVICE_TOKEN is required}
 
   # ─── Frontends ────────────────────────────────────────────────────────────────
 
+  # The empty OTEL vars are required, not decorative: shared-ts env validation
+  # declares both as non-optional strings, so an unset value crash-loops the
+  # server on boot. Empty disables tracing locally, same as every atom above.
   officer-frontend:
     build: apps/frontend/officer
     restart: unless-stopped
+    depends_on:
+      e2e-seed:
+        condition: service_completed_successfully
     environment:
       PORT: 3000
+      VITE_GATEWAY_URL: http://localhost:6010
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "3001:3000"
 
   contractor-frontend:
     build: apps/frontend/contractor
     restart: unless-stopped
+    depends_on:
+      e2e-seed:
+        condition: service_completed_successfully
     environment:
       PORT: 3000
+      VITE_GATEWAY_URL: http://localhost:6010
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "3002:3000"
 
   resident-frontend:
     build: apps/frontend/resident
     restart: unless-stopped
+    depends_on:
+      e2e-seed:
+        condition: service_completed_successfully
     environment:
       PORT: 3000
+      VITE_GATEWAY_URL: http://localhost:6010
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_HEADERS: ""
     ports:
       - "3003:3000"
 
 volumes:
   postgres_data:
+  temporal_postgres_data:
+  minio_data:

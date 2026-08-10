@@ -36,11 +36,14 @@ export function initSentry(options: SentryInitOptions = {}) {
 
   if (initialized) return;
 
-  const dsn = options.dsn ?? process.env.SENTRY_DSN ?? process.env.SENTRY_BACKEND_DSN;
+  const dsn =
+    options.dsn ?? process.env.SENTRY_DSN ?? process.env.SENTRY_BACKEND_DSN;
   if (!dsn) return;
 
   const tracesSampleRate =
-    options.tracesSampleRate ?? parseSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE) ?? 0;
+    options.tracesSampleRate ??
+    parseSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE) ??
+    0;
 
   Sentry.init({
     dsn,

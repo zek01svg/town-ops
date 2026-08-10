@@ -1,4 +1,9 @@
 import { useForm } from "@tanstack/react-form";
+import {
+  OpenCaseInputSchema,
+  CasePrioritySchema,
+  MaintenanceCategorySchema,
+} from "@townops/orchestration-contract";
 import { useState, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -12,12 +17,12 @@ import {
 } from "@/components/ui/select";
 
 import { useOpenCaseMutation } from "../api/mutations";
-import { openCaseSchema, CASE_CATEGORIES } from "../validation-schemas";
+import { CASE_CATEGORIES } from "../validation-schemas";
 import type { CaseCategory } from "../validation-schemas";
 
 async function geocodePostal(postal: string): Promise<string | null> {
   const res = await fetch(
-    `https://www.onemap.gov.sg/api/common/elastic/search?searchVal=${postal}&returnGeom=N&getAddrDetails=Y&pageNum=1`,
+    `https://www.onemap.gov.sg/api/common/elastic/search?searchVal=${postal}&returnGeom=N&getAddrDetails=Y&pageNum=1`
   );
   if (!res.ok) return null;
   const data = await res.json();
@@ -29,29 +34,44 @@ async function geocodePostal(postal: string): Promise<string | null> {
   return `${block}${road}, Singapore ${postal}`;
 }
 
+/**
+ * Exported so a test can assert this key set still matches
+ * `OpenCaseInputSchema`. The schema is `.strict()` and `onSubmit` bails
+ * silently on a parse failure, so any drift here — a renamed key, an extra
+ * one — makes the form do nothing on submit with no error surfaced.
+ */
+export const NEW_CASE_DEFAULTS = {
+  residentId: "",
+  category: "" as CaseCategory | "",
+  priority: "MEDIUM" as (typeof CasePrioritySchema.options)[number],
+  description: "",
+  addressDetails: "",
+  postalCode: "",
+};
+
 export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
   const openCase = useOpenCaseMutation();
   const [geocoding, setGeocoding] = useState(false);
   const geocodeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  async function fillAddressFrom(postal: string) {
+    setGeocoding(true);
+    const address = await geocodePostal(postal);
+    setGeocoding(false);
+    if (address) form.setFieldValue("addressDetails", address);
+  }
+
   const form = useForm({
-    defaultValues: {
-      resident_id: "",
-      category: "" as CaseCategory | "",
-      priority: "medium" as "low" | "medium" | "high" | "emergency",
-      description: "",
-      address_details: "",
-      postal_code: "",
-    },
+    defaultValues: { ...NEW_CASE_DEFAULTS },
     validators: {
       onChange: ({ value }) => {
-        const res = openCaseSchema.safeParse(value);
+        const res = OpenCaseInputSchema.safeParse(value);
         if (res.success) return undefined;
         return res.error.message;
       },
     },
     onSubmit: async ({ value }) => {
-      const parsed = openCaseSchema.safeParse(value);
+      const parsed = OpenCaseInputSchema.safeParse(value);
       if (!parsed.success) return;
       await openCase.mutateAsync(parsed.data);
       setOpen(false);
@@ -63,12 +83,12 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
       onSubmit={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        form.handleSubmit();
+        void form.handleSubmit();
       }}
       className="space-y-6 mt-6 p-1"
     >
       <form.Field
-        name="resident_id"
+        name="residentId"
         children={(field) => (
           <div className="space-y-2">
             <label className="text-xs uppercase font-label tracking-widest text-primary">
@@ -80,8 +100,10 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               placeholder="e.g. 123e4567-e89b-12d3..."
               className="rounded-none border-border bg-surface-container"
             />
-            {field.state.meta.errors ? (
-              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+            {field.state.meta.errors.length > 0 ? (
+              <em className="text-xs text-destructive">
+                {field.state.meta.errors.join(", ")}
+              </em>
             ) : null}
           </div>
         )}
@@ -95,7 +117,10 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
             </label>
             <Select
               value={field.state.value}
-              onValueChange={(v) => field.handleChange(v as CaseCategory)}
+              onValueChange={(v) => {
+                const picked = MaintenanceCategorySchema.safeParse(v);
+                if (picked.success) field.handleChange(picked.data);
+              }}
             >
               <SelectTrigger className="rounded-none border-border bg-surface-container w-full">
                 <SelectValue placeholder="Select a category" />
@@ -112,7 +137,9 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               </SelectContent>
             </Select>
             {field.state.meta.errors.length > 0 ? (
-              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+              <em className="text-xs text-destructive">
+                {field.state.meta.errors.join(", ")}
+              </em>
             ) : null}
           </div>
         )}
@@ -131,12 +158,17 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               placeholder="Case details..."
               className="rounded-none border-border bg-surface-container"
             />
+            {field.state.meta.errors.length > 0 ? (
+              <em className="text-xs text-destructive">
+                Description is required
+              </em>
+            ) : null}
           </div>
         )}
       />
 
       <form.Field
-        name="postal_code"
+        name="postalCode"
         children={(field) => (
           <div className="space-y-2">
             <label className="text-xs uppercase font-label tracking-widest text-primary">
@@ -148,27 +180,29 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               onChange={(e) => {
                 const val = e.target.value.replace(/\D/g, "");
                 field.handleChange(val);
-                if (geocodeTimeout.current) clearTimeout(geocodeTimeout.current);
+                if (geocodeTimeout.current)
+                  clearTimeout(geocodeTimeout.current);
                 if (val.length === 6) {
-                  geocodeTimeout.current = setTimeout(async () => {
-                    setGeocoding(true);
-                    const address = await geocodePostal(val);
-                    setGeocoding(false);
-                    if (address) {
-                      form.setFieldValue("address_details", address);
-                    }
-                  }, 300);
+                  geocodeTimeout.current = setTimeout(
+                    () => void fillAddressFrom(val),
+                    300
+                  );
                 }
               }}
               placeholder="e.g. 560201"
               className="rounded-none border-border bg-surface-container"
             />
+            {field.state.value.length > 0 && field.state.value.length < 6 ? (
+              <em className="text-xs text-destructive">
+                Postal code must be 6 digits
+              </em>
+            ) : null}
           </div>
         )}
       />
 
       <form.Field
-        name="address_details"
+        name="addressDetails"
         children={(field) => (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -199,20 +233,22 @@ export function NewCaseForm({ setOpen }: { setOpen: (o: boolean) => void }) {
               Priority
             </label>
             <div className="flex gap-2">
-              {["low", "medium", "high", "emergency"].map((p) => (
+              {CasePrioritySchema.options.map((p) => (
                 <Button
                   key={p}
                   type="button"
                   variant={field.state.value === p ? "default" : "outline"}
-                  onClick={() => field.handleChange(p as any)}
+                  onClick={() => field.handleChange(p)}
                   className="rounded-none capitalize flex-1 border-border"
                 >
-                  {p}
+                  {p.toLowerCase()}
                 </Button>
               ))}
             </div>
-            {field.state.meta.errors ? (
-              <em className="text-xs text-destructive">{field.state.meta.errors.join(", ")}</em>
+            {field.state.meta.errors.length > 0 ? (
+              <em className="text-xs text-destructive">
+                {field.state.meta.errors.join(", ")}
+              </em>
             ) : null}
           </div>
         )}

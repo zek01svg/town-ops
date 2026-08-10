@@ -37,35 +37,8 @@ import type { CaseItem } from "@/features/case/types";
 
 const columnHelper = createColumnHelper<CaseItem>();
 
-const COLUMNS = [
-  { id: "pending", label: "Pending", statuses: ["pending"] },
-  {
-    id: "dispatched",
-    label: "Dispatched",
-    statuses: ["assigned", "dispatched", "in_progress"],
-  },
-  { id: "escalated", label: "Escalated", statuses: ["escalated"] },
-  { id: "resolved", label: "Resolved", statuses: ["completed", "cancelled"] },
-];
-
-export function OfficerDashboard() {
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
-  const [isAuditOpen, setIsAuditOpen] = useState(false);
-  const [search, setSearch] = useState("");
-
-  const { data: cases = [], isLoading } = useQuery(caseQueries.all());
-
-  const filtered = search
-    ? cases.filter(
-        (c) =>
-          c.id.includes(search) ||
-          c.address.toLowerCase().includes(search.toLowerCase()) ||
-          c.category.toLowerCase().includes(search.toLowerCase())
-      )
-    : cases;
-
-  const columns = [
+function createTableColumns(onAudit: (caseId: string) => void) {
+  return [
     columnHelper.accessor("id", {
       header: "Case ID",
       cell: (info) => (
@@ -123,16 +96,46 @@ export function OfficerDashboard() {
           variant="outline"
           size="sm"
           className="hover:bg-muted rounded-none border-border"
-          onClick={() => {
-            setSelectedCaseId(info.row.original.id);
-            setIsAuditOpen(true);
-          }}
+          onClick={() => onAudit(info.row.original.id)}
         >
           View Audit
         </Button>
       ),
     }),
   ];
+}
+
+const COLUMNS = [
+  { id: "pending", label: "Pending", statuses: ["pending"] },
+  {
+    id: "active",
+    label: "Active",
+    statuses: ["assigned", "in_progress"],
+  },
+  { id: "resolved", label: "Resolved", statuses: ["completed", "cancelled"] },
+];
+
+export function OfficerDashboard() {
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [isAuditOpen, setIsAuditOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const { data: cases = [], isLoading } = useQuery(caseQueries.all());
+
+  const filtered = search
+    ? cases.filter(
+        (c) =>
+          c.id.includes(search) ||
+          c.address.toLowerCase().includes(search.toLowerCase()) ||
+          c.category.toLowerCase().includes(search.toLowerCase())
+      )
+    : cases;
+
+  const columns = createTableColumns((caseId) => {
+    setSelectedCaseId(caseId);
+    setIsAuditOpen(true);
+  });
 
   const table = useReactTable({
     data: filtered,
@@ -143,7 +146,6 @@ export function OfficerDashboard() {
   const activeCases = cases.filter(
     (c) => !["completed", "cancelled"].includes(c.status)
   );
-  const breachedCases = cases.filter((c) => c.status === "escalated");
   const resolvedCases = cases.filter((c) =>
     ["completed", "cancelled"].includes(c.status)
   );
@@ -213,13 +215,6 @@ export function OfficerDashboard() {
             v: isLoading ? "—" : String(activeCases.length),
             s: "Open reports",
             ic: "text-foreground",
-          },
-          {
-            t: "SLA Breached",
-            v: isLoading ? "—" : String(breachedCases.length),
-            s: "Action required",
-            ic: "text-destructive",
-            border: "border-t-4 border-t-destructive",
           },
           {
             t: "Total Cases",

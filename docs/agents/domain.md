@@ -4,10 +4,10 @@ Engineering skills should consume this repo's domain documentation as follows.
 
 ## Before exploring, read these
 
-- `CONTEXT.md` at the repo root, if it exists.
-- `docs/adr/`, reading ADRs relevant to the area being changed.
+- `CONTEXT.md` at the repo root.
+- Task-relevant entries in `docs/adr/`.
 
-If these files do not exist, proceed silently. Create them only when domain terms or architectural decisions are actually resolved.
+Create or update these documents only when domain terms or architectural decisions are resolved.
 
 ## Use the glossary's vocabulary
 

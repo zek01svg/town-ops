@@ -2,12 +2,10 @@ export type Urgency = "low" | "medium" | "high" | "emergency";
 export type CaseStatus =
   | "pending"
   | "assigned"
-  | "dispatched"
   | "in_progress"
   | "pending_resident_input"
   | "completed"
-  | "cancelled"
-  | "escalated";
+  | "cancelled";
 
 export type CaseItem = {
   id: string;

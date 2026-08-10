@@ -1,4 +1,9 @@
-import { createRootRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  Link,
+  Outlet,
+  useLocation,
+} from "@tanstack/react-router";
 import { AppShell } from "@townops/ui/app-shell";
 import { useEffect, useState } from "react";
 
@@ -23,7 +28,8 @@ export const Route = createRootRoute({
 
 const navLinkClass =
   "text-foreground opacity-60 hover:opacity-100 hover:bg-foreground/5 transition-all duration-150 px-6 py-4 flex items-center gap-4";
-const navLinkActiveClass = "bg-primary text-primary-foreground font-bold opacity-100";
+const navLinkActiveClass =
+  "bg-primary text-primary-foreground font-bold opacity-100";
 
 function RootComponent() {
   const [companyName, setCompanyName] = useState("Contractor");
@@ -31,14 +37,16 @@ function RootComponent() {
   const isLoginPage = location.pathname === "/";
 
   useEffect(() => {
-    if (isLoginPage) return;
     let isMounted = true;
-    void auth.getSession().then((session) => {
-      const name = (session?.data?.user as any)?.name as string | undefined;
-      if (isMounted && name) {
-        setCompanyName(name);
-      }
-    });
+    if (!isLoginPage) {
+      void (async () => {
+        const session = await auth.getSession();
+        const name = session?.data?.user.name;
+        if (isMounted && name) {
+          setCompanyName(name);
+        }
+      })();
+    }
     return () => {
       isMounted = false;
     };
@@ -46,7 +54,10 @@ function RootComponent() {
 
   if (isLoginPage) {
     return (
-      <ThemeProvider defaultTheme="system" storageKey="townops-theme-preference">
+      <ThemeProvider
+        defaultTheme="system"
+        storageKey="townops-theme-preference"
+      >
         <Outlet />
       </ThemeProvider>
     );
@@ -69,14 +80,18 @@ function RootComponent() {
               className={navLinkClass}
               activeProps={{ className: navLinkActiveClass }}
             >
-              <span className="font-label text-xs uppercase tracking-widest">Dashboard</span>
+              <span className="font-label text-xs uppercase tracking-widest">
+                Dashboard
+              </span>
             </Link>
             <Link
               to="/map"
               className={navLinkClass}
               activeProps={{ className: navLinkActiveClass }}
             >
-              <span className="font-label text-xs uppercase tracking-widest">Map View</span>
+              <span className="font-label text-xs uppercase tracking-widest">
+                Map View
+              </span>
             </Link>
           </>
         }
