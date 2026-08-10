@@ -34,7 +34,7 @@
   "devDependencies": {
     "@hono/standard-validator": "catalog:",
     "@scalar/hono-api-reference": "catalog:",
-    "@testcontainers/postgresql": "^10.0.0",
+    "@testcontainers/postgresql": "catalog:",
     "@types/pg": "catalog:",
     "dotenv-cli": "catalog:",
     "drizzle-kit": "catalog:",
