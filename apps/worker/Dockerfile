@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim
 
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g pnpm@next-12
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
 COPY apps/worker ./apps/worker
