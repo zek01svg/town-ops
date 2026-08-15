@@ -9,6 +9,10 @@ export const env = createEnv({
     BETTER_AUTH_URL: z.string(),
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
+    // Comma-separated browser origins Better Auth accepts beyond the
+    // localhost dev ports baked into auth.ts. Unset locally; a deployment
+    // sets it to the frontend origins (PRS-140 Phase 7).
+    AUTH_TRUSTED_ORIGINS: z.string().optional(),
   },
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
@@ -17,6 +21,7 @@ export const env = createEnv({
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    AUTH_TRUSTED_ORIGINS: process.env.AUTH_TRUSTED_ORIGINS,
   },
   skipValidation: process.env.npm_lifecycle_event === "lint",
 });

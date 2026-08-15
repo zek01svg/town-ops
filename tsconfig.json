@@ -12,6 +12,14 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "noEmit": true,
+    // Gateway and Worker run their TypeScript directly under `node
+    // --experimental-strip-types`, whose ESM resolver does no extension
+    // guessing, so their relative imports must carry `.ts`. Any project that
+    // typechecks a package they share sees those imports too -- the three
+    // frontends compile packages/orchestration-contract -- so this belongs at
+    // the root rather than in each consumer. packages/shared-ts opts out: it
+    // is the one package that emits, and this option requires noEmit.
+    "allowImportingTsExtensions": true,
     "strictNullChecks": true,
     "jsx": "react-jsx"
   },

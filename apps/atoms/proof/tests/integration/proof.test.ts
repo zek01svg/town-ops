@@ -14,9 +14,13 @@ vi.mock("hono/jwk", () => ({
 
 // 2. Mock storage interface (Bun S3 client)
 const mockWrite = vi.fn().mockResolvedValue(undefined);
+// presign is SYNCHRONOUS in Bun's S3Client (returns a string, not a Promise),
+// so the mock must be too -- proofDto() calls it inline when serializing a
+// proof whose mediaUrl holds an object path.
+const mockPresign = vi.fn((key: string) => `https://signed.test/${key}?sig=x`);
 
 vi.mock("../../src/storage", () => ({
-  storage: { write: mockWrite },
+  storage: { write: mockWrite, presign: mockPresign },
 }));
 
 describe("Proof Atom Integration Tests", () => {
@@ -133,7 +137,11 @@ describe("Proof Atom Integration Tests", () => {
           contractorId: VALID_UPLOADER_ID,
           type: "BEFORE",
           ready: true,
-          mediaUrl: `http://localhost:9000/proofs/${VALID_CASE_ID}/${proofItemId}`,
+          // The DTO serves a PRESIGNED url, while the row stores only the
+          // object path (asserted on mockWrite below). Keeping these two
+          // assertions different is the point: if the handler ever goes back
+          // to persisting a public URL, this pair fails.
+          mediaUrl: `https://signed.test/${VALID_CASE_ID}/${proofItemId}?sig=x`,
         },
       });
       expect(mockWrite).toHaveBeenCalledTimes(1);

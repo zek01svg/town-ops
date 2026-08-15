@@ -4,6 +4,9 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "noEmit": false,
+    // The root enables this; tsc rejects it wherever it actually emits, and
+    // this is the only package that does.
+    "allowImportingTsExtensions": false,
     "declaration": true
   },
   "include": ["src/**/*.ts"],

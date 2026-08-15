@@ -27,6 +27,10 @@ import {
 
 const MAX_PROOF_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_PROOF_BODY_BYTES = MAX_PROOF_FILE_BYTES + 64 * 1024;
+// ponytail: fixed 1h TTL, make env-configurable if officers keep case pages
+// open longer than a signature lives. The DTO is re-fetched on every page
+// load, so it only needs to outlive one page view.
+const PROOF_URL_TTL_SECONDS = 60 * 60;
 
 function isSupportedProofImage(file: File, bytes: Uint8Array) {
   switch (file.type.toLowerCase()) {
@@ -102,6 +106,9 @@ function proofDto(proof: {
 }) {
   return ProofItemDtoSchema.parse({
     ...proof,
+    mediaUrl: proof.mediaUrl
+      ? storage.presign(proof.mediaUrl, { expiresIn: PROOF_URL_TTL_SECONDS })
+      : proof.mediaUrl,
     type: proof.type.toUpperCase(),
     ready: proof.readyAt !== null,
   });
@@ -238,7 +245,7 @@ const internalProofRouter = new Hono()
       });
       const proof = await proofService.markProofReady({
         proofItemId,
-        mediaUrl: `${env.S3_PUBLIC_URL}/${filePath}`,
+        mediaUrl: filePath,
       });
       return c.json({ proof: proofDto(proof) }, 201);
     }

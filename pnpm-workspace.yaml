@@ -1,6 +1,8 @@
 packages:
-  - "apps/**"
-  - "packages/**"
+  - "apps/*"
+  - "apps/atoms/*"
+  - "apps/frontend/*"
+  - "packages/*"
 # `packages/ui` declares @tanstack/react-query as a peer (`>=5`), which pnpm
 # auto-installs — resolving it to a newer patch than the catalog pin the apps
 # use. That put two copies of @tanstack/query-core in the tree, so the

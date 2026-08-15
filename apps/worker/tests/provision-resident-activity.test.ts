@@ -51,6 +51,34 @@ describe("provisionResidentProfile Activity", () => {
     ).toEqual(["accountId", "email", "fullName"]);
   });
 
+  it("attaches X-Serverless-Authorization alongside Authorization when a minter is injected (PRS-140 Phase 5)", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json(
+          { resident: { id: input.accountId, ...input } },
+          { status: 201 }
+        )
+      );
+    const mintIdentityToken = vi.fn().mockResolvedValue("minted-id-token");
+    const provisionResidentProfile = createProvisionResidentActivity({
+      residentAtomUrl: "http://resident-atom:5008",
+      workerServiceToken,
+      fetchImpl,
+      mintIdentityToken,
+    });
+
+    await provisionResidentProfile(input);
+
+    const [, options] = fetchImpl.mock.calls[0];
+    const headers = new Headers(options?.headers);
+    expect(headers.get("X-Serverless-Authorization")).toBe(
+      "Bearer minted-id-token"
+    );
+    expect(headers.get("Authorization")).toBe(`Bearer ${workerServiceToken}`);
+    expect(mintIdentityToken).toHaveBeenCalledWith("http://resident-atom:5008");
+  });
+
   it("treats a 4xx Resident atom response as a non-retryable ApplicationFailure", async () => {
     const provisionResidentProfile = createProvisionResidentActivity({
       residentAtomUrl: "http://resident-atom:5008",

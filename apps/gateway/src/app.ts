@@ -53,6 +53,7 @@ import {
   StartWorkResultSchema,
   UPDATE_NAMES,
   WaiveEffectInputSchema,
+  withServerlessAuth,
   WORKFLOW_NAMES,
 } from "@townops/orchestration-contract";
 import type {
@@ -183,15 +184,18 @@ const AtomRecordSchema = z.record(z.string(), z.unknown());
 // and their Vite dev ports (5173-5175, `strictPort: true` in each
 // `vite.config.ts`). Both are needed: every Gateway read carries an
 // `Authorization` header, so it is preflighted, and `credentials: true`
-// forbids the `"*"` wildcard.
-const browserOrigins = new Set([
+// forbids the `"*"` wildcard. This is the default `GatewayDependencies`
+// falls back to; a deployed environment injects its own origins via
+// `browserOrigins` (`GATEWAY_ALLOWED_ORIGINS` in `index.ts`) instead of a
+// localhost port that never exists there.
+const DEFAULT_BROWSER_ORIGINS = [
   "http://localhost:3001",
   "http://localhost:3002",
   "http://localhost:3003",
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:5175",
-]);
+];
 
 type GatewayWorkflowClient = {
   executeUpdateWithStart(
@@ -216,6 +220,14 @@ type GatewayDependencies = {
   workerServiceToken?: string;
   authenticate?: MiddlewareHandler;
   fetchImpl?: typeof fetch;
+  // Mints the Cloud Run IAM ID token `withServerlessAuth` attaches to every
+  // outgoing atom call (PRS-140 Phase 5). Defaults to the real metadata-server
+  // minter; tests inject a stub instead of touching the network.
+  mintIdentityToken?: (audience: string) => Promise<string | undefined>;
+  // The browser origins CORS accepts on `/api/*`. Defaults to the localhost
+  // dev ports below; `index.ts` injects `GATEWAY_ALLOWED_ORIGINS` in a
+  // deployed environment where none of those ports exist.
+  browserOrigins?: string[];
   updateTimeoutMs?: number;
 };
 
@@ -1223,10 +1235,19 @@ export function createGatewayApp({
   alertAtomUrl = "http://localhost:5002",
   workerServiceToken = "",
   authenticate,
-  fetchImpl: rawFetchImpl = fetch,
+  fetchImpl: injectedFetch = fetch,
+  mintIdentityToken,
+  browserOrigins = DEFAULT_BROWSER_ORIGINS,
   updateTimeoutMs = 20_000,
 }: GatewayDependencies) {
   const app = new Hono<GatewayEnv>();
+  const allowedOrigins = new Set(browserOrigins);
+  // Every atom call the Gateway makes — including the `/api/auth/*` proxy
+  // below, which uses this directly rather than the Authorization-adding
+  // `fetchImpl` wrapper — funnels through this one `rawFetchImpl`, so the
+  // Cloud Run IAM ID token is attached exactly once rather than at each call
+  // site (PRS-140 Phase 5).
+  const rawFetchImpl = withServerlessAuth(injectedFetch, mintIdentityToken);
   const fetchImpl: typeof fetch = (input, init) => {
     const headers = new Headers(init?.headers);
     headers.set("Authorization", `Bearer ${workerServiceToken}`);
@@ -1258,7 +1279,7 @@ export function createGatewayApp({
   app.use(
     "/api/*",
     cors({
-      origin: (origin) => (browserOrigins.has(origin) ? origin : undefined),
+      origin: (origin) => (allowedOrigins.has(origin) ? origin : undefined),
       allowHeaders: ["Authorization", "Content-Type", "Idempotency-Key"],
       allowMethods: ["GET", "POST", "PUT", "OPTIONS"],
       credentials: true,

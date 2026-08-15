@@ -14,12 +14,16 @@ import { createAppointmentRecoveryActivities } from "../src/activities/appointme
 
 const workerServiceToken = "a".repeat(32);
 
-function dependencies(fetchImpl: typeof fetch) {
+function dependencies(
+  fetchImpl: typeof fetch,
+  mintIdentityToken?: (audience: string) => Promise<string | undefined>
+) {
   return createAppointmentRecoveryActivities({
     appointmentAtomUrl: "http://appointment-atom:5003",
     caseAtomUrl: "http://case-atom:5005",
     workerServiceToken,
     fetchImpl,
+    mintIdentityToken,
   });
 }
 
@@ -56,6 +60,44 @@ function caseRow(caseId: string, status: string) {
     updatedAt: "2030-01-01T00:00:00.000Z",
   };
 }
+
+describe("appointment-recovery activities identity header (PRS-140 Phase 5)", () => {
+  it("attaches X-Serverless-Authorization alongside Authorization when a minter is injected", async () => {
+    const input: ReportNoAccessAppointmentInput = {
+      operationId: `${randomUUID()}/no-access/appointment`,
+      appointmentId: randomUUID(),
+      contractorId: randomUUID(),
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      Response.json(
+        {
+          outcome: "NO_ACCESS",
+          appointment: appointmentRow({
+            id: input.appointmentId,
+            contractorId: input.contractorId,
+            operationId: input.operationId,
+          }),
+        },
+        { status: 201 }
+      )
+    );
+    const mintIdentityToken = vi.fn().mockResolvedValue("minted-id-token");
+
+    await dependencies(fetchImpl, mintIdentityToken).reportNoAccessAppointment(
+      input
+    );
+
+    const [, init] = fetchImpl.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Serverless-Authorization")).toBe(
+      "Bearer minted-id-token"
+    );
+    expect(headers.get("Authorization")).toBe(`Bearer ${workerServiceToken}`);
+    expect(mintIdentityToken).toHaveBeenCalledWith(
+      "http://appointment-atom:5003"
+    );
+  });
+});
 
 describe("reportNoAccessAppointment activity", () => {
   const input: ReportNoAccessAppointmentInput = {

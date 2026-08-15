@@ -16,6 +16,19 @@ const socialProviders =
       }
     : undefined;
 
+/**
+ * The browser never talks to this atom directly — the Gateway proxies
+ * `/api/auth/*` and forwards the browser's `Origin` header verbatim. Better
+ * Auth rejects any POST whose `Origin` is not trusted (`validateOrigin` in
+ * `api/middlewares/origin-check`), and a deployed frontend's origin is its own
+ * `run.app` URL, not the Gateway's `baseURL`. Without this every sign-in and
+ * sign-up in a deployed environment returns 403 INVALID_ORIGIN.
+ */
+const deployedTrustedOrigins =
+  env.AUTH_TRUSTED_ORIGINS?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean) ?? [];
+
 export const auth = betterAuth({
   plugins: [
     jwt({
@@ -39,6 +52,17 @@ export const auth = betterAuth({
     database: {
       generateId: "uuid",
     },
+    // Better Auth defaults the session cookie to SameSite=Lax. Deployed, the
+    // cookie is set on the Gateway's `run.app` host while the browser's origin
+    // is a frontend's `run.app` host, and `run.app` is on the Public Suffix
+    // List -- so those are cross-SITE, and a Lax cookie is simply never
+    // attached to the frontend's XHR. curl ignores SameSite entirely, so this
+    // breaks only in a real browser and only after deployment.
+    // Local dev deliberately keeps Lax: every localhost port is the same site,
+    // and SameSite=None demands Secure, which plain http cannot satisfy.
+    ...(env.BETTER_AUTH_URL.startsWith("https://") && {
+      defaultCookieAttributes: { sameSite: "none", secure: true },
+    }),
   },
   trustedOrigins: [
     "http://localhost:3001",
@@ -47,6 +71,7 @@ export const auth = betterAuth({
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
+    ...deployedTrustedOrigins,
   ],
   /**
    * `input: false` on both fields means public sign-up can never elect

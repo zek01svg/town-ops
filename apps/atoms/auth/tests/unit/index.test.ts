@@ -14,6 +14,11 @@ vi.hoisted(() => {
   process.env.PORT = "5001";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost";
   process.env.OTEL_EXPORTER_OTLP_HEADERS = "Authorization=test";
+  // Deliberately spaced and trailing-comma'd -- a deployment builds this from
+  // a Terraform `join(",", …)` and one stray space would silently untrust the
+  // origin it names.
+  process.env.AUTH_TRUSTED_ORIGINS =
+    "https://officer.example, https://resident.example,";
 });
 
 // Mock database interactions to isolate server checks
@@ -159,6 +164,33 @@ describe("Auth Atom API Endpoints", () => {
         message: expect.stringContaining("contractorId"),
       });
       expect(insertMockChain.values).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("trusted origins", () => {
+    it("trusts the deployed origins from AUTH_TRUSTED_ORIGINS alongside the localhost defaults", () => {
+      // The browser never reaches this atom directly -- the Gateway forwards
+      // its `Origin`, and better-auth 403s any POST whose origin is untrusted.
+      // Without the deployed frontends listed here every sign-in in a deployed
+      // environment fails with INVALID_ORIGIN.
+      expect(auth.options.trustedOrigins).toEqual([
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://localhost:3003",
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "https://officer.example",
+        "https://resident.example",
+      ]);
+    });
+
+    // The control for cross-site-cookies.test.ts. BETTER_AUTH_URL is http here,
+    // so the cookie must stay on Better Auth's SameSite=Lax default: SameSite=None
+    // requires Secure, which plain http cannot satisfy, and every localhost port
+    // is the same site anyway.
+    it("leaves cookie attributes at the default when BETTER_AUTH_URL is http", () => {
+      expect(auth.options.advanced?.defaultCookieAttributes).toBeUndefined();
     });
   });
 });

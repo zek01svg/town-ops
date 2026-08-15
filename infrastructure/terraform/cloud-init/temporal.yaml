@@ -1,0 +1,244 @@
+#cloud-config
+# Rendered by templatefile() from temporal-vm.tf. Writes the three existing
+# infrastructure/temporal/* assets unmodified (passed in as template vars,
+# never re-authored here) plus this deployment's own fetch-secret.sh, then
+# five systemd units. No AUTO_SETUP anywhere -- temporal-schema.service does
+# explicit schema init via setup-postgres.sh.
+write_files:
+  - path: /etc/temporal/scripts/setup-postgres.sh
+    permissions: "0644"
+    content: |
+      ${indent(6, setup_postgres_sh)}
+
+  - path: /etc/temporal/scripts/create-namespace.sh
+    permissions: "0644"
+    content: |
+      ${indent(6, create_namespace_sh)}
+
+  - path: /etc/temporal/scripts/fetch-secret.sh
+    permissions: "0644"
+    content: |
+      ${indent(6, fetch_secret_sh)}
+
+  - path: /etc/temporal/dynamicconfig/development-sql.yaml
+    permissions: "0644"
+    content: |
+      ${indent(6, dynamic_config_yaml)}
+
+  # Docker on COS makes UNAUTHENTICATED Artifact Registry requests by default,
+  # so every pull 403s with "Unauthenticated request ... does not have
+  # permission artifactregistry.repositories.downloadArtifacts" even though the
+  # VM's service account holds roles/artifactregistry.reader. Granting more IAM
+  # never fixes it -- Docker simply has to be told to use the gcr credential
+  # helper, which COS already ships at /usr/bin/docker-credential-gcr.
+  # This file must NOT live in /root/.docker: COS mounts / read-only, so
+  # `docker-credential-gcr configure-docker` fails there with "Unable to save
+  # docker config: mkdir /root/.docker: read-only file system". /var is
+  # writable. Every unit below therefore sets DOCKER_CONFIG to this directory.
+  # ponytail: a static file beats running configure-docker in a boot unit --
+  # nothing to fail, nothing to order. Upgrade path: if another registry is
+  # ever added, add it as a second credHelpers key.
+  - path: /var/lib/dockercfg/.docker/config.json
+    permissions: "0644"
+    content: |
+      {"credHelpers":{"${region}-docker.pkg.dev":"gcr"}}
+
+  # Fetches the DB password from Secret Manager and writes the root-only
+  # env file that temporal-schema.service and temporal.service source via
+  # `docker run --env-file`. Every other unit that pulls a mirrored image
+  # depends on this one too, since COS's own Artifact Registry credential
+  # helper (not this unit) is what makes those pulls work -- ordering after
+  # this unit just keeps the boot sequence linear and easy to reason about.
+  # Container-Optimized OS ships its own host firewall, and it is not
+  # permissive: `iptables -S INPUT` on a stock COS image is
+  # `-P INPUT DROP` plus ACCEPT for established, loopback, ICMP, and tcp/22 and
+  # nothing else. Both Temporal ports run under `--network host`, so every
+  # packet crosses that INPUT chain -- which means 7233 and 8080 are dropped at
+  # the VM no matter what the VPC firewall permits, and the symptom is a
+  # connection TIMEOUT that looks exactly like a VPC firewall denial. Verified
+  # live: with a temporary `0.0.0.0/0 -> tcp:7233` VPC rule in place, a Cloud
+  # Run probe on the Gateway subnet still could not connect.
+  #
+  # Source scoping stays in firewall.tf, where it belongs and where
+  # verify-network.sh proves it: 7233 from the Gateway/Worker subnet only,
+  # 8080 from the IAP range only. These rules open the ports; the VPC decides
+  # who reaches them.
+  - path: /etc/systemd/system/temporal-hostfw.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Open Temporal ports in the COS host firewall
+      Before=temporal.service temporal-ui.service
+      DefaultDependencies=no
+      After=network-pre.target
+      Wants=network-pre.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      # -C before -A so a restart of this unit never stacks duplicate rules.
+      ExecStart=/bin/sh -c 'iptables -C INPUT -p tcp --dport 7233 -j ACCEPT 2>/dev/null || iptables -A INPUT -p tcp --dport 7233 -j ACCEPT'
+      ExecStart=/bin/sh -c 'iptables -C INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || iptables -A INPUT -p tcp --dport 8080 -j ACCEPT'
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/temporal-fetch-secret.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Fetch Temporal DB password from Secret Manager
+      After=docker.service network-online.target
+      Wants=docker.service network-online.target
+
+      [Service]
+      # Points docker at the credHelpers config written above; without this
+      # every Artifact Registry pull goes out unauthenticated and 403s.
+      Environment=DOCKER_CONFIG=/var/lib/dockercfg/.docker
+      Type=oneshot
+      RemainAfterExit=yes
+      Restart=on-failure
+      RestartSec=10
+      TimeoutStartSec=0
+      Environment=PROJECT_ID=${project_id}
+      Environment=CLOUD_SDK_IMAGE=${cloud_sdk_image}
+      Environment=SECRET_NAME=temporal-db-password
+      ExecStart=/bin/sh /etc/temporal/scripts/fetch-secret.sh
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # Explicit schema init, not AUTO_SETUP. `create` is a verified no-op
+  # against a database Terraform already created (temporal-sql-tool exits 0
+  # either way) -- see Phase 4 report for how that was confirmed, so the
+  # script runs unmodified.
+  - path: /etc/systemd/system/temporal-schema.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Temporal SQL schema setup
+      After=temporal-fetch-secret.service docker.service
+      Requires=temporal-fetch-secret.service docker.service
+
+      [Service]
+      # Points docker at the credHelpers config written above; without this
+      # every Artifact Registry pull goes out unauthenticated and 403s.
+      Environment=DOCKER_CONFIG=/var/lib/dockercfg/.docker
+      Type=oneshot
+      RemainAfterExit=yes
+      Restart=on-failure
+      RestartSec=30
+      TimeoutStartSec=0
+      ExecStartPre=-/usr/bin/docker rm -f temporal-schema
+      ExecStart=/usr/bin/docker run --rm --name temporal-schema --network host \
+        --env-file=/etc/temporal/secrets/db-password.env \
+        -e POSTGRES_SEEDS=${sql_seeds} \
+        -e POSTGRES_USER=temporal \
+        -e DB_PORT=5432 \
+        -v /etc/temporal/scripts/setup-postgres.sh:/setup-postgres.sh:ro \
+        --entrypoint /bin/sh \
+        ${admin_tools_image} /setup-postgres.sh
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # DB=postgres12, visibility on temporal_visibility (Postgres, no
+  # Elasticsearch). BIND_ON_IP=0.0.0.0 is required: the image's entrypoint
+  # otherwise binds gRPC to the address `hostname` resolves to, which under
+  # --network host is the VM's own hostname/IP, not 127.0.0.1 -- without
+  # this, temporal-ui.service and temporal-namespace.service (both dialing
+  # 127.0.0.1:7233) get connection refused. Verified locally; see report.
+  - path: /etc/systemd/system/temporal.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Temporal server
+      After=temporal-schema.service docker.service
+      Requires=temporal-schema.service docker.service
+
+      [Service]
+      # Points docker at the credHelpers config written above; without this
+      # every Artifact Registry pull goes out unauthenticated and 403s.
+      Environment=DOCKER_CONFIG=/var/lib/dockercfg/.docker
+      Restart=always
+      RestartSec=5
+      ExecStartPre=-/usr/bin/docker rm -f temporal
+      ExecStart=/usr/bin/docker run --rm --name temporal --network host \
+        --env-file=/etc/temporal/secrets/db-password.env \
+        -e DB=postgres12 \
+        -e POSTGRES_SEEDS=${sql_seeds} \
+        -e POSTGRES_USER=temporal \
+        -e DB_PORT=5432 \
+        -e BIND_ON_IP=0.0.0.0 \
+        -e DYNAMIC_CONFIG_FILE_PATH=/etc/temporal/dynamicconfig/development-sql.yaml \
+        -v /etc/temporal/dynamicconfig/development-sql.yaml:/etc/temporal/dynamicconfig/development-sql.yaml:ro \
+        ${server_image}
+      ExecStop=/usr/bin/docker stop temporal
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # Reachable only through the existing IAP firewall rule (townops-subnet
+  # has no public IP on this VM).
+  - path: /etc/systemd/system/temporal-ui.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Temporal Web UI
+      After=temporal.service
+      Requires=temporal.service
+
+      [Service]
+      # Points docker at the credHelpers config written above; without this
+      # every Artifact Registry pull goes out unauthenticated and 403s.
+      Environment=DOCKER_CONFIG=/var/lib/dockercfg/.docker
+      Restart=always
+      RestartSec=5
+      ExecStartPre=-/usr/bin/docker rm -f temporal-ui
+      ExecStart=/usr/bin/docker run --rm --name temporal-ui --network host \
+        -e TEMPORAL_ADDRESS=127.0.0.1:7233 \
+        -e TEMPORAL_UI_PORT=8080 \
+        ${ui_image}
+      ExecStop=/usr/bin/docker stop temporal-ui
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # create-namespace.sh self-sequences: it polls `temporal operator cluster
+  # health` until the server answers, then creates the namespace idempotently.
+  - path: /etc/systemd/system/temporal-namespace.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Create Temporal default namespace
+      After=temporal.service
+      Requires=temporal.service
+
+      [Service]
+      # Points docker at the credHelpers config written above; without this
+      # every Artifact Registry pull goes out unauthenticated and 403s.
+      Environment=DOCKER_CONFIG=/var/lib/dockercfg/.docker
+      Type=oneshot
+      RemainAfterExit=yes
+      Restart=on-failure
+      RestartSec=10
+      TimeoutStartSec=0
+      ExecStartPre=-/usr/bin/docker rm -f temporal-namespace
+      ExecStart=/usr/bin/docker run --rm --name temporal-namespace --network host \
+        -e TEMPORAL_ADDRESS=127.0.0.1:7233 \
+        -e TEMPORAL_NAMESPACE=default \
+        -v /etc/temporal/scripts/create-namespace.sh:/create-namespace.sh:ro \
+        --entrypoint /bin/sh \
+        ${admin_tools_image} /create-namespace.sh
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now temporal-hostfw.service
+  - systemctl enable --now temporal-fetch-secret.service
+  - systemctl enable --now temporal-schema.service
+  - systemctl enable --now temporal.service
+  - systemctl enable --now temporal-namespace.service
+  - systemctl enable --now temporal-ui.service

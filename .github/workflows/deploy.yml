@@ -1,0 +1,270 @@
+name: Deploy TownOps to GCP
+
+# Deliberately a separate workflow from ci.yml, which runs on every push and
+# has no deploy job. Quality gates and deployment fail for different reasons
+# and want different triggers.
+# The one-time prerequisites, applied locally by an operator because a pipeline
+# cannot create the identity it authenticates as:
+#   terraform apply         # infrastructure/terraform/wif.tf
+#   bootstrap.sh            # state bucket, budget, 7 secrets
+#   bootstrap-databases.sh  # SQL users, 9 db-url-* secrets, extensions
+#   mirror-images.sh        # Temporal server/UI/admin-tools images
+# See docs/deployment.md.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# Never cancel a deploy in flight: an interrupted `terraform apply` leaves
+# state that has to be reconciled by hand.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # the OIDC token exchanged for GCP credentials
+
+env:
+  PROJECT_ID: seraphic-cocoa-505015-s9
+  REGION: asia-southeast1
+  AR_HOST: asia-southeast1-docker.pkg.dev
+  IMAGE_TAG: ${{ github.sha }}
+  WIF_PROVIDER: projects/850982781459/locations/global/workloadIdentityPools/github/providers/github
+  DEPLOY_SA: townops-deploy@seraphic-cocoa-505015-s9.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    name: Build, apply, promote, verify
+    runs-on: ubuntu-latest
+    environment: trial
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- workspace build (setup mirrors ci.yml) ---------------------------
+      # Kept identical to ci.yml's block on purpose: it is known to work
+      # against pnpm@12.0.0-rc.4, which has already broken installs twice
+      # (see tasks/lessons.md).
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - name: Setup Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml', 'turbo.json') }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        run: pnpm build
+
+      # --- guards absorbed from the deleted build-push.sh -------------------
+      # Both caught a real production-only break during PRS-140 and both are
+      # proven falsifiable. They run before anything is pushed or applied, so
+      # a failure here costs nothing but the build.
+
+      # The Gateway and Worker have no bundle to inspect -- they run their
+      # TypeScript directly under `node --experimental-strip-types`, whose ESM
+      # resolver does no extension guessing. A relative import missing its
+      # `.ts` resolves fine under Bun and vitest and dies only in the
+      # container, where Cloud Run reports it as the generic "failed to start
+      # and listen on PORT". Importing the one package both share is the
+      # cheapest thing that fails here instead.
+      - name: Guard - Node ESM resolves the orchestration contract
+        run: |
+          node --experimental-strip-types \
+            -e "await import('./packages/orchestration-contract/src/index.ts')"
+
+      # `bun build` inlines process.env.NODE_ENV at bundle time, so a bundle
+      # built without --production carries NODE_ENV:"development" as a literal
+      # that no runtime env var can override. That switches shared-ts's logger
+      # to the pino-pretty transport, which resolves a thread-stream worker
+      # path from the BUILD host and hard-fails with ERR_WORKER_PATH inside the
+      # container. Assert on the bundle, not on the Dockerfile: this is the
+      # check that fails if anyone drops --production from a build script.
+      - name: Guard - no development NODE_ENV baked into any bundle
+        run: |
+          set -euo pipefail
+          fail=0
+          for bundle in \
+            apps/atoms/{alert,appointment,assignment,auth,case,contractor,metrics,proof,resident}/build/index.js \
+            apps/frontend/{contractor,officer,resident}/build/index.js
+          do
+            if [[ ! -f "$bundle" ]]; then
+              echo "FAIL  missing $bundle -- did pnpm build run?"
+              fail=1
+            elif grep -q 'NODE_ENV:"development"' "$bundle"; then
+              echo "FAIL  $bundle has NODE_ENV:\"development\" baked in (--production missing)"
+              fail=1
+            else
+              echo "PASS  $bundle"
+            fi
+          done
+          exit "$fail"
+
+      # --- authenticate ------------------------------------------------------
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker "$AR_HOST" --project="$PROJECT_ID" --quiet
+
+      # --- images ------------------------------------------------------------
+      # Sequential rather than a matrix: the atom and frontend Dockerfiles only
+      # `COPY build ./build`, so a matrix leg would have to rebuild the whole
+      # workspace to populate its context. One job builds it once.
+      #
+      # A destination tag that already resolves is skipped, never rebuilt, so
+      # re-running a failed deploy picks up only what is missing.
+      - name: Build and push the 13 images
+        run: |
+          set -euo pipefail
+          REPO_PATH="${AR_HOST}/${PROJECT_ID}/townops"
+
+          push() { # name context dockerfile_or_empty extra_args...
+            local name="$1" context="$2" dockerfile="$3"
+            shift 3
+            local dest="${REPO_PATH}/${name}:${IMAGE_TAG}"
+
+            if gcloud artifacts docker images describe "$dest" --project="$PROJECT_ID" >/dev/null 2>&1; then
+              echo "SKIP  $dest already exists"
+              return 0
+            fi
+
+            local args=(build --platform linux/amd64 -t "$dest")
+            [[ -n "$dockerfile" ]] && args+=(-f "$dockerfile")
+            args+=("$@" "$context")
+
+            docker "${args[@]}"
+            docker push "$dest"
+            echo "PUSH  $dest"
+          }
+
+          # Gateway and Worker are Node images that pnpm-install from the
+          # workspace inside the build, so their context is the repo root
+          # (matching docker-compose.yml). BUILD_ID reaches the Worker as a
+          # build arg because it is the Temporal Worker Versioning build id,
+          # baked into the image identity.
+          push gateway . apps/gateway/Dockerfile
+          push worker . apps/worker/Dockerfile --build-arg "BUILD_ID=${IMAGE_TAG}"
+
+          for atom in alert appointment assignment auth case contractor metrics proof resident; do
+            push "atom-${atom}" "apps/atoms/${atom}" ""
+          done
+          for frontend in contractor officer resident; do
+            push "frontend-${frontend}" "apps/frontend/${frontend}" ""
+          done
+
+      # --- terraform ---------------------------------------------------------
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: infrastructure/terraform
+        run: terraform init -input=false
+
+      - name: Terraform plan
+        working-directory: infrastructure/terraform
+        run: terraform plan -input=false -out=tf.plan -var "image_tag=${IMAGE_TAG}"
+
+      # The one durable assertion from the deleted cost-estimate.sh. Both
+      # resources bill hourly for what subnets and IAP give away free, and
+      # their absence is the premise of the whole cost design -- see
+      # docs/deployment.md, "no Serverless VPC Access connector and no Cloud
+      # NAT". Cheap enough to run on every deploy; the SGD 120 budget with
+      # 50/90/100% alerts is what actually caps spend.
+      - name: Guard - plan adds no hourly-billed networking
+        working-directory: infrastructure/terraform
+        run: |
+          set -euo pipefail
+          # Rendered to a file first, deliberately. Piping `terraform show`
+          # straight into the `if` would make a *failed* show read as "found
+          # nothing" and report PASS on a harness that never inspected a plan.
+          terraform show -json tf.plan > tf.plan.json
+          if grep -oE 'google_compute_router_nat|google_vpc_access_connector' tf.plan.json | sort -u | grep .; then
+            echo "FAIL  the plan introduces an hourly-billed networking resource"
+            exit 1
+          fi
+          echo "PASS  no Cloud NAT and no Serverless VPC Access connector"
+
+      - name: Terraform apply (pass 1)
+        working-directory: infrastructure/terraform
+        run: terraform apply -input=false tf.plan
+
+      # run.app URLs are opaque and cannot be predicted before apply, and two
+      # edges close a genuine cycle: the frontends need the Gateway's URL while
+      # the Gateway needs theirs for CORS, and the auth atom needs the
+      # Gateway's URL while the Gateway needs the auth atom's. Referencing
+      # `.uri` there makes Terraform reject the graph, so both arrive as plain
+      # strings on a second apply. `output -json` emits ["a","b","c"], which is
+      # valid HCL for a list(string). On a steady-state deploy this is a fast
+      # no-op. See variables.tf.
+      - name: Terraform apply (pass 2 - close the URL cycles)
+        working-directory: infrastructure/terraform
+        run: |
+          set -euo pipefail
+          terraform apply -input=false -auto-approve \
+            -var "image_tag=${IMAGE_TAG}" \
+            -var "gateway_url=$(terraform output -raw gateway_url)" \
+            -var "frontend_urls=$(terraform output -json frontend_urls)"
+
+      # --- promote -----------------------------------------------------------
+      # Not optional, and skipping it looks like a network fault: the Worker
+      # Pool runs with BUILD_ID set, which makes it a versioned Worker that
+      # does not poll the unversioned queue. Until the version is promoted
+      # every Workflow sits at HistoryLength 2 while the Worker logs RUNNING.
+      - name: Promote the Worker Deployment version
+        run: infrastructure/scripts/promote-worker-version.sh "$IMAGE_TAG"
+
+      # --- verify ------------------------------------------------------------
+      # The real gate. No Cloud Run readiness signal can tell you the Worker is
+      # actually polling Temporal; this drives one real request through
+      # Gateway -> auth atom -> Temporal -> Worker -> resident/case atoms and
+      # reads the Case back.
+      #
+      # verify-network.sh is deliberately NOT run here: it needs an IAP tunnel
+      # for one control, which would mean granting the deploy identity
+      # roles/iap.tunnelResourceAccessor, and it spawns Cloud Run jobs and a
+      # probe VM. It stays an operator script, gated on infra changes.
+      - name: Verify the deployed Workflow end to end
+        run: infrastructure/scripts/verify-workflow.sh
+
+      # Proves R2 against the production S3 client. Runs under Bun, never Node:
+      # production uses `import { S3Client } from "bun"` and there is no
+      # @aws-sdk/client-s3 in this repo.
+      - name: Smoke-test R2
+        working-directory: infrastructure/terraform
+        run: |
+          set -euo pipefail
+          export S3_ENDPOINT="$(terraform output -raw r2_endpoint)"
+          export S3_BUCKET=townops-proofs S3_REGION=auto
+          export S3_ACCESS_KEY_ID="$(gcloud secrets versions access latest --secret=r2-access-key-id --project="$PROJECT_ID")"
+          export S3_SECRET_ACCESS_KEY="$(gcloud secrets versions access latest --secret=r2-secret-access-key --project="$PROJECT_ID")"
+          bun ../../apps/atoms/proof/scripts/smoke-r2.ts

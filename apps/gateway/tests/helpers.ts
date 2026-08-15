@@ -75,6 +75,8 @@ export function createApp(
   overrides: {
     authenticate?: MiddlewareHandler;
     start?: StartMock;
+    mintIdentityToken?: (audience: string) => Promise<string | undefined>;
+    browserOrigins?: string[];
   } = {}
 ) {
   const start: StartMock =
@@ -88,6 +90,8 @@ export function createApp(
       authAtomUrl: "http://auth-atom:5001",
       workerServiceToken,
       fetchImpl,
+      mintIdentityToken: overrides.mintIdentityToken,
+      browserOrigins: overrides.browserOrigins,
       updateTimeoutMs: 1,
     }),
     executeUpdateWithStart,

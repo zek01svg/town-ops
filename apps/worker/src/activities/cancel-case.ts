@@ -7,6 +7,7 @@ import {
   CancelCaseTransitionInputSchema,
   CancelCaseTransitionResultSchema,
   CaseDtoSchema,
+  withServerlessAuth,
 } from "@townops/orchestration-contract";
 import type {
   CancelAppointmentInput,
@@ -25,6 +26,9 @@ type CancelCaseActivityDependencies = {
   caseAtomUrl: string;
   workerServiceToken: string;
   fetchImpl?: typeof fetch;
+  // Mints the Cloud Run IAM ID token `withServerlessAuth` attaches to every
+  // atom call (PRS-140 Phase 5). Defaults to the real metadata-server minter.
+  mintIdentityToken?: (audience: string) => Promise<string | undefined>;
 };
 
 function nonRetryable(message: string, type: string) {
@@ -53,8 +57,10 @@ export function createCancelCaseActivities({
   assignmentAtomUrl,
   caseAtomUrl,
   workerServiceToken,
-  fetchImpl = fetch,
+  fetchImpl: injectedFetch = fetch,
+  mintIdentityToken,
 }: CancelCaseActivityDependencies) {
+  const fetchImpl = withServerlessAuth(injectedFetch, mintIdentityToken);
   async function cancelScheduledAppointment(
     input: CancelAppointmentInput
   ): Promise<CancelAppointmentResult> {

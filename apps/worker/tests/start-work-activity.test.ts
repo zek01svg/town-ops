@@ -12,13 +12,17 @@ import { createStartWorkActivities } from "../src/activities/start-work";
 
 const workerServiceToken = "a".repeat(32);
 
-function dependencies(fetchImpl: typeof fetch) {
+function dependencies(
+  fetchImpl: typeof fetch,
+  mintIdentityToken?: (audience: string) => Promise<string | undefined>
+) {
   return createStartWorkActivities({
     appointmentAtomUrl: "http://appointment-atom:5003",
     assignmentAtomUrl: "http://assignment-atom:5004",
     caseAtomUrl: "http://case-atom:5005",
     workerServiceToken,
     fetchImpl,
+    mintIdentityToken,
   });
 }
 
@@ -65,6 +69,29 @@ describe("startWorkAppointment activity", () => {
         },
         body: JSON.stringify(input),
       })
+    );
+  });
+
+  it("attaches X-Serverless-Authorization alongside Authorization when a minter is injected (PRS-140 Phase 5)", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({ outcome: "WRONG_CONTRACTOR" }, { status: 409 })
+      );
+    const mintIdentityToken = vi.fn().mockResolvedValue("minted-id-token");
+
+    await dependencies(fetchImpl, mintIdentityToken).startWorkAppointment(
+      input
+    );
+
+    const [, init] = fetchImpl.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Serverless-Authorization")).toBe(
+      "Bearer minted-id-token"
+    );
+    expect(headers.get("Authorization")).toBe(`Bearer ${workerServiceToken}`);
+    expect(mintIdentityToken).toHaveBeenCalledWith(
+      "http://appointment-atom:5003"
     );
   });
 

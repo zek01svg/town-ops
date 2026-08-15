@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Client, Connection } from "@temporalio/client";
+import { withServerlessAuth } from "@townops/orchestration-contract";
 import { jwk } from "hono/jwk";
 import { z } from "zod/v4";
 
@@ -24,8 +25,56 @@ const config = z
       .int()
       .positive()
       .default(20_000),
+    // "off" for Docker Compose / local dev — see gcp-identity.ts. Any other
+    // value (including unset, on a real Cloud Run deployment) mints an ID
+    // token for the private auth atom's JWKS endpoint.
+    METADATA_SERVER: z.string().optional(),
+    // Comma-separated browser origins CORS accepts on `/api/*`. Unset or
+    // empty falls back to createGatewayApp's own localhost dev-port default.
+    GATEWAY_ALLOWED_ORIGINS: z.string().optional(),
   })
   .parse(process.env);
+
+// `undefined` (unset) and `""` (set-but-empty) both fall back to
+// createGatewayApp's own localhost default — an empty array would instead
+// reject every browser origin.
+const parsedOrigins = config.GATEWAY_ALLOWED_ORIGINS?.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const browserOrigins = parsedOrigins?.length ? parsedOrigins : undefined;
+
+const jwksResponseSchema = z.object({
+  keys: z.array(z.record(z.string(), z.unknown())),
+});
+
+/**
+ * Cloud Run IAM protects the auth atom, so the JWKS fetch needs the same ID
+ * token every other atom call carries — `jwk()`'s own `jwks_uri` option uses
+ * bare `fetch` and would 403 there. `keys` runs on every authenticated
+ * request (hono/jwk's `jwk2` middleware), so the parsed key set is cached for
+ * a few minutes rather than re-fetched per request.
+ * ponytail: fixed 5-minute TTL, not a Cache-Control-driven one; raise this if
+ * the auth atom ever rotates its signing key faster than that.
+ */
+const JWKS_CACHE_TTL_MS = 5 * 60_000;
+let cachedJwks: { keys: JsonWebKey[]; fetchedAtMs: number } | undefined;
+
+async function fetchJwks(): Promise<JsonWebKey[]> {
+  const now = Date.now();
+  if (cachedJwks && now - cachedJwks.fetchedAtMs < JWKS_CACHE_TTL_MS) {
+    return cachedJwks.keys;
+  }
+  const response = await withServerlessAuth(fetch)(config.JWKS_URI);
+  if (!response.ok) {
+    throw new Error(`JWKS fetch failed with ${response.status}`);
+  }
+  // The key material itself is opaque to us — Hono's own JWT verification is
+  // what interprets it — so it is validated only as "an array of objects",
+  // not field-by-field against the JWK spec.
+  const body = jwksResponseSchema.parse(await response.json());
+  cachedJwks = { keys: body.keys, fetchedAtMs: now };
+  return cachedJwks.keys;
+}
 
 let temporalWorkflowClient: Client["workflow"] | undefined;
 
@@ -61,7 +110,11 @@ const app = createGatewayApp({
   proofAtomUrl: config.PROOF_ATOM_URL,
   alertAtomUrl: config.ALERT_ATOM_URL,
   workerServiceToken: config.WORKER_SERVICE_TOKEN,
-  authenticate: jwk({ jwks_uri: config.JWKS_URI, alg: ["EdDSA"] }),
+  authenticate:
+    config.METADATA_SERVER === "off"
+      ? jwk({ jwks_uri: config.JWKS_URI, alg: ["EdDSA"] })
+      : jwk({ keys: fetchJwks, alg: ["EdDSA"] }),
+  browserOrigins,
   updateTimeoutMs: config.GATEWAY_UPDATE_TIMEOUT_MS,
 });
 

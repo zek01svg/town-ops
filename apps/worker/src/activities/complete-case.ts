@@ -10,6 +10,7 @@ import {
   CaseDtoSchema,
   ProofItemDtoSchema,
   RecordPerformanceEntryInputSchema,
+  withServerlessAuth,
 } from "@townops/orchestration-contract";
 import type {
   CaseDto,
@@ -68,6 +69,9 @@ type CompleteCaseActivityDependencies = {
   metricsAtomUrl: string;
   workerServiceToken: string;
   fetchImpl?: typeof fetch;
+  // Mints the Cloud Run IAM ID token `withServerlessAuth` attaches to every
+  // atom call (PRS-140 Phase 5). Defaults to the real metadata-server minter.
+  mintIdentityToken?: (audience: string) => Promise<string | undefined>;
 };
 
 type CompletionValidationResult =
@@ -106,8 +110,10 @@ export function createCompleteCaseActivities({
   caseAtomUrl,
   metricsAtomUrl,
   workerServiceToken,
-  fetchImpl = fetch,
+  fetchImpl: injectedFetch = fetch,
+  mintIdentityToken,
 }: CompleteCaseActivityDependencies) {
+  const fetchImpl = withServerlessAuth(injectedFetch, mintIdentityToken);
   async function getCompletionOperationId(url: string) {
     const response = await fetchImpl(url, {
       headers: authHeaders(workerServiceToken),

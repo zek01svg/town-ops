@@ -8,117 +8,117 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from '@tanstack/react-router'
 
-import { Route as rootRouteImport } from "./routes/__root";
-import { Route as AttentionRouteImport } from "./routes/attention";
-import { Route as DashboardRouteImport } from "./routes/dashboard";
-import { Route as IndexRouteImport } from "./routes/index";
-import { Route as MapRouteImport } from "./routes/map";
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as AttentionRouteImport } from './routes/attention'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as MapRouteImport } from './routes/map'
 
-const R404LazyRouteImport = createFileRoute("/404")();
+const R404LazyRouteImport = createFileRoute('/404')()
 
 const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const R404LazyRoute = R404LazyRouteImport.update({
-  id: "/404",
-  path: "/404",
+  id: '/404',
+  path: '/404',
   getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import("./routes/404.lazy").then((d) => d.Route));
+} as any).lazy(() => import('./routes/404.lazy').then((d) => d.Route))
 const AttentionRoute = AttentionRouteImport.update({
-  id: "/attention",
-  path: "/attention",
+  id: '/attention',
+  path: '/attention',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
-  id: "/dashboard",
-  path: "/dashboard",
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const MapRoute = MapRouteImport.update({
-  id: "/map",
-  path: "/map",
+  id: '/map',
+  path: '/map',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute;
-  "/attention": typeof AttentionRoute;
-  "/dashboard": typeof DashboardRoute;
-  "/map": typeof MapRoute;
-  "/404": typeof R404LazyRoute;
+  '/': typeof IndexRoute
+  '/attention': typeof AttentionRoute
+  '/dashboard': typeof DashboardRoute
+  '/map': typeof MapRoute
+  '/404': typeof R404LazyRoute
 }
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute;
-  "/attention": typeof AttentionRoute;
-  "/dashboard": typeof DashboardRoute;
-  "/map": typeof MapRoute;
-  "/404": typeof R404LazyRoute;
+  '/': typeof IndexRoute
+  '/attention': typeof AttentionRoute
+  '/dashboard': typeof DashboardRoute
+  '/map': typeof MapRoute
+  '/404': typeof R404LazyRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  "/": typeof IndexRoute;
-  "/attention": typeof AttentionRoute;
-  "/dashboard": typeof DashboardRoute;
-  "/map": typeof MapRoute;
-  "/404": typeof R404LazyRoute;
+  __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/attention': typeof AttentionRoute
+  '/dashboard': typeof DashboardRoute
+  '/map': typeof MapRoute
+  '/404': typeof R404LazyRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/" | "/attention" | "/dashboard" | "/map" | "/404";
-  fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/attention" | "/dashboard" | "/map" | "/404";
-  id: "__root__" | "/" | "/attention" | "/dashboard" | "/map" | "/404";
-  fileRoutesById: FileRoutesById;
+  fileRoutesByFullPath: FileRoutesByFullPath
+  fullPaths: '/' | '/attention' | '/dashboard' | '/map' | '/404'
+  fileRoutesByTo: FileRoutesByTo
+  to: '/' | '/attention' | '/dashboard' | '/map' | '/404'
+  id: '__root__' | '/' | '/attention' | '/dashboard' | '/map' | '/404'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute;
-  AttentionRoute: typeof AttentionRoute;
-  DashboardRoute: typeof DashboardRoute;
-  MapRoute: typeof MapRoute;
-  R404LazyRoute: typeof R404LazyRoute;
+  IndexRoute: typeof IndexRoute
+  AttentionRoute: typeof AttentionRoute
+  DashboardRoute: typeof DashboardRoute
+  MapRoute: typeof MapRoute
+  R404LazyRoute: typeof R404LazyRoute
 }
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof IndexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/404": {
-      id: "/404";
-      path: "/404";
-      fullPath: "/404";
-      preLoaderRoute: typeof R404LazyRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/attention": {
-      id: "/attention";
-      path: "/attention";
-      fullPath: "/attention";
-      preLoaderRoute: typeof AttentionRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/dashboard": {
-      id: "/dashboard";
-      path: "/dashboard";
-      fullPath: "/dashboard";
-      preLoaderRoute: typeof DashboardRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/map": {
-      id: "/map";
-      path: "/map";
-      fullPath: "/map";
-      preLoaderRoute: typeof MapRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/404': {
+      id: '/404'
+      path: '/404'
+      fullPath: '/404'
+      preLoaderRoute: typeof R404LazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/attention': {
+      id: '/attention'
+      path: '/attention'
+      fullPath: '/attention'
+      preLoaderRoute: typeof AttentionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/map': {
+      id: '/map'
+      path: '/map'
+      fullPath: '/map'
+      preLoaderRoute: typeof MapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -128,7 +128,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   MapRoute: MapRoute,
   R404LazyRoute: R404LazyRoute,
-};
+}
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()

@@ -51,7 +51,7 @@ pnpm --filter @townops/appointment-atom db:migrate
 pnpm run dev
 ```
 
-See [`docs/deployment.md`](docs/deployment.md) for full local setup, environment variables, and seed scripts.
+See [`docs/deployment.md`](docs/deployment.md) for full local setup, environment variables, and the GCP deployment runbook.
 
 ## Documentation
 
@@ -61,7 +61,7 @@ See [`docs/deployment.md`](docs/deployment.md) for full local setup, environment
 | [Service Map](docs/service-map.md)       | Current Compose services and ports                 |
 | [Event Flow](docs/event-flow.md)         | Temporal Case Workflow and Derived Effect delivery |
 | [Case Lifecycle](docs/case-lifecycle.md) | Implemented allocation and appointment lifecycle   |
-| [Deployment](docs/deployment.md)         | Local setup, env vars, seed data                   |
+| [Deployment](docs/deployment.md)         | Local setup, env vars, and the GCP runbook         |
 | [Tech Stack](docs/tech-stack.md)         | Framework and tooling choices                      |
 | [ADRs](docs/adr/)                        | Accepted architecture decisions                    |
 | [Agent guides](docs/agents/)             | Domain and tracker conventions                     |

@@ -77,6 +77,32 @@ describe("openCase Activity", () => {
     );
   });
 
+  it("attaches X-Serverless-Authorization alongside Authorization when a minter is injected (PRS-140 Phase 5)", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ residents: [] }));
+    const mintIdentityToken = vi.fn().mockResolvedValue("minted-id-token");
+    const openCase = createOpenCaseActivity({
+      residentAtomUrl: "http://resident-atom:5008",
+      caseAtomUrl: "http://case-atom:5005",
+      workerServiceToken,
+      fetchImpl,
+      mintIdentityToken,
+    });
+
+    await expect(openCase(input)).rejects.toMatchObject({
+      type: "RESIDENT_NOT_FOUND",
+    });
+
+    const [, initArg] = fetchImpl.mock.calls[0];
+    const headers = new Headers(initArg?.headers);
+    expect(headers.get("X-Serverless-Authorization")).toBe(
+      "Bearer minted-id-token"
+    );
+    expect(headers.get("Authorization")).toBe(`Bearer ${workerServiceToken}`);
+    expect(mintIdentityToken).toHaveBeenCalledWith("http://resident-atom:5008");
+  });
+
   it("fails permanently when the Resident is absent", async () => {
     const openCase = createOpenCaseActivity({
       residentAtomUrl: "http://resident-atom:5008",
