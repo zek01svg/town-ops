@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => {
     claimProofUpload: vi.fn(),
     markProofReady: vi.fn(),
     storageWrite: vi.fn().mockResolvedValue(undefined),
+    // presign is SYNCHRONOUS in Bun's S3Client (returns a string, not a
+    // Promise); proofDto() calls it inline when serializing a stored path.
+    storagePresign: vi.fn((key: string) => `https://signed.test/${key}?sig=x`),
   };
 });
 
@@ -43,7 +46,7 @@ vi.mock("../../src/service", () => ({
 }));
 
 vi.mock("../../src/storage", () => ({
-  storage: { write: mocks.storageWrite },
+  storage: { write: mocks.storageWrite, presign: mocks.storagePresign },
 }));
 
 const caseId = "123e4567-e89b-12d3-a456-426614174001";
@@ -93,7 +96,7 @@ function readyProof(proofItemId: string) {
     id: proofItemId,
     caseId,
     contractorId,
-    mediaUrl: `http://localhost:9000/proofs/${caseId}/${proofItemId}`,
+    mediaUrl: `${caseId}/${proofItemId}`,
     type: "before" as const,
     remarks: null,
     checksum: "a".repeat(64),
@@ -136,7 +139,7 @@ describe("internal proof upload validation", () => {
       );
       expect(mocks.markProofReady).toHaveBeenCalledWith({
         proofItemId,
-        mediaUrl: `http://localhost:9000/proofs/${caseId}/${proofItemId}`,
+        mediaUrl: `${caseId}/${proofItemId}`,
       });
     }
   );

@@ -6,6 +6,7 @@ import {
   MarkCaseInProgressResultSchema,
   StartWorkAppointmentInputSchema,
   StartWorkAppointmentResultSchema,
+  withServerlessAuth,
 } from "@townops/orchestration-contract";
 import type {
   MarkAssignmentInProgressInput,
@@ -23,6 +24,9 @@ type StartWorkActivityDependencies = {
   caseAtomUrl: string;
   workerServiceToken: string;
   fetchImpl?: typeof fetch;
+  // Mints the Cloud Run IAM ID token `withServerlessAuth` attaches to every
+  // atom call (PRS-140 Phase 5). Defaults to the real metadata-server minter.
+  mintIdentityToken?: (audience: string) => Promise<string | undefined>;
 };
 
 function nonRetryable(message: string, type: string) {
@@ -47,8 +51,10 @@ export function createStartWorkActivities({
   assignmentAtomUrl,
   caseAtomUrl,
   workerServiceToken,
-  fetchImpl = fetch,
+  fetchImpl: injectedFetch = fetch,
+  mintIdentityToken,
 }: StartWorkActivityDependencies) {
+  const fetchImpl = withServerlessAuth(injectedFetch, mintIdentityToken);
   async function startWorkAppointment(
     input: StartWorkAppointmentInput
   ): Promise<StartWorkAppointmentResult> {

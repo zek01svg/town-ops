@@ -11,13 +11,17 @@ function requestHref(url: RequestInfo | URL) {
   return url instanceof URL ? url.href : url.url;
 }
 
-function dependencies(fetchImpl: typeof fetch) {
+function dependencies(
+  fetchImpl: typeof fetch,
+  mintIdentityToken?: (audience: string) => Promise<string | undefined>
+) {
   return createCancelCaseActivities({
     appointmentAtomUrl: "http://appointment-atom:5003",
     assignmentAtomUrl: "http://assignment-atom:5004",
     caseAtomUrl: "http://case-atom:5005",
     workerServiceToken,
     fetchImpl,
+    mintIdentityToken,
   });
 }
 
@@ -101,6 +105,31 @@ describe("cancel-case activities (PRS-148)", () => {
       "http://assignment-atom:5004/internal/assignments/cancel",
       `http://case-atom:5005/internal/cases/${caseId}/cancel`,
     ]);
+  });
+
+  it("attaches X-Serverless-Authorization alongside Authorization when a minter is injected (PRS-140 Phase 5)", async () => {
+    const caseId = randomUUID();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ outcome: "CANCELLED" }));
+    const mintIdentityToken = vi.fn().mockResolvedValue("minted-id-token");
+
+    await dependencies(fetchImpl, mintIdentityToken).cancelAssignmentForCase({
+      caseId,
+      operationId: "cancel/assignment",
+      changedBy: randomUUID(),
+      reason: "No longer needed",
+    });
+
+    const [, init] = fetchImpl.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Serverless-Authorization")).toBe(
+      "Bearer minted-id-token"
+    );
+    expect(headers.get("Authorization")).toBe(`Bearer ${workerServiceToken}`);
+    expect(mintIdentityToken).toHaveBeenCalledWith(
+      "http://assignment-atom:5004"
+    );
   });
 
   it("throws unexpected upstream failures so Temporal retries the forward sequence", async () => {

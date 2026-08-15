@@ -11,7 +11,7 @@
 | Shared UI              | Radix primitives, `@townops/ui`, hugeicons-react            |
 | Observability          | OpenTelemetry, Pino, and Sentry                             |
 | Testing                | Vitest, Testcontainers, and Playwright                      |
-| Delivery               | Docker Compose and Docker images                            |
+| Delivery               | Docker Compose locally; Terraform and Cloud Run on GCP      |
 
 Atoms retain data ownership. Gateway and Worker use Temporal for durable Case
 orchestration; see [ADR 0001](./adr/0001-temporal-orchestration.md).

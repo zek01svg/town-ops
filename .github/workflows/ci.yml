@@ -25,15 +25,47 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  verify-and-test:
-    name: Verify and test
+  quality-checks:
+    name: Quality checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install pnpm
         uses: pnpm/action-setup@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          version: 11.15.0
+          bun-version: latest
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - name: Setup Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml', 'turbo.json') }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run format, lint, and build checks
+        run: bun run format:check && bun run lint:check && bun run build
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -58,10 +90,29 @@ jobs:
             ${{ runner.os }}-turbo-
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
-      - name: Run format, lint, and build checks
-        run: bun run format:check && bun run lint:check && bun run build
       - name: Run tests
         run: bun run test -- --concurrency=1
+
+  security-checks:
+    name: Security checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
       - name: Software Composition Analysis (SCA)
         run: pnpm audit --audit-level=high
       - name: Initialize CodeQL (SAST)

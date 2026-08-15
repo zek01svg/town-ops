@@ -1,3 +1,104 @@
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.0.0-rc.4
+        version: 12.0.0-rc.4
+
+packages:
+
+  '@pnpm/exe.darwin-arm64@12.0.0-rc.4':
+    resolution: {integrity: sha512-NTtU1zj1MgEcuDisvwyRVliMWGl155OsltZTNmunPQuWNia8iTqPVumR1bV1QC3NJ5Q854qPU5iIyL5M9bcAkA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@pnpm/exe.darwin-x64@12.0.0-rc.4':
+    resolution: {integrity: sha512-P/KjTYBSSNERojfbBeGPzUov1AI6cqtOJSPhg2Q255jcVjkNGvF3kZE8/PELMa2Vi8C5gGi6sMMKwXh7L42t3g==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@pnpm/exe.linux-arm64-musl@12.0.0-rc.4':
+    resolution: {integrity: sha512-fg0O04LclMwA56cK3fFyg5Nwq7T6rcVZhODIRYTx15l27wm8zVAySYlBVkOVCdJHfty888d9FZL7GCoaNjXGog==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@pnpm/exe.linux-arm64@12.0.0-rc.4':
+    resolution: {integrity: sha512-c7fJr4iHrOBbtyas9kC8rplAdMDR4JT22n/253HGvJs8HFD0ANk0mmoeRozB8VvzgwQnvR7s0p6cdktTo+4iaQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.linux-x64-musl@12.0.0-rc.4':
+    resolution: {integrity: sha512-hFz68F1ZtrNNW2CmXxnYKabzxWgbFmg2phJgVB/IBQr99eDbzF2bNmWilDPgs/9kCk/Dd+nLN09Xx2/cYHT6GA==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@pnpm/exe.linux-x64@12.0.0-rc.4':
+    resolution: {integrity: sha512-ZGA0D87J8qWUoH6ir4zn+59rAXpQYnkeYZgaIECQK9ap+uYDTQcZXrlXZIJolpu+Esz55TvJS2kDVgroiKZfUQ==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.win32-arm64@12.0.0-rc.4':
+    resolution: {integrity: sha512-EhDPBGq56pdPGvB1qsD5RA56OvZ7Y2QNqR7LT4AVGW+CXl111dOWO/P/B43l+xgkfoHdoqog0n+9KJzHqhmu/Q==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@pnpm/exe.win32-x64@12.0.0-rc.4':
+    resolution: {integrity: sha512-UQmDy6r7DYS+eNDnh/y3Feo0cm/GqRkDxOFbEhvnAqynzEIjZXMs0PpIGAFpx3gHlRD5AM+jOphVMDgAm85zsQ==}
+    cpu: [x64]
+    os: [win32]
+
+  pnpm@12.0.0-rc.4:
+    resolution: {integrity: sha512-+mNGA4iijwF9PIPFTSZmQH7ZveErIUrW+g6Uufyz6cfo1wKxGQNFl6WqHoNiGZyi0ZqoYPba/dSh3betMiKUyw==}
+    engines: {node: '>=18.*'}
+    hasBin: true
+
+snapshots:
+
+  '@pnpm/exe.darwin-arm64@12.0.0-rc.4':
+    optional: true
+
+  '@pnpm/exe.darwin-x64@12.0.0-rc.4':
+    optional: true
+
+  '@pnpm/exe.linux-arm64-musl@12.0.0-rc.4':
+    optional: true
+
+  '@pnpm/exe.linux-arm64@12.0.0-rc.4':
+    optional: true
+
+  '@pnpm/exe.linux-x64-musl@12.0.0-rc.4':
+    optional: true
+
+  '@pnpm/exe.linux-x64@12.0.0-rc.4':
+    optional: true
+
+  '@pnpm/exe.win32-arm64@12.0.0-rc.4':
+    optional: true
+
+  '@pnpm/exe.win32-x64@12.0.0-rc.4':
+    optional: true
+
+  pnpm@12.0.0-rc.4:
+    optionalDependencies:
+      '@pnpm/exe.darwin-arm64': 12.0.0-rc.4
+      '@pnpm/exe.darwin-x64': 12.0.0-rc.4
+      '@pnpm/exe.linux-arm64': 12.0.0-rc.4
+      '@pnpm/exe.linux-arm64-musl': 12.0.0-rc.4
+      '@pnpm/exe.linux-x64': 12.0.0-rc.4
+      '@pnpm/exe.linux-x64-musl': 12.0.0-rc.4
+      '@pnpm/exe.win32-arm64': 12.0.0-rc.4
+      '@pnpm/exe.win32-x64': 12.0.0-rc.4
+
+---
 lockfileVersion: '9.0'
 
 settings:
@@ -223,6 +324,7 @@ overrides:
   minimatch: 3.1.4
   '@opentelemetry/propagator-jaeger': 2.9.0
   protobufjs: 8.4.1
+  nanoid@<3.3.18: 3.3.18
 
 importers:
 
@@ -6946,8 +7048,8 @@ packages:
   nan@2.28.0:
     resolution: {integrity: sha512-fTsDz99OTq2sVePhGdp4qQhggZFtKr64ZNVyVajRKtMOkJxYekplBh577PiJB12v/D3s2E5cGtOI45LWp6rnLQ==}
 
-  nanoid@3.3.17:
-    resolution: {integrity: sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==}
+  nanoid@3.3.18:
+    resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -13619,7 +13721,7 @@ snapshots:
   nan@2.28.0:
     optional: true
 
-  nanoid@3.3.17: {}
+  nanoid@3.3.18: {}
 
   nanoid@5.1.16: {}
 
@@ -13953,13 +14055,13 @@ snapshots:
 
   postcss@8.5.20:
     dependencies:
-      nanoid: 3.3.17
+      nanoid: 3.3.18
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
   postcss@8.5.23:
     dependencies:
-      nanoid: 3.3.17
+      nanoid: 3.3.18
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
@@ -14355,7 +14457,7 @@ snapshots:
       kleur: 4.1.5
       open: 11.0.0
       ora: 8.2.0
-      postcss: 8.5.20
+      postcss: 8.5.23
       postcss-selector-parser: 7.1.4
       prompts: 2.4.2
       recast: 0.23.19

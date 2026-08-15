@@ -35,7 +35,10 @@ function command(): CompleteCaseCommand {
   };
 }
 
-function dependencies(fetchImpl: typeof fetch) {
+function dependencies(
+  fetchImpl: typeof fetch,
+  mintIdentityToken?: (audience: string) => Promise<string | undefined>
+) {
   return createCompleteCaseActivities({
     proofAtomUrl: "http://proof-atom:5007",
     appointmentAtomUrl: "http://appointment-atom:5003",
@@ -44,6 +47,7 @@ function dependencies(fetchImpl: typeof fetch) {
     metricsAtomUrl: "http://metrics-atom:5006",
     workerServiceToken,
     fetchImpl,
+    mintIdentityToken,
   });
 }
 
@@ -156,6 +160,33 @@ function completionFetch(
     });
   });
 }
+
+describe("complete-case activities identity header (PRS-140 Phase 5)", () => {
+  it("attaches X-Serverless-Authorization alongside Authorization when a minter is injected", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({ outcome: "WRONG_CONTRACTOR" }, { status: 409 })
+      );
+    const mintIdentityToken = vi.fn().mockResolvedValue("minted-id-token");
+
+    await dependencies(fetchImpl, mintIdentityToken).completeAppointment({
+      operationId: `${randomUUID()}/appointment`,
+      appointmentId: randomUUID(),
+      contractorId,
+    });
+
+    const [, init] = fetchImpl.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Serverless-Authorization")).toBe(
+      "Bearer minted-id-token"
+    );
+    expect(headers.get("Authorization")).toBe(`Bearer ${workerServiceToken}`);
+    expect(mintIdentityToken).toHaveBeenCalledWith(
+      "http://appointment-atom:5003"
+    );
+  });
+});
 
 describe("complete-case activity preflight", () => {
   it("validates Appointment and Assignment ownership/linkage before resolving proof", async () => {

@@ -2,6 +2,11 @@ import { defineConfig, defineProject, mergeConfig } from "vitest/config";
 
 export const baseConfig = defineConfig({
   test: {
+    // The GCP ID-token minter (packages/orchestration-contract/src/gcp-identity.ts)
+    // no-ops when this is "off" — set here so every workspace's vitest run is
+    // unaffected without touching the real metadata server. Individual tests
+    // that need the minted-token path override this with `vi.stubEnv`.
+    env: { METADATA_SERVER: "off" },
     exclude: [
       "node_modules",
       ".venv",

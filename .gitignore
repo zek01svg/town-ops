@@ -274,6 +274,10 @@ out/
 *.tfstate
 *.tfstate.backup
 .terraform.lock.hcl
+*.plan
+# `terraform show -json` of a saved plan -- same embedded resource values as
+# the plan file itself, and *.plan does not match it.
+*.plan.json
 
 # Local Data
 pgdata/

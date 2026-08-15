@@ -27,17 +27,45 @@ function command(): AcceptAllocationCommand {
   };
 }
 
-function dependencies(fetchImpl: typeof fetch) {
+const workerServiceToken = "a".repeat(32);
+
+function dependencies(
+  fetchImpl: typeof fetch,
+  mintIdentityToken?: (audience: string) => Promise<string | undefined>
+) {
   return createAllocateContractorActivities({
     contractorAtomUrl: "http://contractor",
     metricsAtomUrl: "http://metrics",
     assignmentAtomUrl: "http://assignment",
     appointmentAtomUrl: "http://appointment",
     caseAtomUrl: "http://case",
-    workerServiceToken: "a".repeat(32),
+    workerServiceToken,
     fetchImpl,
+    mintIdentityToken,
   });
 }
+
+describe("allocate-contractor activities identity header (PRS-140 Phase 5)", () => {
+  it("attaches X-Serverless-Authorization alongside Authorization when a minter is injected", async () => {
+    const caseId = randomUUID();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ case: { status: "pending" } }));
+    const mintIdentityToken = vi.fn().mockResolvedValue("minted-id-token");
+
+    await dependencies(fetchImpl, mintIdentityToken).isCaseTerminal({
+      caseId,
+    });
+
+    const [, init] = fetchImpl.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Serverless-Authorization")).toBe(
+      "Bearer minted-id-token"
+    );
+    expect(headers.get("Authorization")).toBe(`Bearer ${workerServiceToken}`);
+    expect(mintIdentityToken).toHaveBeenCalledWith("http://case");
+  });
+});
 
 describe("acceptAllocation activity", () => {
   it("reserves, accepts, confirms, then writes Case history", async () => {

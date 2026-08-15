@@ -12,7 +12,7 @@ ports, variables, and commands.
 | 🗺️ **[Service Map](./service-map.md)**                 | Active services, ports, and responsibilities.                                       |
 | ⚡ **[Event Flow](./event-flow.md)**                   | Durable Case Workflow and Derived Effect delivery.                                  |
 | 🔄 **[Case Lifecycle](./case-lifecycle.md)**           | Case and assignment status state machines, SLA window, and proof/closure flow.      |
-| 🚀 **[Deployment](./deployment.md)**                   | Local environment setup, env vars, DB migrations, and seed scripts.                 |
+| 🚀 **[Deployment](./deployment.md)**                   | Local setup and DB migrations, plus the GCP apply, verify, and teardown runbook.    |
 | 🧩 **[Temporal Versioning](./temporal-versioning.md)** | Worker Deployments, when a Workflow change needs a patch marker, and patch removal. |
 | 🛠 **[Tech Stack](./tech-stack.md)**                    | Framework and tooling choices.                                                      |
 | 📜 **[ADRs](./adr/)**                                  | Accepted architecture decisions.                                                    |

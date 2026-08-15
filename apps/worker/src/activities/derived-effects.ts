@@ -1,6 +1,7 @@
 import {
   DerivedEffectSummarySchema,
   RecordPerformanceEntryInputSchema,
+  withServerlessAuth,
 } from "@townops/orchestration-contract";
 import type { DerivedEffectSummary } from "@townops/orchestration-contract";
 import { z } from "zod/v4";
@@ -41,6 +42,9 @@ type Dependencies = {
   caseAtomUrl: string;
   workerServiceToken: string;
   fetchImpl?: typeof fetch;
+  // Mints the Cloud Run IAM ID token `withServerlessAuth` attaches to every
+  // atom call (PRS-140 Phase 5). Defaults to the real metadata-server minter.
+  mintIdentityToken?: (audience: string) => Promise<string | undefined>;
 };
 
 const summaryResponseSchema = z.object({
@@ -97,8 +101,10 @@ export function createDerivedEffectActivities({
   metricsAtomUrl,
   caseAtomUrl,
   workerServiceToken,
-  fetchImpl = fetch,
+  fetchImpl: injectedFetch = fetch,
+  mintIdentityToken,
 }: Dependencies) {
+  const fetchImpl = withServerlessAuth(injectedFetch, mintIdentityToken);
   async function parseEffect(response: Response) {
     const body = summaryResponseSchema.parse(await response.json());
     if (!body.effect)

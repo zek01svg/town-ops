@@ -1,5 +1,12 @@
 import { z } from "zod/v4";
 
+// Explicit .ts extension, like every other relative import in the packages the
+// Gateway and Worker run: both start with `node --experimental-strip-types`,
+// whose ESM resolver does no extension guessing. Without it the container dies
+// at import time with ERR_MODULE_NOT_FOUND, which Cloud Run reports only as
+// "failed to start and listen on PORT".
+export { getIdentityToken, withServerlessAuth } from "./gcp-identity.ts";
+
 export const MaintenanceCategorySchema = z.enum([
   "LE",
   "PL",
