@@ -1,0 +1,6 @@
+# A hardcoded 32-hex fixture in a vi.hoisted() block, not a credential: auth.ts
+# reads BETTER_AUTH_SECRET at module load, so the test has to set one before the
+# import evaluates. Gitleaks' generic-api-key rule fires on its entropy alone.
+# Pinned to the exact finding rather than allowlisting the tests path, so a real
+# secret committed to a test file still fails the scan.
+d1cd1308e38a44d972feff9688652639f82d02c0:apps/atoms/auth/tests/unit/cross-site-cookies.test.ts:generic-api-key:10

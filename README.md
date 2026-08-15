@@ -55,13 +55,14 @@ See [`docs/deployment.md`](docs/deployment.md) for full local setup, environment
 
 ## Documentation
 
-| Doc                                      | Description                                        |
-| :--------------------------------------- | :------------------------------------------------- |
-| [Architecture](docs/architecture.md)     | Atoms, Gateway/Worker, Temporal, and auth          |
-| [Service Map](docs/service-map.md)       | Current Compose services and ports                 |
-| [Event Flow](docs/event-flow.md)         | Temporal Case Workflow and Derived Effect delivery |
-| [Case Lifecycle](docs/case-lifecycle.md) | Implemented allocation and appointment lifecycle   |
-| [Deployment](docs/deployment.md)         | Local setup, env vars, and the GCP runbook         |
-| [Tech Stack](docs/tech-stack.md)         | Framework and tooling choices                      |
-| [ADRs](docs/adr/)                        | Accepted architecture decisions                    |
-| [Agent guides](docs/agents/)             | Domain and tracker conventions                     |
+| Doc                                                | Description                                        |
+| :------------------------------------------------- | :------------------------------------------------- |
+| [Architecture](docs/architecture.md)               | Atoms, Gateway/Worker, Temporal, and auth          |
+| [Service Map](docs/service-map.md)                 | Current Compose services and ports                 |
+| [Event Flow](docs/event-flow.md)                   | Temporal Case Workflow and Derived Effect delivery |
+| [Case Lifecycle](docs/case-lifecycle.md)           | Implemented allocation and appointment lifecycle   |
+| [Deployment](docs/deployment.md)                   | Local setup, env vars, and the GCP runbook         |
+| [Temporal Versioning](docs/temporal-versioning.md) | Worker Deployments and Workflow patch markers      |
+| [Tech Stack](docs/tech-stack.md)                   | Framework and tooling choices                      |
+| [ADRs](docs/adr/)                                  | Accepted architecture decisions                    |
+| [Agent guides](docs/agents/)                       | Domain and tracker conventions                     |

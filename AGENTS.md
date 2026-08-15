@@ -63,7 +63,7 @@ Single-context: root `CONTEXT.md` and task-relevant entries in `docs/adr/`. See 
 - One task per subagent for focused execution
 - For new features/requirements, run the `builder` → `reviewer` pipeline. Builder writes the code and its tests test-first and runs the scoped suite; reviewer is read-only and judges both, including whether the tests can actually fail. Loop until reviewer PASS.
 - **Resume the same builder via `SendMessage` for fix loops.** A fresh `Agent` spawn re-reads the spec and every touched file from cold; resuming keeps that context. Only cold-spawn for a genuinely new increment.
-- **The parent owns the full-lane run.** Builder runs only their scoped workspace commands; the parent runs the root suite and `pnpm lint:js` before committing.
+- **The parent owns the full-lane run.** Builder runs only their scoped workspace commands; the parent runs the root suite and `pnpm lint:check` before committing.
 
 ### 3. Self-Improvement Loop
 

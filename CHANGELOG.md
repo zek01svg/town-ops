@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.0.0] - 2026-07-21 to 2026-08-15
+
+### Added
+
+- Added the Temporal Case Workflow spine covering the full lifecycle: opening, automatic Contractor allocation, acceptance with Appointments, starting work, no-access rescheduling, missed-appointment recovery, completion with immutable proof, and cancellation before work starts.
+- Added acceptance SLA breach enforcement with automatic Contractor replacement, and recovery from unavailable and concurrent allocation attempts.
+- Added derived effect delivery and repair, so downstream effects retry and reconcile instead of failing silently.
+- Added role-scoped Case views and timelines served through the Gateway, and secure Resident signup with durable profile provisioning.
+- Added Workflow durability and safe-versioning coverage, including Continue-As-New and forced-replay tests.
+- Added the GCP deployment pipeline: Terraform infrastructure, Workload Identity Federation, and a deployment workflow that builds, applies, promotes, and verifies.
+- Added local Postgres infrastructure and an initialization script for the development stack.
+
+### Changed
+
+- Replaced RabbitMQ, AMQP, and DLX orchestration and the seven legacy Composite services with Temporal Workflows; the local stack now runs with no message broker. See `docs/adr/0001-temporal-orchestration.md`.
+- Routed frontend authentication through the Gateway and privatized atom routes, so browser code reaches a single Gateway URL and never calls an atom directly.
+- Migrated Proof storage from Supabase to S3-compatible MinIO.
+- Moved atom migrations to drizzle-native generation and application, and removed the hand-rolled migration applier.
+- Moved tooling configuration to the repository root, tightened the Oxlint ruleset, and folded the separate security-checks workflow into CI.
+- Removed the legacy GCP infrastructure and moved the toolchain to `pnpm@12.0.0-rc.4`.
+
+### Fixed
+
+- Fixed Contractor Map hooks being called conditionally, and cleared the remaining Oxlint errors surfaced by the stricter ruleset.
+- Resolved `pnpm audit` findings, including pinning `nanoid` to 3.3.18 across the vulnerable 3.x range (GHSA-2v37-7h3g-55p8) without disturbing the 5.x line a separate dependency requires.
+- Fixed the environment examples, which documented wrong service ports, a dead database host, and omitted the required `WORKER_SERVICE_TOKEN` — following them could not bring the local stack up.
+
 ## [0.6.0] - 2026-04-06 to 2026-04-12
 
 ### Added
